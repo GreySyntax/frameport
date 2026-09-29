@@ -1,0 +1,4 @@
+{
+    global: ovrMessageType_ToString;
+    local: *;
+};

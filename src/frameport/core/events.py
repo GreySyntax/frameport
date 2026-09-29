@@ -1,0 +1,79 @@
+"""Progress/log reporting shared by the pipeline, CLI and UI.
+
+Every long-running step takes a `Reporter`. The CLI prints; the UI subscribes and updates widgets.
+"""
+from __future__ import annotations
+
+import threading
+import time
+from dataclasses import dataclass, field
+from typing import Callable
+
+
+@dataclass
+class Event:
+    kind: str  # "log" | "stage" | "progress" | "check" | "done" | "error"
+    message: str = ""
+    stage: str = ""
+    fraction: float | None = None
+    data: dict = field(default_factory=dict)
+    time: float = field(default_factory=time.time)
+
+
+class Reporter:
+    def __init__(self, sinks: list[Callable[[Event], None]] | None = None):
+        self._sinks = list(sinks or [])
+        self._lock = threading.Lock()
+        self.stage_name = ""
+        self.cancelled = threading.Event()
+
+    def subscribe(self, sink: Callable[[Event], None]) -> None:
+        with self._lock:
+            self._sinks.append(sink)
+
+    def emit(self, event: Event) -> None:
+        with self._lock:
+            sinks = list(self._sinks)
+        for sink in sinks:
+            try:
+                sink(event)
+            except Exception:  # a broken UI sink must never kill a build
+                pass
+
+    def log(self, message: str, **data) -> None:
+        self.emit(Event("log", message, self.stage_name, data=data))
+
+    def stage(self, name: str, message: str = "") -> None:
+        self.stage_name = name
+        self.emit(Event("stage", message or name, name))
+
+    def progress(self, fraction: float, message: str = "") -> None:
+        self.emit(Event("progress", message, self.stage_name, fraction=max(0.0, min(1.0, fraction))))
+
+    def check(self, name: str, ok: bool | None, detail: str = "") -> None:
+        self.emit(Event("check", detail, self.stage_name, data={"name": name, "ok": ok}))
+
+    def check_cancel(self) -> None:
+        if self.cancelled.is_set():
+            raise Cancelled()
+
+
+class Cancelled(Exception):
+    pass
+
+
+def printing_reporter(verbose: bool = True) -> Reporter:
+    def sink(e: Event) -> None:
+        stamp = time.strftime("%H:%M:%S", time.localtime(e.time))
+        if e.kind == "stage":
+            print(f"{stamp} == {e.message}", flush=True)
+        elif e.kind == "check":
+            mark = {True: "PASS", False: "FAIL", None: "WARN"}[e.data.get("ok")]
+            print(f"{stamp}    [{mark}] {e.data.get('name')}: {e.message}", flush=True)
+        elif e.kind == "progress":
+            if verbose and e.message:
+                print(f"{stamp}    {e.fraction:.0%} {e.message}", flush=True)
+        elif verbose or e.kind == "error":
+            print(f"{stamp}    {e.message}", flush=True)
+
+    return Reporter([sink])

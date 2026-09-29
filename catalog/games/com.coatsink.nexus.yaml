@@ -1,0 +1,16 @@
+package: com.coatsink.nexus
+title: Shadow Point
+tested_version: '1.4'
+source_hint: Shadow Point v47+1.4
+engine: Unity
+xr: VrApi
+status: unsupported
+notes: 32-bit only; the Frame has no AArch32.
+details: 32-bit (armeabi-v7a) only; the Frame has no AArch32. 64-bit conversion was researched and dropped (IL2CPP
+  + FMOD + custom rasterizer).
+pcvr_alternative: Rift version via Revive + SteamVR.
+verified:
+  date: '2026-09-28'
+  overport_cli: 1.2.3
+  overport_runtime: 3.4.3-23204ea
+  known_good_sha256: ea0c0d09d2c3d8da04d165732ead64875fef7573a5739608de0de9c93654007e

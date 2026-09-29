@@ -1,0 +1,17 @@
+package: gg.trs.grappa
+title: Journey of the Gods
+tested_version: 1.0.479431
+source_hint: Journey of the Gods v479431+1.0.479431
+engine: Unreal
+xr: VrApi
+status: unsupported
+notes: 32-bit only; the Frame has no AArch32.
+details: 32-bit (armeabi-v7a) only; the Frame has no AArch32. UE4 cannot be rebuilt for arm64.
+alt_overport:
+- patch_remove_unreal_force_quit
+pcvr_alternative: Rift (Meta PC) version via Revive + SteamVR.
+verified:
+  date: '2026-09-28'
+  overport_cli: 1.2.3
+  overport_runtime: 3.4.3-23204ea
+  known_good_sha256: e85141e3e9a8a3226f653d8ffbd21b44268101f3a207f56e657454a3639b3201

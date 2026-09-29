@@ -1,0 +1,76 @@
+"""Meta platform SDK gaps in overport's libovrplatformloader.so."""
+from __future__ import annotations
+
+from ...analysis import elf
+from ...analysis.detect import missing_ovr_symbols
+from ...analysis.stubgen import build_stub_library
+from ..base import ApkContext, Patch, Suggestion, register
+from . import artifact
+
+LOADER = "libovrplatformloader.so"
+COMPAT = "libovrplatformcompat.so"
+STUBS = "libovrstubs.so"
+
+
+def _lib_bytes(ws) -> dict[str, bytes]:
+    out = {}
+    for lib in ws.libs():
+        data = ws.read_lib(lib)
+        if elf.is_elf(data):
+            out[lib] = data
+    return out
+
+
+class PlatformCompat(Patch):
+    id = "frame.ovrplatformcompat"
+    title = "Platform compat (ovrMessageType_ToString)"
+    description = ("Adds a real ovrMessageType_ToString (from the Android-XR-Bridge fork) for games whose platform "
+                   "loader lacks it (The Climb 2).")
+    order = 30
+    default_on = True
+
+    def detect(self, a):
+        return Suggestion(True, "Applied automatically when the overport build needs it.")
+
+    def apply(self, ctx: ApkContext) -> bool:
+        ws = ctx.ws
+        if ws.abi != "arm64-v8a" or not ws.has(ws.lib(LOADER)) or ws.has(ws.lib(COMPAT)):
+            return False
+        if "ovrMessageType_ToString" not in missing_ovr_symbols(_lib_bytes(ws)):
+            return False
+        ws.put(ws.lib(LOADER), elf.add_needed(ws.read_lib(LOADER), COMPAT))
+        ws.put(ws.lib(COMPAT), artifact(ws.abi, COMPAT))
+        return True
+
+
+class OvrStubs(Patch):
+    id = "frame.ovrstubs"
+    title = "Stub missing Meta platform functions"
+    description = ("Generates no-op stubs for ovr_* functions the game imports but overport's platform loader "
+                   "lacks (Espire 1/2, Wallace & Gromit, The Climb 2). Symptom: UnsatisfiedLinkError / "
+                   "'cannot locate symbol ovr_...'. Online/store features stay unavailable.")
+    order = 31
+    default_on = True
+
+    def detect(self, a):
+        return Suggestion(True, "Applied automatically when the overport build needs it.")
+
+    def apply(self, ctx: ApkContext) -> bool:
+        ws = ctx.ws
+        if not ws.has(ws.lib(LOADER)) or ws.has(ws.lib(STUBS)):
+            return False
+        missing = missing_ovr_symbols(_lib_bytes(ws))
+        if not missing:
+            return False
+        ws.put(ws.lib(LOADER), elf.add_needed(ws.read_lib(LOADER), STUBS))
+        ws.put(ws.lib(STUBS), build_stub_library(sorted(missing), STUBS, ws.abi))
+        ctx.notes.append(f"stubbed {len(missing)} function(s)")
+        return True
+
+    def validate(self, ctx):
+        missing = missing_ovr_symbols(_lib_bytes(ctx.ws))
+        return [("Meta platform symbols resolvable", not missing, ", ".join(sorted(missing)[:5]))]
+
+
+register(PlatformCompat)
+register(OvrStubs)

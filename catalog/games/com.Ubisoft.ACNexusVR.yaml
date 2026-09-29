@@ -1,0 +1,16 @@
+package: com.Ubisoft.ACNexusVR
+title: Assassin's Creed Nexus
+tested_version: MAIN.450412.207706.final
+source_hint: Assassins Creed Nexus VR v207706+MAIN.450412.207706.final
+engine: Unity
+xr: OpenXR
+status: issues
+notes: Some launch warning text is still upside down; the rest of the UI is fixed by flip emulation. Ubisoft login
+  may not work.
+details: Ubisoft online login may not work. Data folder holds raw assets (start0..2, .climb, bundles), not .obb
+  files; install to obb as-is.
+verified:
+  date: '2026-09-28'
+  overport_cli: 1.2.3
+  overport_runtime: 3.4.3-23204ea
+  known_good_sha256: 89644a12bf8df956fa3d3a9a40540ba9e1fb62f63494714a05c9f05984383ac8

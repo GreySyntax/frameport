@@ -1,0 +1,16 @@
+package: com.camouflaj.manta
+title: 'Batman: Arkham Shadow'
+tested_version: 1.4.1-350961
+source_hint: Batman- Arkham Shadow (Inc Lang Packs) v350961+1.4.1-350961
+engine: Unity
+xr: OpenXR
+status: works
+notes: Large data set (~27 GiB) incl. all language packs.
+details: Uses Meta XR Audio (Wwise), handled by patch_meta_xr_audio. Includes all language packs (~28 GB).
+overport_extra:
+- patch_disable_space_warp
+verified:
+  date: '2026-09-28'
+  overport_cli: 1.2.3
+  overport_runtime: 3.4.3-23204ea
+  known_good_sha256: 796d1cab08f614d72c50d9702974c719c0908f5de91183cfe02d1fd5eb09551a

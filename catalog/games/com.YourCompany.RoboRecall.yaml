@@ -1,0 +1,16 @@
+package: com.YourCompany.RoboRecall
+title: Robo Recall
+tested_version: '1.0'
+source_hint: Robo Recall- Unplugged v47091+1.0
+engine: Unreal
+xr: VrApi
+status: works
+notes: Needed the LAUNCHER category fix.
+details: Source APK is a community 'patch+savefix+90Hz' build.
+alt_overport:
+- patch_remove_unreal_force_quit
+verified:
+  date: '2026-09-28'
+  overport_cli: 1.2.3
+  overport_runtime: 3.4.3-23204ea
+  known_good_sha256: 4ce6e3563da131e288645f4b62a634ac98043e55bc42b7c0ad5f461207d5f53c

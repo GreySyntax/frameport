@@ -1,0 +1,103 @@
+# Log signature -> diagnosis -> suggested fix. Matched against the game's launch.log (Lepton logcat mirror).
+# `pattern` is a Python regex (case-sensitive). `suggest` lists patch ids (+ optional params) the UI offers as
+# "apply and rebuild". `severity`: fatal (the game can't run) | error | warning | info.
+# Sources: every failure we hit porting 34 games to the Steam Frame (see docs/PLAYBOOK.md).
+signatures:
+  - id: no-launcher
+    pattern: 'APP_ACTIVITY is empty'
+    severity: fatal
+    diagnosis: Lepton found no activity with category LAUNCHER.
+    suggest: [frame.launcher]
+  - id: no-arm64
+    pattern: 'INSTALL_FAILED_NO_MATCHING_ABIS'
+    severity: fatal
+    diagnosis: 32-bit-only APK. The Steam Frame has no AArch32; this cannot run. Use the PC (Rift) version via Revive.
+    suggest: []
+  - id: missing-ovr-symbol
+    pattern: '(UnsatisfiedLinkError|cannot locate symbol) .*"?(ovr_[A-Za-z0-9_]+|ovrMessageType_ToString)'
+    severity: fatal
+    diagnosis: The game imports Meta platform functions overport's loader lacks.
+    suggest: [frame.ovrstubs, frame.ovrplatformcompat]
+  - id: oculus-os-class
+    pattern: 'ClassNotFoundException.*com\.oculus\.os\.(AnalyticsEvent|UnifiedTelemetryLogger)|com/oculus/os/AnalyticsEvent'
+    severity: fatal
+    diagnosis: Quest-only telemetry class lookup aborts the app (Meta XR Audio / native telemetry).
+    suggest: [frame.metaxr_telemetry, frame.oculusos]
+  - id: checkjni-abort
+    pattern: 'JNI DETECTED ERROR IN APPLICATION|GetStringUTFChars.*NULL|CheckJNI'
+    severity: fatal
+    diagnosis: CheckJNI (on because the app is debuggable) aborts on sloppy JNI usage.
+    suggest: [frame.nodebug]
+  - id: force-quit
+    pattern: 'System\.exit|ForceQuit|FAndroidMisc::RequestExit'
+    severity: error
+    diagnosis: The game quit itself right after starting (Unreal ForceQuit after a failed platform check).
+    suggest: [patch_remove_unreal_force_quit]
+    use_alt: true
+  - id: swapchain-format
+    pattern: 'xrCreateSwapchain.*(-26|FORMAT_UNSUPPORTED)|swapchain format .* rejected'
+    severity: error
+    diagnosis: The Frame rejected the swapchain format (GLES games must use sRGB formats, no MSAA).
+    suggest: [adapter.swapchain_fix]
+  - id: zink-device-lost
+    pattern: 'zink.*DEVICE[_ ]LOST|VK_ERROR_DEVICE_LOST'
+    severity: fatal
+    diagnosis: The GPU hung (Zink/Mesa). For GLES Unity games MSAA render-to-texture is the usual cause.
+    suggest: [frame.unity_no_msaa]
+  - id: gl-shader-failed
+    pattern: 'GLShim\s*: SHADER COMPILE FAILED|#extension directive is not allowed in the middle|could not implicitly convert operands'
+    severity: error
+    diagnosis: Shaders written for Quest drivers fail on Mesa (GLSL strictness).
+    suggest: [frame.gl_shim]
+  - id: vrapi-unsupported-layer
+    pattern: 'OVRPortVrApi.*Unsupported VrApi layer type (\d+)'
+    severity: error
+    diagnosis: The game submits a VrApi layer type the bridge can't show; whole frames are dropped (black screen).
+    suggest: []
+  - id: direct-vrapi
+    pattern: 'vrapi_Initialize|VrApi.*not supported|libvrapi\.so.*(not found|failed)'
+    severity: warning
+    diagnosis: The engine talks to VrApi directly; it needs the VrApi bridge.
+    suggest: [frame.vrapi_bridge]
+  - id: passthrough-missing
+    pattern: 'XR_FB_passthrough.*(not supported|UNSUPPORTED|missing)|XR_ERROR_EXTENSION_NOT_PRESENT.*passthrough'
+    severity: error
+    diagnosis: The game needs Meta passthrough; the adapter emulates it.
+    suggest: [adapter.passthrough_emul, patch_force_passthrough]
+  - id: scene-missing
+    pattern: 'XR_FB_scene|XR_FB_spatial_entity.*(not supported|UNSUPPORTED)|xrQuerySpacesFB'
+    severity: warning
+    diagnosis: The game uses the Meta scene (room) API; enable the adapter's guardian-based room emulation.
+    suggest: [adapter.scene_emul]
+  - id: time-conversion
+    pattern: 'xrConvert(Timespec)?Time(ToTimespec)?Time(KHR)?.*(-12|FUNCTION_UNSUPPORTED)'
+    severity: warning
+    diagnosis: Runtime lacks timespec time conversion (emulated by the current adapter build).
+    suggest: [frame.adapter]
+  - id: native-crash
+    pattern: 'Fatal signal (\d+) \(SIG[A-Z]+\)'
+    severity: fatal
+    diagnosis: Native crash. See the backtrace (#00 pc ...) for the library.
+    suggest: []
+  - id: java-crash
+    pattern: 'FATAL EXCEPTION'
+    severity: fatal
+    diagnosis: Java crash. See "Caused by".
+    suggest: []
+  - id: dlopen-failed
+    pattern: 'dlopen failed: (.*)'
+    severity: fatal
+    diagnosis: A native library failed to load.
+    suggest: []
+  - id: permission-denied-save
+    pattern: 'Permission denied.*(Android/data|/sdcard)|EACCES.*Android/data'
+    severity: warning
+    diagnosis: The game created folders it can't write (saves break). The FramePort launcher repairs permissions every 2 s.
+    suggest: []
+milestones:  # progress markers, in order; the furthest one reached is reported
+  - {id: container, pattern: 'lepton|Starting Lepton|APP_ACTIVITY', label: Lepton container started}
+  - {id: process, pattern: 'Start proc \d+:', label: App process started}
+  - {id: adapter, pattern: 'FrameBridge: scale=', label: FrameBridge adapter loaded}
+  - {id: instance, pattern: 'xrCreateInstance result=0', label: OpenXR instance created}
+  - {id: session, pattern: 'xrCreateSession|session state=1|Created OpenXR session', label: OpenXR session created}
+  - {id: frames, pattern: 'FrameBridge: pacing: [0-9.]+ fps', label: Submitting frames}

@@ -1,0 +1,6 @@
+3dfcb0f2bec47857bcecc7261c58e076d872d4649718c40850f29e10c75477dd  ./arm64-v8a/libglshim.so
+ca27ffa2122def910697ddcaff64f25cfdbc63e2017c738155866ff2fcdb5e12  ./arm64-v8a/libopenxr_loader_generic.so
+1feaeafad467c4cafdf2b018a4d84b0bee200c3f711697b4ce97e66a3ba256ca  ./arm64-v8a/libovrplatformcompat.so
+32525cd0a9ee3d9993d8871cd6905bdcf22cde4f4ba28f5db6434ce7d6554758  ./arm64-v8a/libvrapi.so
+f3aa9419155b8970617fc0d68527a73c39abc82303214c159194c439bb776fd6  ./armeabi-v7a/libopenxr_loader_generic.so
+1871eae093432d277da4bc751bf5f3269dfcf11f9168260b0c3caadb0dedb19d  ./dex/oculusos-stubs.dex

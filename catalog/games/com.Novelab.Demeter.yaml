@@ -1,0 +1,20 @@
+package: com.Novelab.Demeter
+title: Demeter
+tested_version: 1.1.0
+source_hint: Demeter v53+1.1.0
+engine: Unity
+xr: OpenXR
+status: works
+notes: Passthrough + Meta scene/room emulated from the Steam guardian (scene_emul=1).
+details: Mixed-reality-only; builds its level from the room model, which the adapter emulates from the Steam guardian.
+overport_extra:
+- patch_force_passthrough
+adapter:
+  scene_emul: 1
+verified:
+  date: '2026-09-28'
+  overport_cli: 1.2.3
+  overport_runtime: 3.4.3-23204ea
+  known_good_sha256: 9f900fc86fbb2663abe83c82ab79cc72bbf1f93fea54f7583fd274dd07e3d09c
+frame:
+- frame.meta_permissions

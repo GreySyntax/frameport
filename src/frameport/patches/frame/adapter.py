@@ -1,0 +1,60 @@
+"""FrameBridge: wraps overport's generic OpenXR loader to paper over Steam Frame runtime gaps."""
+from __future__ import annotations
+
+from ..base import ApkContext, Patch, Suggestion, register
+from . import artifact
+
+GENERIC = "libopenxr_loader_generic.so"
+ORIGINAL = "libopenxr_loader_original.so"
+SETTINGS = "libframe_settings.so"
+
+
+def settings_text(recipe_patches: dict) -> bytes:
+    from ..settings import adapter_settings
+
+    return "".join(f"{k}={v}\n" for k, v in adapter_settings(recipe_patches).items()).encode()
+
+
+class FrameBridgeAdapter(Patch):
+    id = "frame.adapter"
+    title = "FrameBridge OpenXR adapter"
+    description = (
+        "Wraps overport's generic OpenXR loader (renamed libopenxr_loader_original.so). Fixes the Frame runtime's gaps: "
+        "retries rejected GLES swapchain formats/MSAA (Frame takes sRGB only), drops unsupported instance extensions "
+        "and layers, emulates XR_FB_passthrough (ALPHA_BLEND), Meta scene/spatial entities (guardian-sized room), "
+        "XR_KHR_convert_timespec_time, and vertically flipped quad layers; maps Frame controllers to Touch. "
+        "Settings are in the Adapter settings group."
+    )
+    category = "frame"
+    order = 10
+    default_on = True
+
+    def detect(self, analysis):
+        return Suggestion(True, "Required for every OpenXR/overport build on the Frame.")
+
+    def apply(self, ctx: ApkContext) -> bool:
+        ws = ctx.ws
+        if not ws.has(ws.lib(GENERIC)):
+            raise RuntimeError("overport output has no libopenxr_loader_generic.so (not an overport build?)")
+        adapter = artifact(ws.abi, GENERIC)
+        settings = settings_text(ctx.recipe_patches)
+        changed = False
+        if not ws.has(ws.lib(ORIGINAL)):
+            ws.move(ws.lib(GENERIC), ws.lib(ORIGINAL))
+            ws.add[ws.lib(GENERIC)] = adapter
+            changed = True
+        elif ws.read_lib(GENERIC) != adapter:  # already wrapped: update to the current build
+            ws.put(ws.lib(GENERIC), adapter)
+            changed = True
+        if not ws.has(ws.lib(SETTINGS)) or ws.read_lib(SETTINGS) != settings:
+            ws.put(ws.lib(SETTINGS), settings)
+            changed = True
+        return changed
+
+    def validate(self, ctx: ApkContext):
+        ws = ctx.ws
+        ok = ws.has(ws.lib(ORIGINAL)) and ws.has(ws.lib(SETTINGS)) and ws.read_lib(GENERIC) == artifact(ws.abi, GENERIC)
+        return [("FrameBridge adapter present", ok, "adapter, original loader and settings library")]
+
+
+register(FrameBridgeAdapter)

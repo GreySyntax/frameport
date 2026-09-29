@@ -1,0 +1,17 @@
+package: com.JustAddWater.SniperEliteVR
+title: Sniper Elite VR
+tested_version: '1.03'
+source_hint: Sniper Elite VR v35713+1.03
+engine: Unity
+xr: VrApi
+status: unsupported
+notes: 'GPU hang (zink: DEVICE LOST) even with MSAA off.'
+details: Legacy VrApi via OVRPlugin.
+frame:
+- frame.unity_no_msaa
+pcvr_alternative: Sniper Elite VR (Steam PC VR). Winter Warrior (Quest) works on the Frame.
+verified:
+  date: '2026-09-28'
+  overport_cli: 1.2.3
+  overport_runtime: 3.4.3-23204ea
+  known_good_sha256: e80883eb6945e267a375edf0ffd789268686440819add9d4dee9fdbdf466cbe4
