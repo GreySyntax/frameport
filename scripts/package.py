@@ -43,6 +43,8 @@ def main() -> int:
             # --yes: install the Flutter SDK etc. without prompting; --no-rich-output: plain logs (CI, Windows consoles)
             cmd = ["flet", "build", TARGET, str(ROOT), "--project", "FramePort", "--product", "FramePort",
                    "--module-name", "main", "--output", str(ROOT / "dist" / TARGET), "--yes", "--no-rich-output"]
+            if TARGET == "macos":  # flet's default bundled Python lacks prebuilt cryptography wheels for both Mac archs
+                cmd += ["--python-version", "3.12"]
         print(" ".join(cmd))
         return subprocess.call(cmd, cwd=ROOT)
     finally:
