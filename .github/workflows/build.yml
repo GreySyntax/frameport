@@ -32,7 +32,12 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev
       - run: uv sync --extra dev
-      - run: uv run python scripts/package.py
+      - id: flet
+        run: uv run python scripts/package.py
+        continue-on-error: ${{ runner.os == 'macOS' }}
+      - name: macOS fallback (PyInstaller bundle)
+        if: runner.os == 'macOS' && steps.flet.outcome == 'failure'
+        run: uv run --with pyinstaller python scripts/package.py --pyinstaller
       - uses: actions/upload-artifact@v7
         with:
           name: FramePort-${{ runner.os }}
