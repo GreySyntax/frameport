@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "flet-web>=1.0", "playwright>=1.40"]
+dev = ["pytest>=8", "flet-web>=1.0", "flet-cli>=1.0", "playwright>=1.40"]
 
 [project.scripts]
 frameport = "frameport.cli:app"

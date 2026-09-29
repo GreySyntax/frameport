@@ -40,8 +40,9 @@ def main() -> int:
             cmd = ["flet", "pack", str(ROOT / "src/main.py"), "--name", "FramePort", "--product-name", "FramePort",
                    "--add-data", f"{DATA}{';' if TARGET == 'windows' else ':'}frameport/_data", "--distpath", str(ROOT / "dist")]
         else:
+            # --yes: install the Flutter SDK etc. without prompting; --no-rich-output: plain logs (CI, Windows consoles)
             cmd = ["flet", "build", TARGET, str(ROOT), "--project", "FramePort", "--product", "FramePort",
-                   "--module-name", "main", "--output", str(ROOT / "dist" / TARGET)]
+                   "--module-name", "main", "--output", str(ROOT / "dist" / TARGET), "--yes", "--no-rich-output"]
         print(" ".join(cmd))
         return subprocess.call(cmd, cwd=ROOT)
     finally:
