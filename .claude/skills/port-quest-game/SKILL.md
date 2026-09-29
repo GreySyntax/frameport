@@ -6,7 +6,7 @@ description: Port a Meta Quest standalone game (APK + OBB dump) to the Valve Ste
 # Port a Quest game to the Steam Frame
 
 Work from the repo root (`frameport/`). Read `CLAUDE.md` (facts) and `docs/PLAYBOOK.md` (symptom → fix) first.
-Set `UV_PROJECT_ENVIRONMENT=~/.cache/frameport-venv` (the repo is on NTFS).
+The dev environment is `.venv` in the repo root (`UV_LINK_MODE=copy uv sync --extra dev` if it's missing).
 
 ## 1. Setup (once)
 ```

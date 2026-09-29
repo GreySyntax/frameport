@@ -32,8 +32,8 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
 
 ## Dev commands
 ```
-export UV_PROJECT_ENVIRONMENT=~/.cache/frameport-venv   # keep the venv off NTFS (repo lives on D:)
-uv sync --extra dev          # or: uv pip install -e .[dev]
+# the dev venv is .venv in the repo root (git-ignored); on the NTFS drive uv needs UV_LINK_MODE=copy
+UV_LINK_MODE=copy uv sync --extra dev   # creates/updates ./.venv
 uv run pytest                # unit tests (no device, no game files)
 uv run frameport --help      # CLI;  uv run frameport-gui  for the GUI
 uv run frameport parity --known-good <PATCHED/_known-good-*> --sources "<VR CyberDeck downloads>"
