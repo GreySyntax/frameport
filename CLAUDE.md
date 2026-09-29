@@ -98,6 +98,17 @@ certificate (secrets `WINDOWS_CODESIGN_PFX` base64 + `WINDOWS_CODESIGN_PASSWORD`
 private copy only on the maintainer's machine + backup), ad-hoc signs the macOS app, adds build attestations and
 publishes a GitHub Release with SHA256SUMS. macOS x86_64 isn't built (cryptography cross-build fails).
 
+## Heuristics (games not in the catalog)
+Each patch's `detect()` suggests itself from the Analysis; `applies()` says whether it can matter at all (the UI/CLI
+hide non-applicable patches; enabled ones are always shown). Rules learned from the 34 games:
+MR-only (PASSTHROUGH required + BOUNDARYLESS_APP) → force_passthrough, + USE_SCENE → scene_emul + meta_permissions;
+hand tracking required → controller_fix=0; OVRPlugin + ≥20 GiB → disable_space_warp; Unreal ≤4.21 or Unreal Meta XR
+Audio → nodebug; Oculus-OS class referenced by the Unreal audio build or ≥2 Meta libs → oculusos; legacy-VrApi Unity
+GLES with MSAA → unity_no_msaa; CryEngine → user.cfg r_variable_rate_shading=0; direct VrApi → bridge (+GL shim for
+GLAD/GLES); Unreal → alternate no-ForceQuit build. Score changes with
+`python scripts/eval_heuristics.py "<dumps>"` (catalog off vs verified recipes; currently 33/34 exact — Phantom's
+"use the no-ForceQuit build" is only detectable at runtime via triage). Add a rule → re-run the eval + `pytest -m games`.
+
 ## Conventions
 - Dynamic first: fetch live data (tool versions, overport patch list/titles, artwork, catalog) with cache + bundled
   fallback (`core/cache.py`). Don't hardcode what can be discovered (e.g. Lepton path via appmanifests).

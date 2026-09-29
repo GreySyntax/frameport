@@ -38,6 +38,23 @@ class NoDebuggable(Patch):
                    "JNI calls (NOPE Challenge, Time Stall: 'GetStringUTFChars ... NULL'). Clear it for those.")
     order = 21
 
+    def detect(self, a):
+        from ..applicability import is_unreal, unreal_version
+
+        if not is_unreal(a):
+            return None
+        v = unreal_version(a)
+        if v and v < (4, 22):
+            return Suggestion(True, f"Unreal Engine {v[0]}.{v[1]}: older UE4 makes JNI calls CheckJNI rejects "
+                                    "(Time Stall aborted on GetStringUTFChars(NULL)).")
+        if any(l.startswith("libmetaxraudio") for l in a.libs):
+            return Suggestion(True, "Unreal build of Meta XR Audio: its telemetry lookup leaves a pending JNI exception "
+                                    "that CheckJNI turns into an abort (NOPE Challenge).")
+        return Suggestion(False, "Enable if the game aborts with 'JNI DETECTED ERROR' (CheckJNI).")
+
+    def applies(self, a):
+        return a.engine in ("Unreal", "Other", "CryEngine")
+
     def apply(self, ctx):
         fixed = axml.set_bool_attr(ctx.ws.read(MANIFEST), "application", "debuggable", False)
         if fixed:
@@ -53,11 +70,19 @@ class MetaPermissions(Patch):
     order = 22
 
     def detect(self, a):
+        from ..applicability import needs_scene
+
+        if needs_scene(a):
+            return Suggestion(True, "Mixed-reality game that needs the room model: its 'use spatial data' permission must "
+                                    "be granted (Demeter).")
         scene = [p for p in a.meta_permissions if any(k in p for k in ("SCENE", "ANCHOR", "SPATIAL", "BOUNDARY"))]
         if scene:
             return Suggestion(False, "Uses Meta scene/anchor permissions (" + ", ".join(p.rsplit(".", 1)[-1] for p in scene[:3])
                               + "); enable if the game says it needs spatial data access.")
         return None
+
+    def applies(self, a):
+        return bool(a.meta_permissions or a.extra.get("meta_permissions_used"))
 
     def apply(self, ctx):
         fixed = axml.define_meta_permissions(ctx.ws.read(MANIFEST))

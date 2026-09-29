@@ -51,9 +51,33 @@ class AdapterSetting(Patch):
         self.default = default
 
     def detect(self, a):
+        from .applicability import needs_scene
+
         if self.key == "controller_fix" and a.extra.get("hand_tracking_only"):
-            return Suggestion(True, "Hand-tracking game: pass hands through.", {"value": 0})
+            return Suggestion(True, "Hand tracking is required by the game: pass hands through instead of reporting "
+                                    "Touch controllers (Silhouette).", {"value": 0})
+        if self.key == "scene_emul" and needs_scene(a):
+            return Suggestion(True, "Mixed-reality game that builds its level from the room model: emulate a "
+                                    "guardian-sized room (Demeter).", {"value": 1})
         return None
+
+    def applies(self, a):
+        from . import applicability as ap
+
+        rules = {
+            "scene_emul": lambda a: ap.uses_scene(a) or a.extra.get("mr_only"),
+            "scene_height": lambda a: ap.uses_scene(a) or a.extra.get("mr_only"),
+            "scene_width": lambda a: ap.uses_scene(a) or a.extra.get("mr_only"),
+            "scene_depth": lambda a: ap.uses_scene(a) or a.extra.get("mr_only"),
+            "passthrough_emul": lambda a: a.extra.get("mr_only") or "com.oculus.feature.PASSTHROUGH" in (a.extra.get("features") or {}),
+            "flip_emul": ap.is_vulkan,
+            "flip_quads": ap.is_vulkan,
+            "mutable_fix": ap.is_vulkan,
+            "swapchain_fix": ap.is_gles,
+            "gl_hide_multiview": lambda a: a.direct_vrapi and ap.is_gles(a),
+        }
+        rule = rules.get(self.key)
+        return bool(rule(a)) if rule else True
 
     def install(self, ctx: InstallContext) -> None:
         pass  # collected by adapter_settings()
@@ -84,6 +108,13 @@ class DeviceFiles(Patch):
     category = "device"
     stage = "install"
     params = [Param("files", "text", {}, "path relative to files/ -> content")]
+
+    def detect(self, a):
+        if a.engine == "CryEngine" and a.graphics.startswith("Vulkan") or (a.engine == "CryEngine" and "libCryRenderVulkan.so" in a.libs):
+            return Suggestion(True, "CryEngine: variable-rate shading isn't supported on the Frame (The Climb 2 needed "
+                                    "user.cfg r_variable_rate_shading = 0).",
+                              {"files": {"user.cfg": "r_variable_rate_shading = 0\n"}})
+        return None
 
     def install(self, ctx: InstallContext) -> None:
         for rel, content in (ctx.params.get("files") or {}).items():

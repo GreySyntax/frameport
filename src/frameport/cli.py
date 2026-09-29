@@ -110,7 +110,8 @@ def list_games():
 
 
 @app.command()
-def show(package: str, as_json: bool = typer.Option(False, "--json")):
+def show(package: str, as_json: bool = typer.Option(False, "--json"),
+         all_: bool = typer.Option(False, "--all", help="also list patches that don't apply to this game")):
     [pkg] = _pkgs(package, False)
     g = library.game(pkg)
     if as_json:
@@ -120,10 +121,16 @@ def show(package: str, as_json: bool = typer.Option(False, "--json")):
     typer.echo(f"{g.get('title')}  ({pkg} {a['version']})\n  engine {a['engine']}, XR {a['xr']}, {a['graphics']}, "
                f"ABIs {', '.join(a['abis'])}, direct VrApi: {a['direct_vrapi']}")
     typer.echo(f"  status: {r['status']}  recipe source: {r['source']}  {r['notes']}")
-    for pid, params in r["patches"].items():
-        p = base.get(pid)
-        typer.echo(f"  [x] {pid:36} {p.title}{'  ' + json.dumps(params) if params else ''}"
-                   f"{'  — ' + r['reasons'][pid] if pid in r.get('reasons', {}) else ''}")
+    from .recommend.engine import visible_patches
+
+    shown, hidden = visible_patches(library.analysis_from_dict(a), library.recipe_from_dict(r))
+    for p in (base.all_patches() if all_ else shown):
+        on = p.id in r["patches"]
+        params = r["patches"].get(p.id) or {}
+        typer.echo(f"  [{'x' if on else ' '}] {p.id:36} {p.title}{'  ' + json.dumps(params) if params else ''}"
+                   f"{'  — ' + r['reasons'][p.id] if on and p.id in r.get('reasons', {}) else ''}")
+    if hidden and not all_:
+        typer.echo(f"  ({len(hidden)} patches hidden as not relevant for this game; --all to list them)")
     if r.get("alt_patches"):
         typer.echo(f"  alternate build adds: {', '.join(r['alt_patches'])}  (installed: {'alt' if r['use_alt'] else 'primary'})")
 

@@ -74,6 +74,13 @@ class Patch:
     def detect(self, analysis: "Analysis") -> Suggestion | None:
         return Suggestion(True, "Recommended for every game.") if self.default_on else None
 
+    def applies(self, analysis: "Analysis") -> bool:
+        """False when the patch can't matter for this game (wrong engine, no VrApi, ...). The UI hides such patches
+        (they stay in the recipe if they are defaults, where they are no-ops)."""
+        return True
+
+    not_applicable_reason: str = ""
+
     def apply(self, ctx: ApkContext) -> bool:  # apk stage; returns True when something changed
         raise NotImplementedError
 

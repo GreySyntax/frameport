@@ -168,12 +168,14 @@ class FramePortApp:
         self.navigate(0)
 
     # ------------------------------------------------------------------ Game (patch selection)
-    def open_game(self, package: str):
-        self.navigate(3, view=self.game_view(package))
+    def open_game(self, package: str, show_all: bool = False):
+        self.navigate(3, view=self.game_view(package, show_all))
 
-    def game_view(self, package: str):
+    def game_view(self, package: str, show_all: bool = False):
         g = library.game(package)
         a, recipe = g["analysis"], library.recipe_from_dict(g["recipe"])
+        shown_patches, hidden_patches = engine.visible_patches(library.analysis_from_dict(a), recipe)
+        listed = {p.id for p in (base.all_patches() if show_all else shown_patches)}
         entry = catalog.lookup(package)
         state = {"recipe": recipe}
         hero = next((p for p in artwork.files(package) if p.stem in ("landscape", "hero")), None)
@@ -205,7 +207,7 @@ class FramePortApp:
         sections = []
         for cat in ("frame", "overport", "adapter", "device"):
             rows = []
-            for p in [p for p in base.all_patches() if p.category == cat]:
+            for p in [p for p in base.all_patches() if p.category == cat and p.id in listed]:
                 on = p.id in recipe.patches
                 reason = recipe.reasons.get(p.id, "")
                 sub = [ft.Text(p.description, size=12, color=ft.Colors.ON_SURFACE_VARIANT)]
@@ -222,6 +224,8 @@ class FramePortApp:
                     subtitle=ft.Column(sub, spacing=2), trailing=ft.Row([extra, trailing] if extra else [trailing], tight=True),
                 ))
             count = sum(1 for p in base.all_patches() if p.category == cat and p.id in recipe.patches)
+            if not rows:
+                continue
             sections.append(ft.ExpansionTile(title=ft.Text(f"{CATEGORY_TITLES[cat]}  ({count} on)"), controls=rows,
                                              expanded=cat == "frame"))
 
@@ -259,7 +263,13 @@ class FramePortApp:
                           on_click=lambda e: (pipeline.reset_recipe(package), self.open_game(package))),
             ft.TextButton("Save as known-good", icon=ft.Icons.VERIFIED, on_click=lambda e: self.save_known_good(package)),
         ], wrap=True)
-        return ft.Column([header, actions, warn, *alt_row, *sections], scroll=ft.ScrollMode.AUTO, expand=True, spacing=10)
+        hidden_note = ft.Row([
+            ft.Switch(label=f"Show all patches ({len(hidden_patches)} hidden as not relevant for this "
+                            f"{a['engine']} / {a['xr']} / {'Vulkan' if a['graphics'].startswith('Vulkan') else 'GLES'} game)",
+                      value=show_all, on_change=lambda e: self.open_game(package, e.control.value)),
+        ]) if hidden_patches else ft.Container()
+        return ft.Column([header, actions, warn, *alt_row, hidden_note, *sections], scroll=ft.ScrollMode.AUTO,
+                         expand=True, spacing=10)
 
     def save_known_good(self, package: str):
         g = library.game(package)

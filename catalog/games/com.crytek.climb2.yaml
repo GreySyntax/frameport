@@ -2,7 +2,7 @@ package: com.crytek.climb2
 title: The Climb 2
 tested_version: '2.2'
 source_hint: The Climb 2 v974+2.2
-engine: Other
+engine: CryEngine
 xr: VrApi
 status: works
 notes: 'CryEngine direct VrApi (Vulkan): VrApi bridge + platform compat; user.cfg disables VRS.'

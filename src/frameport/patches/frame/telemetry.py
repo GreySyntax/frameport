@@ -62,6 +62,9 @@ class MetaXrTelemetry(Patch):
             return Suggestion(True, "Meta XR Audio present; patched automatically if it has the telemetry lookup.")
         return None
 
+    def applies(self, a):
+        return a.engine == "Unreal" and any(l.lower().startswith("libmetaxraudio") for l in a.libs)
+
     def apply(self, ctx: ApkContext) -> bool:
         changed = False
         for lib in ctx.ws.libs():
@@ -81,10 +84,19 @@ class OculusOsStubs(Patch):
     order = 71
 
     def detect(self, a):
+        refs = a.extra.get("oculus_os_refs") or []
+        if any(r.startswith("libmetaxraudio") for r in refs):
+            return Suggestion(True, "The Unreal Meta XR Audio build looks up com.oculus.os.AnalyticsEvent (NOPE Challenge).")
+        if len(refs) >= 2:
+            return Suggestion(True, f"Several Meta SDK libraries look up com.oculus.os.AnalyticsEvent ({', '.join(refs)}); "
+                                    "Nano aborted without the stub.")
         if a.oculus_os_classes:
-            return Suggestion(True, "Native code references com/oculus/os/AnalyticsEvent (a missing class aborts some "
-                                    "games, e.g. Nano).")
+            return Suggestion(False, f"{', '.join(refs) or 'Native code'} references com.oculus.os.AnalyticsEvent; usually "
+                                     "harmless (Batman, LEGO run without). Enable if the game aborts with ClassNotFoundException.")
         return None
+
+    def applies(self, a):
+        return a.oculus_os_classes
 
     def apply(self, ctx: ApkContext) -> bool:
         ws = ctx.ws

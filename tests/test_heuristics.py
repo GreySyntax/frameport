@@ -1,0 +1,73 @@
+"""Heuristics for games without a catalog recipe (catalog switched off)."""
+from frameport.recommend import engine
+
+from test_patches import _analysis
+
+
+def suggest(**kw):
+    kw.setdefault("package", "x.y.unknown")
+    a = _analysis(**kw)
+    return a, engine.suggest(a, use_catalog=False)
+
+
+def test_mixed_reality_only_scene_game():
+    _, r = suggest(extra={"mr_only": True, "meta_permissions_used": ["com.oculus.permission.USE_SCENE"], "size": 1},
+                   meta_permissions=["com.oculus.permission.USE_SCENE"])
+    assert "patch_force_passthrough" in r.patches
+    assert r.params("adapter.scene_emul") == {"value": 1}
+    assert "frame.meta_permissions" in r.patches
+
+
+def test_mixed_reality_without_scene():
+    _, r = suggest(extra={"mr_only": True, "meta_permissions_used": ["com.oculus.permission.USE_ANCHOR_API"], "size": 1})
+    assert "patch_force_passthrough" in r.patches and "adapter.scene_emul" not in r.patches
+
+
+def test_hand_tracking_only():
+    _, r = suggest(extra={"hand_tracking_only": True, "size": 1})
+    assert r.params("adapter.controller_fix") == {"value": 0}
+
+
+def test_heavy_ovrplugin_game_disables_space_warp():
+    _, r = suggest(libs=["libOVRPlugin.so", "libunity.so"], extra={"size": 2**30, "data_bytes": 25 * 2**30})
+    assert "patch_disable_space_warp" in r.patches
+    _, r = suggest(libs=["libOVRPlugin.so", "libunity.so"], extra={"size": 2**30, "data_bytes": 2**30})
+    assert "patch_disable_space_warp" not in r.patches
+
+
+def test_old_unreal_nodebug_and_alt_build():
+    _, r = suggest(engine="Unreal", xr="VrApi", libs=["libUE4.so", "libOVRPlugin.so", "libvrapi.so"],
+                   extra={"unreal_version": "4.20", "size": 1})
+    assert "frame.nodebug" in r.patches and r.alt_patches == ["patch_remove_unreal_force_quit"]
+    _, r = suggest(engine="Unreal", libs=["libUE4.so"], extra={"unreal_version": "4.27", "size": 1})
+    assert "frame.nodebug" not in r.patches
+
+
+def test_cryengine_disables_vrs():
+    _, r = suggest(engine="CryEngine", xr="VrApi", direct_vrapi=True, libs=["libCrySystem.so", "libCryRenderVulkan.so", "libvrapi.so"],
+                   graphics="Vulkan (declared in manifest)")
+    assert r.params("device.files")["files"]["user.cfg"].startswith("r_variable_rate_shading = 0")
+    assert "frame.vrapi_bridge" in r.patches
+
+
+def test_legacy_vrapi_unity_gles_msaa():
+    _, r = suggest(xr="VrApi", graphics="GLES or unknown", unity_msaa_levels=3)
+    assert "frame.unity_no_msaa" in r.patches
+
+
+def test_irrelevant_patches_hidden_for_unity():
+    a, r = suggest(engine="Unity", libs=["libunity.so", "libOVRPlugin.so"])
+    shown, hidden = engine.visible_patches(a, r)
+    hidden_ids = {p.id for p in hidden}
+    assert {"patch_oculus_unreal", "patch_remove_unreal_force_quit", "frame.vrapi_bridge", "frame.gl_shim",
+            "frame.metaxr_telemetry"} <= hidden_ids
+    assert "patch_oculus_unity" not in hidden_ids and "frame.adapter" not in hidden_ids
+    # hidden overport defaults stay in the recipe (no-ops), so builds are unchanged
+    assert "patch_oculus_unreal" in r.patches
+
+
+def test_enabled_patch_is_never_hidden():
+    a, r = suggest(engine="Unity", libs=["libunity.so"])
+    r.patches["frame.vrapi_bridge"] = {}
+    shown, _ = engine.visible_patches(a, r)
+    assert "frame.vrapi_bridge" in {p.id for p in shown}

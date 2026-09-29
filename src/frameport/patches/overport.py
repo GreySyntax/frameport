@@ -54,11 +54,35 @@ class OverportPatch(Patch):
         self.id, self.title, self.default_on, self.description = pid, title, default, detail
 
     def detect(self, analysis: Analysis) -> Suggestion | None:
+        from . import applicability as ap
+
+        a = analysis
         if self.default_on:
             return Suggestion(True, "overport default.")
-        if self.id == "patch_disable_space_warp" and analysis.extra.get("size", 0) > 3 * 2**30:
-            return Suggestion(False, "Consider for very heavy games.")
+        if self.id == "patch_force_passthrough" and a.extra.get("mr_only"):
+            return Suggestion(True, "Mixed-reality-only game (passthrough required, no guardian): force passthrough on.")
+        if self.id == "patch_disable_space_warp" and "libOVRPlugin.so" in a.libs:
+            total = a.extra.get("data_bytes", 0) + a.extra.get("size", 0)
+            if total >= 20 * 2**30:
+                return Suggestion(True, f"Very heavy game ({total / 2**30:.0f} GiB) using OVRPlugin: application space "
+                                        "warp causes artifacts/hangs off-Quest.")
+            return Suggestion(False, "Enable if the game shows warping artifacts or hangs (uses OVRPlugin space warp).")
+        if self.id == "patch_remove_unreal_force_quit" and ap.is_unreal(a):
+            return Suggestion(False, "Built as the alternate APK for Unreal games (use it if the game quits itself).")
         return None
+
+    def applies(self, analysis: Analysis) -> bool:
+        from . import applicability as ap
+
+        rules = {
+            "patch_oculus_unity": ap.is_unity, "patch_oculus_unreal": ap.is_unreal,
+            "patch_fix_unreal_crash": ap.is_unreal, "patch_remove_unreal_force_quit": ap.is_unreal,
+            "patch_copy_ovrplugin_vrapi": ap.has_vrapi, "patch_remove_vrapi": ap.has_vrapi,
+            "patch_meta_xr_audio": lambda a: bool(ap.meta_audio_libs(a)),
+            "patch_disable_space_warp": lambda a: "libOVRPlugin.so" in a.libs,
+        }
+        rule = rules.get(self.id)
+        return rule(analysis) if rule else True
 
 
 STRINGS_URL = "https://raw.githubusercontent.com/ovrport/app/HEAD/composeApp/src/commonMain/composeResources/values/strings.xml"

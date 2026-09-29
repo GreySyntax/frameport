@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import zipfile
 from pathlib import Path
 
@@ -22,7 +23,40 @@ def _read_manifest_info(path: Path) -> tuple[str, str, str, str | None]:
     return apk.package, apk.version_name or "", label, apk.get_main_activity()
 
 
-def analyze(path: Path, deep: bool = True) -> Analysis:
+def _unreal_version(z: zipfile.ZipFile, lib: str) -> str | None:
+    """'4.20' from the '++UE4+Release-4.20' build string (streamed; engine libs can be >1 GB)."""
+    tail = b""
+    with z.open(lib) as f:
+        while True:
+            chunk = f.read(1 << 24)
+            if not chunk:
+                return None
+            m = re.search(rb"\+\+UE[45]\+Release-([0-9]+\.[0-9]+)", tail + chunk)
+            if m:
+                return m.group(1).decode()
+            tail = chunk[-64:]
+
+
+def _features(manifest: bytes) -> dict[str, bool]:
+    """uses-feature name -> required (android:required defaults to true)."""
+    x = axml.Axml(manifest)
+    names = x.strings()
+    out = {}
+    for el in x.elements():
+        if el.name != "uses-feature":
+            continue
+        name = x.attr_str(el, "name")
+        if not name:
+            continue
+        required = True
+        for a in el.attrs:
+            if a.name < len(names) and names[a.name] == "required":
+                required = a.value != 0
+        out[name] = required
+    return out
+
+
+def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Analysis:
     path = Path(path)
     with zipfile.ZipFile(path) as z:
         names = z.namelist()
@@ -39,12 +73,15 @@ def analyze(path: Path, deep: bool = True) -> Analysis:
                     info = z.getinfo(prefix + lib)
                     if info.file_size < 400 * 2**20:
                         lib_bytes[lib] = z.read(info)
+        engine_lib = next((prefix + n for n in ("libUE4.so", "libUnreal.so") if prefix and prefix + n in names), None)
+        unreal_version = _unreal_version(z, engine_lib) if deep and engine_lib else None
         boot = z.read("assets/bin/Data/boot.config").decode("utf-8", "replace") if "assets/bin/Data/boot.config" in names else ""
         ggm = z.read(UNITY_GGM) if deep and UNITY_GGM in names else None
 
     package, version, label, activity = _read_manifest_info(path)
     libset = set(libs)
-    engine = "Unreal" if libset & {"libUE4.so", "libUnreal.so"} else "Unity" if "libunity.so" in libset else "Other"
+    engine = ("Unreal" if libset & {"libUE4.so", "libUnreal.so"} else "Unity" if "libunity.so" in libset
+              else "CryEngine" if "libCrySystem.so" in libset else "Other")
     has_openxr, has_vrapi = "libopenxr_loader.so" in libset, "libvrapi.so" in libset
     xr = "OpenXR+VrApi" if has_openxr and has_vrapi else "OpenXR" if has_openxr else "VrApi" if has_vrapi else "?"
     is_overport = "libopenxr_loader_generic.so" in libset or "liboverport.config.so" in libset
@@ -62,12 +99,12 @@ def analyze(path: Path, deep: bool = True) -> Analysis:
         graphics = "GLES or unknown (no Vulkan declaration)"
 
     uses_glad = False
-    oculus_os = False
+    oculus_os_refs = []
     for name, data in lib_bytes.items():
         if not elf.is_elf(data):
             continue
         if b"com/oculus/os/AnalyticsEvent" in data:
-            oculus_os = True
+            oculus_os_refs.append(name)
         if name not in ("libvrapi.so", "libOVRPlugin.so") and b"GLAD_GL_" in data and "eglGetProcAddress" in elf.dyn_symbols(data, False):
             uses_glad = True
 
@@ -81,6 +118,8 @@ def analyze(path: Path, deep: bool = True) -> Analysis:
             msaa_levels = 0
 
     cats = axml.categories(manifest)
+    features = _features(manifest)
+    used_perms, _ = axml.used_and_declared_permissions(manifest)
     return Analysis(
         package=package,
         version=version,
@@ -96,10 +135,20 @@ def analyze(path: Path, deep: bool = True) -> Analysis:
         meta_permissions=axml.undeclared_meta_permissions(manifest),
         uses_glad_gl=uses_glad,
         unity_msaa_levels=msaa_levels,
-        oculus_os_classes=oculus_os,
+        oculus_os_classes=bool(oculus_os_refs),
         is_overport_output=is_overport,
         debuggable=bool(axml.Axml(manifest).get_bool("application", "debuggable")),
-        extra={"missing_ovr_symbols": sorted(missing_ovr_symbols(lib_bytes)), "size": path.stat().st_size},
+        extra={
+            "missing_ovr_symbols": sorted(missing_ovr_symbols(lib_bytes)), "size": path.stat().st_size,
+            "data_bytes": data_bytes or 0,
+            "features": features,
+            "meta_permissions_used": sorted(p for p in used_perms if p.startswith(("com.oculus.permission.", "horizonos."))),
+            # mixed-reality-only: passthrough required and no guardian (Meta's BOUNDARYLESS_APP)
+            "mr_only": features.get("com.oculus.feature.PASSTHROUGH", False) and "com.oculus.feature.BOUNDARYLESS_APP" in features,
+            "hand_tracking_only": features.get("oculus.software.handtracking", False),
+            "unreal_version": unreal_version,
+            "oculus_os_refs": sorted(oculus_os_refs),
+        },
     )
 
 

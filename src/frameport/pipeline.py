@@ -34,7 +34,7 @@ def add_path(path: Path, reporter: Reporter | None = None) -> list[dict]:
 def add_game(src: SourceGame, reporter: Reporter | None = None) -> dict:
     if reporter:
         reporter.log(f"analyzing {src.apk.name}")
-    a = analyze(src.apk)
+    a = analyze(src.apk, data_bytes=src.data_bytes())
     recipe = engine.suggest(a)
     return library.upsert_game(
         a.package, title=recipe.title or a.label, name=src.name, apk=str(src.apk),

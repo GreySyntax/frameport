@@ -34,6 +34,9 @@
 ## Extending
 - **New fix**: `patches/frame/<name>.py` with a `Patch` subclass (`detect`, `apply`, optional `validate`), plus a
   signature in `catalog/triage.yaml` and a PLAYBOOK row. Stages: `overport` | `apk` | `install`.
+- **New heuristic**: put it in the patch's `detect()` (and `applies()` for visibility), with the evidence in the
+  reason text; check `scripts/eval_heuristics.py` still reproduces the catalog and add a test in
+  `tests/test_heuristics.py`.
 - **New game recipe**: `catalog/games/<package>.yaml` (or "Save as known-good" in the GUI, which writes to the user
   catalog). Publish recipes by serving a folder with `index.json` and pointing `FRAMEPORT_CATALOG_URL` at it.
 - **New target** (Revive/PC VR): implement `targets/base.Target`; the pipeline and UI only use that interface.

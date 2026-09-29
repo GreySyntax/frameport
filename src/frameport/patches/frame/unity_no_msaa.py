@@ -55,10 +55,16 @@ class UnityNoMsaa(Patch):
     order = 40
 
     def detect(self, a):
-        if a.engine == "Unity" and a.unity_msaa_levels and "GLES" in a.graphics:
-            return Suggestion(False, f"GLES Unity game with MSAA on ({a.unity_msaa_levels} quality levels); "
-                                     "enable if it hangs the GPU.")
-        return None
+        if a.engine != "Unity" or not a.unity_msaa_levels or "GLES" not in a.graphics or a.only_32bit:
+            return None
+        if a.xr == "VrApi":
+            return Suggestion(True, f"Legacy VrApi Unity game on GLES with MSAA ({a.unity_msaa_levels} quality levels): "
+                                    "multisampled render-to-texture hangs the Frame's GL driver (Sniper Elite VR).")
+        return Suggestion(False, f"GLES Unity game with MSAA on ({a.unity_msaa_levels} quality levels); enable if it "
+                                 "hangs the GPU ('zink: DEVICE LOST').")
+
+    def applies(self, a):
+        return a.engine == "Unity" and "GLES" in a.graphics
 
     def apply(self, ctx: ApkContext) -> bool:
         if not ctx.ws.has(GGM):

@@ -21,9 +21,12 @@ class VrApiBridge(Patch):
     experimental = True
 
     def detect(self, a):
-        if a.direct_vrapi:
+        if a.direct_vrapi and "arm64-v8a" in a.abis:
             return Suggestion(True, "The engine calls libvrapi.so directly; overport can't translate it.")
         return None
+
+    def applies(self, a):
+        return "libvrapi.so" in a.libs and "arm64-v8a" in a.abis
 
     def apply(self, ctx: ApkContext) -> bool:
         ws = ctx.ws
@@ -51,9 +54,12 @@ class GlShim(Patch):
     experimental = True
 
     def detect(self, a):
-        if a.direct_vrapi and a.uses_glad_gl and "GLES" in a.graphics:
+        if a.direct_vrapi and a.uses_glad_gl and "GLES" in a.graphics and "arm64-v8a" in a.abis:
             return Suggestion(True, "GLES engine resolving GL through eglGetProcAddress (GLAD) on the VrApi bridge.")
         return None
+
+    def applies(self, a):
+        return a.direct_vrapi and "GLES" in a.graphics and "arm64-v8a" in a.abis
 
     def apply(self, ctx: ApkContext) -> bool:
         ws = ctx.ws

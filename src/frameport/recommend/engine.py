@@ -9,11 +9,13 @@ from ..patches import base
 from . import catalog
 
 
-def suggest(analysis: Analysis) -> Recipe:
-    entry = catalog.lookup(analysis.package)
+def suggest(analysis: Analysis, use_catalog: bool = True) -> Recipe:
+    entry = catalog.lookup(analysis.package) if use_catalog else None
     recipe = Recipe(analysis.package, title=analysis.label)
     # 1. heuristics / defaults from every patch module
     for patch in base.all_patches():
+        if not patch.default_on and not patch.applies(analysis):
+            continue  # irrelevant for this game (engine, XR API, graphics API, ...)
         s = patch.detect(analysis)
         if s and s.recommended:
             recipe.patches[patch.id] = dict(s.params)
@@ -78,3 +80,12 @@ def warnings(recipe: Recipe) -> list[str]:
     if "frame.adapter" not in recipe.patches:
         out.append("Without the FrameBridge adapter most games fail on the Frame runtime.")
     return out
+
+
+def visible_patches(analysis: Analysis, recipe: Recipe | None = None) -> tuple[list, list]:
+    """(relevant, hidden) patches for this game. Enabled patches are always shown, so a recipe never hides a choice."""
+    shown, hidden = [], []
+    for p in base.all_patches():
+        on = recipe is not None and p.id in recipe.patches
+        (shown if on and not p.default_on or p.applies(analysis) else hidden).append(p)
+    return shown, hidden
