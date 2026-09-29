@@ -92,6 +92,12 @@ Output is deterministic (same input + runtime → same bytes), which is what mak
 layers, depth, pacing ruled out. Sniper Elite VR (DEVICE LOST), Espire 1 (Mesa GL upload crash), HITMAN 3 (freedreno
 crash): use PC versions.
 
+## Releases
+Push a `v*` tag → CI builds Windows/macOS(arm64)/Linux bundles, signs Windows binaries with the self-signed
+certificate (secrets `WINDOWS_CODESIGN_PFX` base64 + `WINDOWS_CODESIGN_PASSWORD`; public cert `packaging/`,
+private copy only on the maintainer's machine + backup), ad-hoc signs the macOS app, adds build attestations and
+publishes a GitHub Release with SHA256SUMS. macOS x86_64 isn't built (cryptography cross-build fails).
+
 ## Conventions
 - Dynamic first: fetch live data (tool versions, overport patch list/titles, artwork, catalog) with cache + bundled
   fallback (`core/cache.py`). Don't hardcode what can be discovered (e.g. Lepton path via appmanifests).

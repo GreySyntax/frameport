@@ -16,14 +16,25 @@ jobs:
 
   bundle:
     needs: test
+    permissions:
+      contents: read
+      id-token: write      # build provenance attestations (Sigstore)
+      attestations: write
     env:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: "1"
       FLET_CLI_NO_RICH_OUTPUT: "1"
+      HAS_CERT: ${{ secrets.WINDOWS_CODESIGN_PFX != '' }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            archive: FramePort-windows-x64.zip
+          - os: macos-latest
+            archive: FramePort-macos-arm64.zip
+          - os: ubuntu-latest
+            archive: FramePort-linux-x64.tar.gz
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -38,7 +49,79 @@ jobs:
       - name: macOS fallback (PyInstaller bundle)
         if: runner.os == 'macOS' && steps.flet.outcome == 'failure'
         run: uv run --with pyinstaller python scripts/package.py --pyinstaller
+
+      # ---- signing: self-signed certificate on Windows, ad-hoc on macOS ----
+      - name: Sign Windows binaries (self-signed certificate)
+        if: runner.os == 'Windows' && env.HAS_CERT == 'true'
+        shell: pwsh
+        env:
+          PFX: ${{ secrets.WINDOWS_CODESIGN_PFX }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          # sign our executables/DLLs; leave files that already carry a signature (e.g. Microsoft runtime DLLs)
+          $files = @(Get-ChildItem dist\windows -Recurse -Include *.exe,*.dll |
+            Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -eq 'NotSigned' })
+          Write-Host "signing $($files.Count) file(s)"
+          for ($i = 0; $i -lt $files.Count; $i += 40) {
+            $batch = $files[$i..([Math]::Min($i + 39, $files.Count - 1))].FullName
+            & $signtool.FullName sign /fd SHA256 /f $pfx /p $env:PFX_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $batch
+            if ($LASTEXITCODE) { throw "signtool failed" }
+          }
+          Remove-Item $pfx
+          Get-AuthenticodeSignature dist\windows\FramePort.exe | Format-List Status, SignerCertificate
+      - name: Ad-hoc sign the macOS app
+        if: runner.os == 'macOS'
+        run: |
+          app=$(find dist -maxdepth 3 -name "*.app" -type d | head -1)
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+      # ---- package (archives keep permissions/symlinks) + provenance ----
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist\windows\* -DestinationPath ${{ matrix.archive }}
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent "$(find dist -maxdepth 3 -name '*.app' -type d | head -1)" ${{ matrix.archive }}
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: tar czf ${{ matrix.archive }} -C dist --transform 's,^linux,FramePort,' linux
+      - name: Attest build provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ matrix.archive }}
       - uses: actions/upload-artifact@v7
         with:
-          name: FramePort-${{ runner.os }}
-          path: dist/
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        run: cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          notes=$(mktemp)
+          { echo "FramePort ${tag}: Windows (x64), macOS (Apple Silicon) and Linux (x64)."; echo;
+            sed -n '/^## First launch/,$p' docs/INSTALL.md; } > "$notes"
+          gh release delete "$tag" --yes 2>/dev/null || true
+          gh release create "$tag" out/* packaging/FramePort-selfsigned.cer --title "FramePort ${tag}" --notes-file "$notes"

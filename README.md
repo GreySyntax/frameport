@@ -16,7 +16,9 @@ FramePort downloads and manages its own tools (Java runtime, [overport](https://
 apksigner). Nothing is installed system-wide, and no Android SDK/NDK is needed.
 
 ## Install
-- **App bundles** (Windows/macOS/Linux) are built by CI (`.github/workflows/build.yml`, `flet build`).
+- **App bundles**: download from [Releases](https://github.com/spoopyghosty0/frameport/releases) (Windows x64, macOS
+  Apple Silicon, Linux x64); see `docs/INSTALL.md` for the first-launch warning (self-signed / ad-hoc signed) and
+  how to verify a download. Built by CI (`.github/workflows/build.yml`, `flet build`).
 - **From source**: `uv sync && uv run frameport-gui` (CLI: `uv run frameport --help`).
 
 ## Status of tested games
