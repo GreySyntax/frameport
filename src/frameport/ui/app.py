@@ -102,6 +102,14 @@ class FramePortApp:
         saved = saved_targets()
         if saved:
             self.connect(saved[0], quiet=True)
+            return
+        # nothing remembered yet: look for a Frame and connect if our key (or the user's SSH key) is accepted
+        from ..frame.connection import parse_target
+        from ..frame.discovery import browse
+
+        for f in browse(4, scan=False):
+            self.connect(parse_target(f"{f.user}@{f.host}"), quiet=True)
+            break
 
     # ------------------------------------------------------------------ Library
     def library_view(self):
@@ -408,11 +416,15 @@ class FramePortApp:
                 from ..frame.discovery import browse
 
                 res = browse(4)
-                found.controls = [ft.ListTile(leading=ft.Icon(ft.Icons.VIEW_IN_AR), title=ft.Text(f.name),
-                                              subtitle=ft.Text(f"{f.host} · {'FramePort ready' if f.is_frameport else 'SSH'}"),
-                                              on_click=lambda e, f=f: self.connect(parse_target(
-                                                  f"{f.properties.get('user', 'steamos')}@{f.host}")))
-                                  for f in res] or [ft.Text("No Frames found. Is SSH on? Use pairing below.")]
+                found.controls = [ft.ListTile(
+                    leading=ft.Icon(ft.Icons.VIEW_IN_AR if f.source != "scan" else ft.Icons.COMPUTER),
+                    title=ft.Text(f.name if f.source != "scan" else f"SSH host {f.host}"),
+                    subtitle=ft.Text(f"{f.user}@{f.host} · via {f.via} · "
+                                     + {"devkit": "SteamOS (Developer Mode)", "frameport": "FramePort ready",
+                                        "saved": "remembered", "scan": "found by network scan"}.get(f.source, f.source)),
+                    on_click=lambda e, f=f: self.connect(parse_target(f"{f.user}@{f.host}")))
+                    for f in res] or [ft.Text("No Frames found. Turn on Developer Mode (Settings → System) and make "
+                                              "sure the Frame is on the same network, or use the setup command below.")]
                 self.page.update()
             self.page.run_thread(work)
 
@@ -479,9 +491,22 @@ class FramePortApp:
             ft.Text("First-time setup (pairing)", weight=ft.FontWeight.BOLD),
             ft.Button("Show setup command", icon=ft.Icons.QR_CODE_2, on_click=do_pair), pair_box,
             ft.Text("Connect manually", weight=ft.FontWeight.BOLD),
-            ft.Row([addr, pw, ft.Button("Connect", on_click=lambda e: self.connect(parse_target(addr.value), pw.value or None))]),
+            ft.Row([addr, pw, ft.Button("Connect", on_click=lambda e: self.connect_manual(addr.value, pw.value))]),
             ft.Text("Remembered: " + (", ".join(f"{t.label} ({t.host})" for t in saved) or "none"), size=12),
         ], scroll=ft.ScrollMode.AUTO, expand=True, spacing=10)
+
+    def connect_manual(self, address: str, password: str | None):
+        from ..frame.connection import parse_target
+
+        if not (address or "").strip():
+            self.toast("Enter the Frame's address (e.g. steamos@frame.local or its IP), or use Discover.", error=True)
+            return
+        try:
+            target = parse_target(address)
+        except ValueError as exc:
+            self.toast(str(exc), error=True)
+            return
+        self.connect(target, password or None)
 
     def copy(self, text: str):
         try:

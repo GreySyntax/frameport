@@ -10,6 +10,7 @@ dependencies = [
     "flet-desktop>=1.0",
     "paramiko>=3.4",
     "zeroconf>=0.132",
+    "psutil>=5.9",
     "pyelftools>=0.31",
     "capstone>=5.0",
     "UnityPy>=1.20",

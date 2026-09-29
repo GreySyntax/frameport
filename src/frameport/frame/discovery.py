@@ -1,46 +1,82 @@
-"""Find Steam Frames on the local network (mDNS/zeroconf).
+"""Find Steam Frames on the network.
 
-The bootstrap script publishes `_frameport._tcp` via avahi (with the pairing code in its TXT record). SteamOS also
-advertises `_ssh._tcp` / `<hostname>.local` when sshd runs, so un-bootstrapped Frames with SSH on are found too.
+Sources, merged per device:
+  1. mDNS `_steamos-devkit._tcp` — every SteamOS device in Developer Mode announces itself (name, login user).
+  2. mDNS `_frameport._tcp` — published by the FramePort bootstrap script.
+  3. Remembered Frames (frames.json).
+  4. Fallback: a quick TCP scan of the PC's local /24 subnets for SSH (port 22), for Frames without Developer Mode.
+A Frame can have several addresses (home Wi-Fi, its own hotspot `wlanap` 10.35.78.1, USB `usb0` 10.86.200.x); each
+is probed and only addresses where SSH answers are offered.
 """
 from __future__ import annotations
 
+import ipaddress
 import socket
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+
+SERVICES = ["_steamos-devkit._tcp.local.", "_frameport._tcp.local."]
 
 
 @dataclass
 class Found:
     name: str
-    host: str
+    host: str  # an address with SSH reachable
     port: int = 22
-    service: str = ""
+    user: str = "steamos"
+    source: str = ""  # devkit | frameport | saved | scan
+    addresses: list[str] = field(default_factory=list)
     properties: dict = field(default_factory=dict)
 
     @property
-    def is_frameport(self) -> bool:
-        return self.service.startswith("_frameport")
+    def is_frameport(self) -> bool:  # kept for the UI: device already bootstrapped by FramePort
+        return self.source == "frameport"
+
+    @property
+    def via(self) -> str:
+        return link_label(self.host)
 
 
-def browse(seconds: float = 4.0) -> list[Found]:
+def link_label(ip: str) -> str:
+    if ip.startswith("10.35.78."):
+        return "Frame hotspot"
+    if ip.startswith("10.86.200."):
+        return "USB"
+    return "network"
+
+
+def ssh_open(host: str, port: int = 22, timeout: float = 0.6) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            s.settimeout(timeout)
+            return s.recv(8).startswith(b"SSH-")
+    except OSError:
+        return False
+
+
+def _mdns(seconds: float) -> dict[str, Found]:
     from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
 
     found: dict[str, Found] = {}
 
     class Listener(ServiceListener):
         def add_service(self, zc, type_, name):
-            info = zc.get_service_info(type_, name, timeout=1500)
+            info = zc.get_service_info(type_, name, timeout=2000)
             if not info:
                 return
-            addrs = info.parsed_addresses()
-            ipv4 = [a for a in addrs if ":" not in a]
-            host = (ipv4 or addrs or [info.server])[0]
             props = {k.decode(): (v.decode() if isinstance(v, bytes) else v) for k, v in (info.properties or {}).items()}
-            key = host
-            if key in found and found[key].is_frameport:
-                return
-            found[key] = Found(name.split(".")[0], host, info.port or 22, type_.split(".")[0], props)
+            dev = (info.server or name).split(".")[0]
+            f = found.setdefault(dev, Found(dev, "", source="devkit" if "devkit" in type_ else "frameport"))
+            if "frameport" in type_:
+                f.source = "frameport"
+            f.user = props.get("login") or props.get("user") or f.user
+            f.properties.update(props)
+            for a in info.parsed_addresses():
+                if ":" not in a and a not in f.addresses:
+                    f.addresses.append(a)
+            if info.server and info.server.rstrip(".") not in f.addresses:
+                f.addresses.append(info.server.rstrip("."))
 
         def update_service(self, zc, type_, name):
             self.add_service(zc, type_, name)
@@ -50,14 +86,71 @@ def browse(seconds: float = 4.0) -> list[Found]:
 
     zc = Zeroconf()
     try:
-        listener = Listener()
-        ServiceBrowser(zc, ["_frameport._tcp.local.", "_ssh._tcp.local."], listener)
+        ServiceBrowser(zc, SERVICES, Listener())
         time.sleep(seconds)
     finally:
         zc.close()
-    # SteamOS devices only (the Frame's default hostname is "frame"; bootstrapped ones say so explicitly)
-    out = [f for f in found.values() if f.is_frameport or "frame" in f.name.lower() or "steamdeck" in f.name.lower()]
-    return sorted(out, key=lambda f: (not f.is_frameport, f.name))
+    return found
+
+
+def local_addresses() -> set[str]:
+    """IPv4 addresses of this PC (excluded from scans)."""
+    import psutil
+
+    return {a.address for addrs in psutil.net_if_addrs().values() for a in addrs if a.family == socket.AF_INET}
+
+
+def local_subnets() -> list[ipaddress.IPv4Network]:
+    """/24 networks of the PC's non-loopback, non-link-local IPv4 interfaces (virtual switches skipped)."""
+    import psutil
+
+    nets = set()
+    stats = psutil.net_if_stats()
+    for nic, addrs in psutil.net_if_addrs().items():
+        if not stats.get(nic) or not stats[nic].isup or any(v in nic.lower() for v in ("vethernet", "docker", "virbr", "vmnet", "wsl")):
+            continue
+        for a in addrs:
+            if a.family == socket.AF_INET and not a.address.startswith(("127.", "169.254.", "172.")):
+                nets.add(ipaddress.ip_network(f"{a.address}/24", strict=False))
+    return sorted(nets, key=str)
+
+
+def _scan(nets: list[ipaddress.IPv4Network], skip: set[str]) -> list[str]:
+    own = local_addresses()
+    hosts = [str(h) for n in nets for h in n.hosts() if str(h) not in skip and str(h) not in own]
+    with ThreadPoolExecutor(128) as pool:
+        return [h for h, ok in zip(hosts, pool.map(lambda h: ssh_open(h, timeout=0.4), hosts)) if ok and h not in own]
+
+
+def browse(seconds: float = 4.0, scan: bool = True) -> list[Found]:
+    from .connection import saved_targets
+
+    devices = _mdns(seconds)
+    for t in saved_targets():
+        name = t.name or t.host
+        f = devices.get(name) or devices.setdefault(name, Found(name, "", t.port, t.user, "saved"))
+        if t.host not in f.addresses:
+            f.addresses.insert(0, t.host)
+    # probe every address; keep the reachable ones (a device may have LAN, hotspot and USB addresses)
+    out = []
+    with ThreadPoolExecutor(32) as pool:
+        for f in devices.values():
+            cands = list(dict.fromkeys(f.addresses))
+            ok = [a for a, up in zip(cands, pool.map(ssh_open, cands)) if up]
+            ips = []
+            for a in ok:
+                try:
+                    ips.append(socket.gethostbyname(a))
+                except OSError:
+                    pass
+            for ip in dict.fromkeys(ips):
+                out.append(Found(f.name, ip, f.port, f.user, f.source, cands, f.properties))
+    if scan:
+        known = {f.host for f in out}
+        for ip in _scan(local_subnets(), known):
+            out.append(Found(ip, ip, 22, "steamos", "scan", [ip]))
+    rank = {"frameport": 0, "devkit": 1, "saved": 2, "scan": 3}
+    return sorted(out, key=lambda f: (rank.get(f.source, 9), f.name, link_label(f.host) != "network", f.host))
 
 
 def resolve_hostname(name: str = "frame.local") -> str | None:
@@ -68,7 +161,7 @@ def resolve_hostname(name: str = "frame.local") -> str | None:
 
 
 def local_ip_towards(host: str = "8.8.8.8") -> str:
-    """The PC's LAN address (used in the bootstrap one-liner)."""
+    """The PC's address on the route towards host (used in the bootstrap one-liner)."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect((host, 80))
