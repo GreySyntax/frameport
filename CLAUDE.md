@@ -25,7 +25,10 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
 - `bootstrap/bootstrap.sh` — one-time Frame setup served by the pairing server (sshd, app key, avahi service, Lepton).
 - `catalog/games/<package>.yaml` — 34 recipes verified 2026-09-28; `catalog/triage.yaml` — log signatures → fixes.
 - `native/` — sources of the prebuilt binaries in `artifacts/` (adapter, VrApi bridge patches, GL shim, stubs).
-  `native/build.sh` rebuilds them with NDK r27c (downloaded on demand; never committed). Users never need the NDK.
+  `native/build.py` rebuilds them with NDK r27c (downloaded on demand into `native/.cache`, git-ignored; uses
+  `-ffile-prefix-map` so no local paths get embedded). Users never need the NDK.
+- `scripts/` — `package.py` (flet build/pack), `eval_heuristics.py` (score heuristics), `ui_smoke.py` (GUI screenshots).
+- `docs/` — PLAYBOOK, FRAME_RUNTIME, ARCHITECTURE, INSTALL (end users), parity reports (offline + device).
 
 ## Dev commands
 ```
@@ -37,6 +40,17 @@ uv run frameport parity --known-good <PATCHED/_known-good-*> --sources "<VR Cybe
 ```
 Games/device tests: `pytest -m games` (FRAMEPORT_GAMES=<downloads dir>), `pytest -m device` (FRAMEPORT_FRAME=steamos@host).
 Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattributes`).
+- `FRAMEPORT_HOME=<dir>` isolates all app data (tests use it); `FRAMEPORT_JAVA/_OVERPORT_JAR/_APKSIGNER_JAR` override
+  managed tools. Real app data (WSL): `~/.local/share/frameport` (tools, overport workspace + game keystores, library,
+  artwork, frames.json, the app's SSH key which the dev Frame authorizes).
+- Device checks: `frameport test <pkg>` / `frameport parity-device --results <parity.json> --baseline <launch.txt>
+  [--test-only]`; the pre-FramePort baseline is `PATCHED/_known-good-2026-09-28/_frame-state/baseline-launch.txt`.
+- GUI smoke test: `uv pip install flet-web playwright && playwright install chromium`, then
+  `FRAMEPORT_HOME=<test dir> python scripts/ui_smoke.py --out <dir> [--game <pkg>] [--frame steamos@<host>]` and look
+  at the PNGs. Flet 1.0 notes: `ft.run` must own the main thread; background work via `page.run_thread`; FilePicker is
+  awaited (`await ft.FilePicker().get_directory_path()`); dialogs via `page.show_dialog/pop_dialog`; running from
+  source needs `flet-desktop` (declared) and web mode needs `flet-web`.
+- Stopping the GUI: `pkill -f` patterns match your own shell — use `pgrep -f "[b]in/frameport-gui|[f]let-desktop-light"`.
 
 ## Hard-won facts (don't re-learn these)
 **Frame runtime (SteamOS 0.3.0, build 20260922):**
@@ -92,11 +106,25 @@ Output is deterministic (same input + runtime → same bytes), which is what mak
 layers, depth, pacing ruled out. Sniper Elite VR (DEVICE LOST), Espire 1 (Mesa GL upload crash), HITMAN 3 (freedreno
 crash): use PC versions.
 
-## Releases
-Push a `v*` tag → CI builds Windows/macOS(arm64)/Linux bundles, signs Windows binaries with the self-signed
-certificate (secrets `WINDOWS_CODESIGN_PFX` base64 + `WINDOWS_CODESIGN_PASSWORD`; public cert `packaging/`,
-private copy only on the maintainer's machine + backup), ad-hoc signs the macOS app, adds build attestations and
-publishes a GitHub Release with SHA256SUMS. macOS x86_64 isn't built (cryptography cross-build fails).
+## Releases, CI, GitHub
+Public repo `github.com/spoopyghosty0/frameport` (branch `main`). Push a `v*` tag → CI (`.github/workflows/build.yml`)
+tests, builds Windows x64 / macOS arm64 / Linux x64 bundles, signs, attests and publishes a GitHub Release
+(`FramePort-*.zip/.tar.gz`, `SHA256SUMS.txt`, `FramePort-selfsigned.cer`, notes from `docs/INSTALL.md`). v0.1.0 exists.
+- Signing is **free/self-signed by the owner's choice** (no paid certs, no SignPath): Windows binaries are signed with
+  a self-signed "FramePort (self-signed)" code-signing cert (RSA 3072, valid to 2031, SHA-256
+  `4E:12:98:91:62:C0:E4:50:FB:65:1D:34:BB:73:00:09:7B:78:BE:88:5C:A7:6C:42:23:46:9B:92:A1:59:A7:6E`); secrets
+  `WINDOWS_CODESIGN_PFX` (base64) + `WINDOWS_CODESIGN_PASSWORD`. Private key: `~/.config/frameport-signing/` (WSL) and
+  the backup `PATCHED/_signing-keys/frameport-app-codesign/` — never commit it. macOS is ad-hoc signed only (Gatekeeper
+  needs right-click → Open; notarization would need the paid Apple program). Users still see SmartScreen unless they
+  import the .cer into Trusted Root.
+- CI gotchas: `flet build` needs `--yes --no-rich-output` (it prompts to install Flutter; rich output crashes the
+  Windows console) plus PYTHONUTF8; macOS builds need `--python-version 3.12 --arch arm64` (cryptography has no wheels
+  for flet's default Python / x86_64 cross-build), with a PyInstaller fallback step; `astral-sh/setup-uv` has no
+  floating major tags after v7 → pin the exact version; force-moving a tag starts duplicate runs (cancel one).
+- `gh` is a local install at `~/.local/bin/gh` (logged in as spoopyghosty0 with `workflow` scope; token in
+  `~/.config/gh/hosts.yml`). Commit as `spoopyghosty0 <336754034+spoopyghosty0@users.noreply.github.com>` (set in the repo config).
+- **The repo is public: never commit personal data** — the Frame's IP address, the Steam user id, the owner's email,
+  local home paths (native builds use `-ffile-prefix-map`). History was rewritten once to remove them.
 
 ## Heuristics (games not in the catalog)
 Each patch's `detect()` suggests itself from the Analysis; `applies()` says whether it can matter at all (the UI/CLI
@@ -108,6 +136,25 @@ GLES with MSAA → unity_no_msaa; CryEngine → user.cfg r_variable_rate_shading
 GLAD/GLES); Unreal → alternate no-ForceQuit build. Score changes with
 `python scripts/eval_heuristics.py "<dumps>"` (catalog off vs verified recipes; currently 33/34 exact — Phantom's
 "use the no-ForceQuit build" is only detectable at runtime via triage). Add a rule → re-run the eval + `pytest -m games`.
+
+## Frame operations
+- Find/connect: `frameport frame discover` / `frame info` (the remembered Frame is in `<user data>/frames.json`).
+- Power off over SSH: plain `systemctl poweroff` is refused by polkit for remote sessions; this works:
+  `ssh steamos@<frame> 'systemd-run --user --wait --pipe --quiet systemctl poweroff'`. `sudo` needs the user's password
+  (not known to Claude). A reboot clears leaked kernel keyrings.
+- Reinstalls keep one rollback copy (`<base>/previous-game.apk`, `settings.conf.previous`); `frameport frame cleanup`
+  removes them (and `--path ~/X` extra folders under home).
+
+## Project status (2026-09-29)
+34 Quest games ported; the owner confirmed in the headset that all FramePort-rebuilt games work: 23 work, 5 work with
+issues (Arcsmith/Time Stall eye distortion, AC Nexus some flipped launch text, Phantom DLC button, Silhouette hands),
+6 can't run (Sniper Elite VR, Espire 1, HITMAN, and the 32-bit Journey of the Gods / Shadow Point / Sports Scramble).
+Parity: all 34 rebuilt from the dumps match the known-good builds (`docs/parity-report.md`) and were reinstalled +
+launch-tested with 0 regressions (`docs/parity-device-report.md`). `PATCHED/` holds exactly the installed builds.
+Owner preferences: manual installs (no FrameDrop, no Quest2Frame app), Python + Flet, dynamic data over hardcoding,
+free tooling only, public repo scrubbed of personal data, keep the known-good backups.
+Open ideas: Revive/PC-VR target (`targets/revive.py`), macOS x86_64 bundle, USB-cable connection (Frame `usb0`, untested),
+the unresolved eye distortion, and testing the release bundles on real Windows/macOS machines (never launched yet).
 
 ## Conventions
 - Dynamic first: fetch live data (tool versions, overport patch list/titles, artwork, catalog) with cache + bundled
