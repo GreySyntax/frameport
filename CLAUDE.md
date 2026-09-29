@@ -58,6 +58,10 @@ Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattr
 Lepton = Steam app 3029110 (+ "Lepton Development" 3056000, needs Developer Mode). Per-game env: STEAM_COMPAT_INSTALL_PATH
 /DATA_PATH/SHADER_PATH, SteamAppId. Logs: `<base>/launch.log` and `~/.local/share/Steam/logs/lepton-logcats/steamlaunch-<appid>`.
 Containers are podman `lepton-steamlaunch-<appid>`. Some Unreal games create save dirs without u+rwx → launcher repairs every 2 s.
+**Rootless podman leaks one kernel session keyring per container start** (200-key quota per user): after ~200 launches
+since boot every game fails with `crun: create keyring …: Disk quota exceeded` / `is not a running context`. Fix:
+`keyring = false` in `~/.config/containers/containers.conf` (agent `ensure_host_fixes`, bootstrap); leaked keys only
+go away with a reboot. Check usage: `grep "^ *1000:" /proc/key-users` (agent `info` → kernel_keys).
 
 **Steam:** shortcut appid = crc32('"<anchor>/launch.sh"' + title) | 0x80000000; shortcuts.vdf is only read at Steam
 start, so Steam must be stopped while writing it. Terminals/SSH started from Steam live in steam.service's cgroup —

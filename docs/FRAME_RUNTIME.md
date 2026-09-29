@@ -9,6 +9,9 @@
   (FramePort passes `FRAMEBRIDGE_CONFIG`).
 - Runs as podman container `lepton-steamlaunch-<appid>`; logcat is mirrored to stdout (→ `launch.log`) and to
   `~/.local/share/Steam/logs/lepton-logcats/steamlaunch-<appid>`. "Exited!" / "Early-exit" mark the end.
+- Rootless podman creates a kernel session keyring per container start and never frees it; the per-user quota is
+  200 keys, so ~200 launches after boot every container fails ("create keyring … Disk quota exceeded"). FramePort sets
+  `keyring = false` in `~/.config/containers/containers.conf`; a reboot clears already-leaked keys.
 - Picks the activity with category LAUNCHER (`APP_ACTIVITY`). Game data is visible at `/sdcard/Android/{obb,data}/<pkg>`.
 - 64-bit only (no AArch32).
 

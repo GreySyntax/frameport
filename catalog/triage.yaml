@@ -19,7 +19,7 @@ signatures:
     diagnosis: The game imports Meta platform functions overport's loader lacks.
     suggest: [frame.ovrstubs, frame.ovrplatformcompat]
   - id: oculus-os-class
-    pattern: 'ClassNotFoundException.*com\.oculus\.os\.(AnalyticsEvent|UnifiedTelemetryLogger)|com/oculus/os/AnalyticsEvent'
+    pattern: '(ClassNotFoundException|NoClassDefFoundError).*com[./]oculus[./]os[./](AnalyticsEvent|UnifiedTelemetryLogger)'
     severity: fatal
     diagnosis: Quest-only telemetry class lookup aborts the app (Meta XR Audio / native telemetry).
     suggest: [frame.metaxr_telemetry, frame.oculusos]
@@ -86,8 +86,20 @@ signatures:
     suggest: []
   - id: dlopen-failed
     pattern: 'dlopen failed: (.*)'
+    severity: info
+    diagnosis: A native library failed to load. Usually an optional probe (libOVRMrcLib, libovraudio32, …); it only
+      matters when a crash or UnsatisfiedLinkError abort follows.
+    suggest: []
+  - id: keyring-quota
+    pattern: 'create keyring .*Disk quota exceeded'
     severity: fatal
-    diagnosis: A native library failed to load.
+    diagnosis: The Frame ran out of kernel keys (rootless podman leaks one session keyring per container start). The
+      FramePort agent sets keyring=false in ~/.config/containers/containers.conf; reboot the Frame to free the leaked keys.
+    suggest: []
+  - id: container-not-started
+    pattern: "is not a running context|OCI runtime error"
+    severity: fatal
+    diagnosis: The Lepton container failed to start (see the error above it in launch.log).
     suggest: []
   - id: permission-denied-save
     pattern: 'Permission denied.*(Android/data|/sdcard)|EACCES.*Android/data'
@@ -95,7 +107,7 @@ signatures:
     diagnosis: The game created folders it can't write (saves break). The FramePort launcher repairs permissions every 2 s.
     suggest: []
 milestones:  # progress markers, in order; the furthest one reached is reported
-  - {id: container, pattern: 'lepton|Starting Lepton|APP_ACTIVITY', label: Lepton container started}
+  - {id: container, pattern: 'Boot complete!', label: Lepton container started}
   - {id: process, pattern: 'Start proc \d+:', label: App process started}
   - {id: adapter, pattern: 'FrameBridge: scale=', label: FrameBridge adapter loaded}
   - {id: instance, pattern: 'xrCreateInstance result=0', label: OpenXR instance created}

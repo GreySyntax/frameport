@@ -51,3 +51,30 @@ def test_cli_protocol(tmp_path):
     p = subprocess.run([sys.executable, str(AGENT), "set_settings"], input=json.dumps({"package": "bad name"}),
                        capture_output=True, text=True, env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"})
     assert json.loads(p.stdout) == {"ok": False, "error": "bad package name 'bad name'"}
+
+
+def test_host_fix_keyring(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    assert a.ensure_host_fixes() == ["podman keyring=false"]
+    text = (tmp_path / ".config/containers/containers.conf").read_text()
+    assert "[containers]" in text and "keyring = false" in text
+    assert a.ensure_host_fixes() == []  # idempotent
+    # an existing [containers] section gets the key inserted, not a second section
+    conf = tmp_path / ".config/containers/containers.conf"
+    conf.write_text("[engine]\nfoo = 1\n[containers]\nlog_size_max = 10\n")
+    assert a.ensure_host_fixes() == ["podman keyring=false"]
+    assert conf.read_text().count("[containers]") == 1 and "keyring = false" in conf.read_text()
+
+
+def test_cleanup_refuses_outside_paths(monkeypatch, tmp_path):
+    import pytest
+
+    a = load_agent(monkeypatch, tmp_path)
+    old = tmp_path / "PATCHED"
+    (old / "x").mkdir(parents=True)
+    (old / "x" / "f.apk").write_bytes(b"1234")
+    r = a.cmd_cleanup({"paths": ["~/PATCHED"]})
+    assert r["freed_bytes"] == 4 and not old.exists()
+    for bad in ("/etc", "~/Applications/quest-frame", "~/.."):
+        with pytest.raises(a.AgentError):
+            a.cmd_cleanup({"paths": [bad]})

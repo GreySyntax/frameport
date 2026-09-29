@@ -26,7 +26,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 3
+AGENT_VERSION = 5
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -104,6 +104,39 @@ def container_running(appid):
     return f"lepton-steamlaunch-{appid}" in p.stdout.split()
 
 
+CONTAINERS_CONF = os.path.join(HOME, ".config/containers/containers.conf")
+
+
+def ensure_host_fixes():
+    """Rootless podman (used by Lepton) leaks one kernel session keyring per container start; after ~200 launches
+    since boot every game fails with 'crun: create keyring ...: Disk quota exceeded'. keyring=false stops that."""
+    changed = []
+    text = open(CONTAINERS_CONF).read() if os.path.exists(CONTAINERS_CONF) else ""
+    if not re.search(r"^\s*keyring\s*=", text, re.M):
+        note = "# FramePort: stop rootless podman leaking a kernel keyring per container start (Lepton launches)\n"
+        if re.search(r"^\[containers\]\s*$", text, re.M):
+            text = re.sub(r"^\[containers\]\s*$", "[containers]\n" + note + "keyring = false", text, count=1, flags=re.M)
+        else:
+            text = text + ("\n" if text and not text.endswith("\n") else "") + "[containers]\n" + note + "keyring = false\n"
+        os.makedirs(os.path.dirname(CONTAINERS_CONF), exist_ok=True)
+        with open(CONTAINERS_CONF, "w") as f:
+            f.write(text)
+        changed.append("podman keyring=false")
+    return changed
+
+
+def key_usage():
+    try:
+        for line in open("/proc/key-users"):
+            f = line.split()
+            if f[0].rstrip(":") == str(os.getuid()):
+                used, limit = f[3].split("/")
+                return {"keys": int(used), "max_keys": int(limit)}
+    except (OSError, ValueError, IndexError):
+        pass
+    return {}
+
+
 def cmd_info(args):
     lepton, app = lepton_path()
     osr = {}
@@ -121,6 +154,7 @@ def cmd_info(args):
         "steam_users": steam_users(), "free_bytes": st.f_bavail * st.f_frsize,
         "installed": cmd_list_installed({})["games"],
         "steam_running": run(["pgrep", "-x", "steam"]).returncode == 0,
+        "host_fixes": ensure_host_fixes(), "kernel_keys": key_usage(),
     }
 
 
@@ -338,6 +372,7 @@ def cmd_prepare(args):
     """Where to upload, and what the Frame already has (so unchanged data is not re-sent)."""
     pkg = check_pkg(args["package"])
     title = args["title"]
+    ensure_host_fixes()
     dest = os.path.expanduser(args.get("dest") or ANCHORS)
     anchor = os.path.join(ANCHORS, pkg)
     dep = deployment(pkg)
@@ -571,6 +606,8 @@ def cmd_launch_test(args):
     appid = dep["appid"]
     if container_running(appid):
         raise AgentError("the game is already running")
+    ensure_host_fixes()
+    keys = key_usage()
     unit = f"frameport-test-{appid}"
     run(["systemctl", "--user", "reset-failed", unit])
     p = run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={unit}", os.path.join(anchor, "launch.sh")])
@@ -584,14 +621,43 @@ def cmd_launch_test(args):
         if "Exited!" in text:
             state = "EXITED"
             break
-        if "Early-exit" in text:
+        if "Early-exit" in text or "is not a running context" in text:
             state = "NEVER_STARTED"
             break
     elapsed = round(time.time() - start)
     run(["systemctl", "--user", "stop", unit])
     run(["podman", "kill", f"lepton-steamlaunch-{appid}"])
     time.sleep(3)
-    return {"state": state, "elapsed": elapsed, "log": log, "log_size": os.path.getsize(log) if os.path.exists(log) else 0}
+    return {"state": state, "elapsed": elapsed, "log": log, "log_size": os.path.getsize(log) if os.path.exists(log) else 0,
+            "kernel_keys_before": keys, "kernel_keys_after": key_usage()}
+
+
+def cmd_cleanup(args):
+    """Remove rollback copies (previous-game.apk, settings.conf.previous) and leftover uploads; optional extra paths
+    under HOME (e.g. an old manual-install folder). Saves and installed games are never touched."""
+    freed, removed = 0, []
+    for dep in cmd_list_installed({})["games"]:
+        base = dep["base"]
+        for name in (["previous-game.apk", "settings.conf.previous"] if args.get("rollback", True) else []) + \
+                ["incoming", "incoming-artwork"]:
+            p = os.path.join(base, name)
+            if os.path.isdir(p):
+                freed += sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(p) for f in fs)
+                shutil.rmtree(p, ignore_errors=True)
+                removed.append(p)
+            elif os.path.exists(p):
+                freed += os.path.getsize(p)
+                os.remove(p)
+                removed.append(p)
+    for extra in args.get("paths", []):
+        p = os.path.realpath(os.path.expanduser(extra))
+        if not p.startswith(HOME + os.sep) or p.startswith(ANCHORS) or p == os.path.join(HOME, ".local"):
+            raise AgentError(f"refusing to remove {extra}")
+        if os.path.exists(p):
+            freed += sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(p) for f in fs) if os.path.isdir(p) else os.path.getsize(p)
+            shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
+            removed.append(p)
+    return {"removed": removed, "freed_bytes": freed}
 
 
 COMMANDS = {n[4:]: f for n, f in globals().items() if n.startswith("cmd_")}

@@ -203,7 +203,7 @@ def write_report(results: list[dict], path: Path) -> None:
 
 
 def install_and_test(results_json: Path, target, baseline: Path | None, report: Path, reporter: Reporter,
-                     only: list[str] | None = None, seconds: int = 45) -> bool:
+                     only: list[str] | None = None, seconds: int = 45, test_only: bool = False) -> bool:
     """Device half of the parity test: install every rebuilt APK through the normal installer (APK only; the game
     data already on the Frame is reused), add the Steam shortcuts in one batch, launch-test each game headless and
     compare with a baseline run (lines like '######## <pkg>: RUNNING (pid N)')."""
@@ -218,6 +218,13 @@ def install_and_test(results_json: Path, target, baseline: Path | None, report: 
             if m:
                 base_state[m[1]] = "RUNNING" if m[2] == "RUNNING" else "EXITED"
     installed_pkgs, out = [], []
+    previous = {}
+    if report.with_suffix(".json").exists():
+        previous = {r["package"]: r for r in json.loads(report.with_suffix(".json").read_text())}
+    if test_only:  # re-run launch tests only; keep install/shortcut results from the previous run
+        out = [dict(previous[r["package"]]) for r in rows if r["package"] in previous
+               and (not only or any(o.lower() in r["game"].lower() for o in only))]
+        rows = []
     for row in rows:
         pkg = row["package"]
         if only and not any(o.lower() in row["game"].lower() for o in only):
@@ -239,7 +246,7 @@ def install_and_test(results_json: Path, target, baseline: Path | None, report: 
         except Exception as exc:  # noqa: BLE001
             res["install"] = f"FAILED: {exc}"
         out.append(res)
-    if installed_pkgs:
+    if installed_pkgs and not test_only:
         status = installer.add_to_steam(target.frame, installed_pkgs, reporter, wait=180)
         added = {a["package"]: a for a in status.get("added", [])}
         for r in out:
@@ -257,7 +264,10 @@ def install_and_test(results_json: Path, target, baseline: Path | None, report: 
             r["state"] = f"ERROR {exc}"
         r["baseline"] = base_state.get(r["package"], "?")
         r["regression"] = r["baseline"] == "RUNNING" and r["state"] != "RUNNING"
-        (report.with_suffix(".json")).write_text(json.dumps(out, indent=1, default=str))
+        previous[r["package"]] = r
+        (report.with_suffix(".json")).write_text(json.dumps(sorted(previous.values(), key=lambda x: x["game"].lower()),
+                                                            indent=1, default=str))
+    out = sorted(previous.values(), key=lambda x: x["game"].lower()) if previous else out
     lines = ["# Device parity (install + headless launch)", "",
              f"Generated {time.strftime('%Y-%m-%d %H:%M')}. APK-only reinstall through the FramePort agent, Steam "
              "shortcuts re-added in one batch, then a 45 s headless launch per game compared with the pre-change baseline.",

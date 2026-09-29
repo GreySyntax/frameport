@@ -22,6 +22,8 @@ apksigner). Nothing is installed system-wide, and no Android SDK/NDK is needed.
 ## Status of tested games
 See `catalog/games/` (and the Library screen): 23 work, 5 work with issues, 6 can't run on the Frame (3 are 32-bit
 only; PC VR alternatives are listed). Details and how problems were solved: `docs/PLAYBOOK.md`.
+All 34 recipes were verified by rebuilding from the original dumps (`docs/parity-report.md`: 34/34 match the
+hand-made known-good builds) and reinstalling + launch-testing on a Frame (`docs/parity-device-report.md`: 0 regressions).
 
 ## Legal
 Use only with games you own. FramePort does not download games. It is GPL-3.0-only because it bundles code derived

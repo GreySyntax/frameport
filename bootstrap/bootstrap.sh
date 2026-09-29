@@ -41,6 +41,11 @@ echo "$svc" | sudo tee /etc/avahi/services/frameport.service >/dev/null || true
 sudo systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
 sudo systemctl reload avahi-daemon >/dev/null 2>&1 || true
 
+say "Configuring podman for Lepton"
+# rootless podman leaks one kernel keyring per container start; ~200 game launches would exhaust the quota
+mkdir -p ~/.config/containers
+grep -qs '^ *keyring *=' ~/.config/containers/containers.conf || printf '[containers]\nkeyring = false\n' >> ~/.config/containers/containers.conf
+
 say "Checking for Lepton (Valve's Android runtime)"
 if ls ~/.local/share/Steam/steamapps/common/Lepton/lepton >/dev/null 2>&1; then
     echo "Lepton found."

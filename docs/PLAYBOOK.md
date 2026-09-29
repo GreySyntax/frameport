@@ -13,6 +13,7 @@ version is `catalog/triage.yaml` (used by `frameport test` / the Job screen); ke
 ## Startup failures (visible in launch.log)
 | Symptom | Cause | Fix |
 |---|---|---|
+| Every game suddenly fails to start: `crun: create keyring …: Disk quota exceeded`, `is not a running context` | rootless podman leaked a kernel keyring per launch; 200-key quota exhausted | `keyring = false` in `~/.config/containers/containers.conf` (FramePort agent does it), then reboot the Frame once |
 | `APP_ACTIVITY is empty`, nothing starts | Manifest has category INFO only; Lepton needs LAUNCHER | `frame.launcher` (automatic) |
 | `INSTALL_FAILED_NO_MATCHING_ABIS` | 32-bit-only APK; Frame has no AArch32 | None. PC/Rift version via Revive |
 | `UnsatisfiedLinkError` / `cannot locate symbol "ovr_…"` | overport's platform loader lacks Meta platform functions | `frame.ovrstubs` (automatic, generated stubs) |

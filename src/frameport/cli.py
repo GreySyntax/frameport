@@ -270,6 +270,14 @@ def frame_connect(address: str, password: Optional[str] = typer.Option(None, pro
     typer.echo(json.dumps({k: info[k] for k in ("hostname", "os", "os_version", "lepton", "steam_users", "free_bytes")}, indent=1))
 
 
+@frame_app.command("cleanup")
+def frame_cleanup(frame: Optional[str] = None, keep_rollback: bool = typer.Option(False, help="keep previous-game.apk copies"),
+                  path: list[str] = typer.Option([], help="extra folder under the Frame's home to delete, e.g. ~/PATCHED")):
+    """Free space on the Frame: rollback APKs from reinstalls, leftover uploads, optional extra folders."""
+    r = _target(frame).frame.agent("cleanup", rollback=not keep_rollback, paths=path)
+    typer.echo(f"removed {len(r['removed'])} item(s), freed {r['freed_bytes'] / 2**30:.1f} GiB")
+
+
 @frame_app.command("info")
 def frame_info(frame: Optional[str] = None):
     typer.echo(json.dumps(_target(frame).describe(), indent=1, default=str))
@@ -300,11 +308,11 @@ def report(out: Path = typer.Option(Path("REPORT.md"))):
 def parity_device(results: Path = typer.Option(Path("parity-out/parity.json")), frame: Optional[str] = None,
                   baseline: Optional[Path] = typer.Option(None, help="baseline launch.txt from before the change"),
                   report: Path = typer.Option(Path("parity-device-report.md")), only: list[str] = typer.Option([]),
-                  seconds: int = 45):
+                  seconds: int = 45, test_only: bool = typer.Option(False, help="only re-run the launch tests")):
     """Install the APKs rebuilt by `parity` on the Frame (APK only) and compare headless launches with a baseline."""
     from .parity import install_and_test
 
-    ok = install_and_test(results, _target(frame), baseline, report, printing_reporter(False), only, seconds)
+    ok = install_and_test(results, _target(frame), baseline, report, printing_reporter(False), only, seconds, test_only)
     raise typer.Exit(0 if ok else 1)
 
 
