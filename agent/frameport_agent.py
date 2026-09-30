@@ -32,7 +32,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 18
+AGENT_VERSION = 19
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1255,18 +1255,26 @@ def set_libovr_redirect(base, exe_rel, enabled):
     signature check — a build that verifies the Oculus signature of LibOVRRT will still reject Revive's (unsigned)
     runtime; this only helps builds that don't verify it. We only ever create/remove our own symlink, never a real
     DLL the game shipped. Removed when disabled."""
-    exe_dir = os.path.dirname(os.path.join(base, "game", exe_rel))
-    for bits, revive_dll in (("64", "LibReviveXR64.dll"), ("32", "LibReviveXR32.dll")):
-        link = os.path.join(exe_dir, "LibOVRRT%s_1.dll" % bits)
-        target = os.path.join(base, "revive", revive_dll)
-        ours = os.path.islink(link) and os.path.join("revive", revive_dll) in os.path.realpath(link)
-        if enabled and os.path.isfile(target):
-            if os.path.islink(link) or not os.path.exists(link):  # never clobber a real game-shipped DLL
-                if os.path.lexists(link):
-                    os.remove(link)
-                os.symlink(target, link)
-        elif ours:
-            os.remove(link)
+    game = os.path.join(base, "game")
+    # where the Oculus SDK looks for LibOVRRT: the game exe's dir (monolithic engines carry the shim in the exe) AND
+    # next to every OVRPlugin.dll (Unreal's shim searches its own module dir).
+    dirs = {os.path.dirname(os.path.join(game, exe_rel))}
+    for root, _, files in os.walk(game):
+        for n in files:
+            if n.lower() == "ovrplugin.dll":
+                dirs.add(root)
+    for d in dirs:
+        for bits, revive_dll in (("64", "LibReviveXR64.dll"), ("32", "LibReviveXR32.dll")):
+            link = os.path.join(d, "LibOVRRT%s_1.dll" % bits)
+            target = os.path.join(base, "revive", revive_dll)
+            ours = os.path.islink(link) and os.path.join("revive", revive_dll) in os.path.realpath(link)
+            if enabled and os.path.isfile(target):
+                if os.path.islink(link) or not os.path.exists(link):  # never clobber a real game-shipped DLL
+                    if os.path.lexists(link):
+                        os.remove(link)
+                    os.symlink(target, link)
+            elif ours:
+                os.remove(link)
 
 
 def cmd_finalize_pcvr(args):

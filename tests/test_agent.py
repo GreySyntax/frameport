@@ -404,10 +404,15 @@ def test_libovr_redirect_symlink(monkeypatch, tmp_path):
     (base / "game/Bin/Win64/Game.exe").write_bytes(b"MZ")
     (base / "revive").mkdir()
     (base / "revive/LibReviveXR64.dll").write_bytes(b"REVIVE")
+    # an Unreal-style OVRPlugin.dll in its own dir -> the redirect must land there too
+    (base / "game/Engine/Plug/OVRPlugin/Win64").mkdir(parents=True)
+    (base / "game/Engine/Plug/OVRPlugin/Win64/OVRPlugin.dll").write_bytes(b"MZ")
     exe_rel = "Bin/Win64/Game.exe"
     link = base / "game/Bin/Win64/LibOVRRT64_1.dll"
+    plugin_link = base / "game/Engine/Plug/OVRPlugin/Win64/LibOVRRT64_1.dll"
     a.set_libovr_redirect(str(base), exe_rel, enabled=True)
-    assert link.is_symlink() and link.read_bytes() == b"REVIVE"  # redirect to Revive's runtime
+    assert link.is_symlink() and link.read_bytes() == b"REVIVE"  # redirect to Revive's runtime (exe dir)
+    assert plugin_link.is_symlink() and plugin_link.read_bytes() == b"REVIVE"  # and next to OVRPlugin.dll
     assert not (base / "game/Bin/Win64/LibOVRRT32_1.dll").exists()  # no 32-bit Revive dll -> not created
     # disabling removes our symlink
     a.set_libovr_redirect(str(base), exe_rel, enabled=False)
