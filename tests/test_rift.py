@@ -98,8 +98,8 @@ def test_unreal_layout_picks_shipping_exe(tmp_path):
     assert a.engine == "Unreal" and a.xr == "LibOVR"
     assert a.extra["exe"] == "Climb/Binaries/Win64/Climb-Win64-Shipping.exe"
     r = engine.suggest(a)  # Oculus/LibOVR Unreal: Revive on (PC OpenVR backend), files unchanged, crash reporter off
-    assert r.as_is and set(r.patches) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.no_crash_reporter",
-                                          "pcvr.oculus_unreal", "pcvr.xr_timefix"}
+    assert r.as_is and set(r.patches) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.libovr_redirect",
+                                          "pcvr.no_crash_reporter", "pcvr.oculus_unreal", "pcvr.xr_timefix"}
 
 
 def test_scan_finds_rift_games_not_parents_or_quest(tmp_path):

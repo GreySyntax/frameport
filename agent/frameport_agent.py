@@ -32,7 +32,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 17
+AGENT_VERSION = 18
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1248,6 +1248,27 @@ def set_crash_reporter(base, enabled):
                 os.replace(p, p[:-len(".disabled")])
 
 
+def set_libovr_redirect(base, exe_rel, enabled):
+    """LoadLibrary redirect (pure runtime substitution): put LibOVRRT{64,32}_1.dll in the game's own DLL search dir as
+    a symlink to Revive's LibReviveXR runtime, so the game's Oculus SDK finds a runtime to load. The symlink keeps the
+    DLL in the revive/ folder, so its sibling dependencies still resolve. This does NOT touch the game's runtime
+    signature check — a build that verifies the Oculus signature of LibOVRRT will still reject Revive's (unsigned)
+    runtime; this only helps builds that don't verify it. We only ever create/remove our own symlink, never a real
+    DLL the game shipped. Removed when disabled."""
+    exe_dir = os.path.dirname(os.path.join(base, "game", exe_rel))
+    for bits, revive_dll in (("64", "LibReviveXR64.dll"), ("32", "LibReviveXR32.dll")):
+        link = os.path.join(exe_dir, "LibOVRRT%s_1.dll" % bits)
+        target = os.path.join(base, "revive", revive_dll)
+        ours = os.path.islink(link) and os.path.join("revive", revive_dll) in os.path.realpath(link)
+        if enabled and os.path.isfile(target):
+            if os.path.islink(link) or not os.path.exists(link):  # never clobber a real game-shipped DLL
+                if os.path.lexists(link):
+                    os.remove(link)
+                os.symlink(target, link)
+        elif ours:
+            os.remove(link)
+
+
 def cmd_finalize_pcvr(args):
     """Move uploaded game/Revive files into place, delete files the new version no longer has, write the Proton
     launcher and deployment.json. The Proton prefix (saves) is kept."""
@@ -1298,6 +1319,7 @@ def cmd_finalize_pcvr(args):
     if oculus_hmd and not os.path.isfile(os.path.join(base, "helpers", OCULUS_HMD_HELPER)):
         raise AgentError(f"{OCULUS_HMD_HELPER} missing")
     set_crash_reporter(base, enabled=not args.get("no_crash_reporter"))
+    set_libovr_redirect(base, exe_rel, enabled=revive and bool(args.get("libovr_redirect")))
     write_proton_launcher(anchor, base, pkg, title, appid, tool, exe_rel, revive, args.get("env"), xr_layer,
                           args.get("game_args") or [], oculus_hmd)
     art_in = os.path.join(base, "incoming-artwork")
@@ -1307,7 +1329,8 @@ def cmd_finalize_pcvr(args):
     dep = {"package": pkg, "kind": "pcvr", "appid": int(appid), "base": base, "title": title, "exe": exe_rel,
            "tags": args.get("tags") or [],
            "sha256": args.get("exe_sha256"), "revive": revive, "revive_version": args.get("revive_version"),
-           "proton": tool["name"], "xr_layer": xr_layer, "oculus_hmd": oculus_hmd, "recipe": args.get("recipe"),
+           "proton": tool["name"], "xr_layer": xr_layer, "oculus_hmd": oculus_hmd, "libovr_redirect": bool(args.get("libovr_redirect")),
+           "recipe": args.get("recipe"),
            "installed_by": "frameport",
            "files": {t: manifests.get(t) or {} for t in PCVR_TREES},
            "agent_version": AGENT_VERSION, "time": time.time()}

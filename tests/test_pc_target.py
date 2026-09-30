@@ -135,9 +135,10 @@ def test_library_migration_adds_no_crash_reporter(tmp_path, monkeypatch):
     }, "settings": {}}))
     games = library.load()["games"]
     # the run-correct migration re-derives from engine defaults: Oculus games get Revive + as-is
-    assert set(games["rift.ue"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr",
+    assert set(games["rift.ue"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.libovr_redirect",
         "pcvr.no_crash_reporter", "pcvr.oculus_unreal", "pcvr.xr_timefix"}
-    assert set(games["rift.unity"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.xr_timefix"}
+    assert set(games["rift.unity"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr",
+        "pcvr.libovr_redirect", "pcvr.xr_timefix"}
     assert games["rift.ue"]["recipe"]["as_is"] and games["rift.unity"]["recipe"]["as_is"]
     # runs once: a user who turns it off keeps it off
     data = library.load()
@@ -257,3 +258,13 @@ def test_start_steamvr(monkeypatch, tmp_path):
     running["vr"] = False
     monkeypatch.setattr(winhost, "app_installed", lambda root, appid: False)
     assert winhost.start_steamvr(tmp_path, wait=2) is False and started == []
+
+
+def test_libovr_redirect_patch():
+    from frameport.patches.base import get
+
+    p = get("pcvr.libovr_redirect")
+    assert p.requires == ("pcvr.revive",)
+    assert p.detect(SimpleNamespace(extra={"kind": "rift"})).recommended
+    assert not p.detect(SimpleNamespace(extra={"kind": "rift", "frame_native": True})).recommended
+    assert p.detect(SimpleNamespace(extra={})) is None

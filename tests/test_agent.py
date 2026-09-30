@@ -395,3 +395,25 @@ def test_prune_shortcuts_on_relaunch_change(monkeypatch, tmp_path):
     # re-adding Vader directly, then pruning again, is a no-op for the kept entry
     a.upsert_shortcut(vdf, '"C:\\game\\WKND.exe"', "Vader", "/d", tag="Rift via Revive", tags=["Rift via Revive"])
     assert a.prune_shortcuts(vdf, "Vader", '"C:\\game\\WKND.exe"', "Rift via Revive") == []
+
+
+def test_libovr_redirect_symlink(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    base = tmp_path / "b"
+    (base / "game/Bin/Win64").mkdir(parents=True)
+    (base / "game/Bin/Win64/Game.exe").write_bytes(b"MZ")
+    (base / "revive").mkdir()
+    (base / "revive/LibReviveXR64.dll").write_bytes(b"REVIVE")
+    exe_rel = "Bin/Win64/Game.exe"
+    link = base / "game/Bin/Win64/LibOVRRT64_1.dll"
+    a.set_libovr_redirect(str(base), exe_rel, enabled=True)
+    assert link.is_symlink() and link.read_bytes() == b"REVIVE"  # redirect to Revive's runtime
+    assert not (base / "game/Bin/Win64/LibOVRRT32_1.dll").exists()  # no 32-bit Revive dll -> not created
+    # disabling removes our symlink
+    a.set_libovr_redirect(str(base), exe_rel, enabled=False)
+    assert not link.exists()
+    # never clobber a real game-shipped LibOVRRT
+    real = base / "game/Bin/Win64/LibOVRRT64_1.dll"
+    real.write_bytes(b"REAL")
+    a.set_libovr_redirect(str(base), exe_rel, enabled=True)
+    assert not real.is_symlink() and real.read_bytes() == b"REAL"

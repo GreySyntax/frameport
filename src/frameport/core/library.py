@@ -103,6 +103,17 @@ def _migrate(data: dict) -> bool:
                 continue
         done.append("rift_frame_native")
         changed = True
+    if "rift_libovr_redirect" not in done:
+        # Oculus Rift recipes gain the LoadLibrary redirect (provide Revive's runtime where the game looks for LibOVRRT)
+        for g in (data.get("games") or {}).values():
+            a, r = g.get("analysis") or {}, g.get("recipe")
+            if (isinstance(r, dict) and (a.get("extra") or {}).get("kind") == "rift"
+                    and "pcvr.revive" in (r.get("patches") or {})):
+                r.setdefault("patches", {}).setdefault("pcvr.libovr_redirect", {})
+                r.setdefault("reasons", {}).setdefault(
+                    "pcvr.libovr_redirect", "Lets the game find Revive's runtime on the Frame.")
+        done.append("rift_libovr_redirect")
+        changed = True
     return changed
 
 

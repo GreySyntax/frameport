@@ -175,6 +175,7 @@ def install_pcvr(frame: Frame, plan: PcvrPlan, reporter: Reporter) -> dict:
         manifests=manifests, revive=plan.revive_dir is not None, xr_layer=xr_layer, oculus_hmd=oculus_hmd,
         env=launch_env(plan.recipe),
         game_args=game_args(plan.recipe), no_crash_reporter="pcvr.no_crash_reporter" in plan.recipe.patches,
+        libovr_redirect="pcvr.libovr_redirect" in plan.recipe.patches,
         exe_sha256=plan.exe_sha256, revive_version=plan.revive_version,
         recipe={"patches": sorted(plan.recipe.patches), "source": plan.recipe.source},
     )

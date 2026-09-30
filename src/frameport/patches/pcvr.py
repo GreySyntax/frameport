@@ -55,6 +55,25 @@ class ReviveOpenVR(_PcvrPatch):
         return Suggestion(True, "PC: Revive's SteamVR/OpenVR backend is the most reliable path.")
 
 
+class LibovrRedirect(_PcvrPatch):
+    id = "pcvr.libovr_redirect"
+    title = "Provide the Oculus runtime from Revive (Frame)"
+    description = ("On the Frame, place Revive's runtime where the game's Oculus SDK looks for LibOVRRT so it can load "
+                   "a VR runtime (pure runtime substitution — this is what Revive's LoadLibrary redirect does). It "
+                   "does NOT bypass the Oculus runtime signature check: a game that verifies the runtime's signature "
+                   "will still refuse it (it can't run on the Frame). Only helps builds that don't verify it. Requires "
+                   "Revive; ignored on this PC (Revive handles the redirect there).")
+    order = 12
+    requires = ("pcvr.revive",)
+
+    def detect(self, analysis):
+        if not _rift(analysis):
+            return None
+        if analysis.extra.get("frame_native"):
+            return Suggestion(False, "Runs directly; no Oculus runtime needed.")
+        return Suggestion(True, "Lets the game find Revive's runtime on the Frame (doesn't bypass its signature check).")
+
+
 class XrTimefix(_PcvrPatch):
     id = "pcvr.xr_timefix"
     title = "Frame OpenXR compatibility layer"
@@ -135,7 +154,8 @@ class ProtonEnv(_PcvrPatch):
     params = [Param("env", "text", "", "KEY=value lines")]
 
 
-for _cls in (Revive, ReviveOpenVR, NoCrashReporter, OculusUnreal, XrTimefix, ProtonLog, ProtonTool, ProtonEnv):
+for _cls in (Revive, ReviveOpenVR, LibovrRedirect, NoCrashReporter, OculusUnreal, XrTimefix, ProtonLog,
+             ProtonTool, ProtonEnv):
     register(_cls)
 
 

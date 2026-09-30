@@ -54,7 +54,10 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
     universal-in-Unreal `IVRSystem`/`VR_InitInternal` strings). `frame_native = (openxr or openvr) and not libovr` =
     confidently runs on the Frame via wineopenxr (SteamVR), no Revive. Any LibOVR game → `needs_revive` → **PC only**
     on the Frame (Revive's ARM64EC hooks don't work under Proton-arm64, and FramePort does **not** defeat the Oculus
-    runtime Authenticode signature check). Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
+    runtime Authenticode signature check). Patch `pcvr.libovr_redirect` (Frame, default on for Revive games, agent v18 `set_libovr_redirect`) symlinks Revive's
+runtime as `LibOVRRT{64,32}_1.dll` in the game's exe dir — the LoadLibrary redirect (pure runtime substitution), which
+does NOT touch the game's runtime signature check (a checking build still fails at `-3021`; only non-checking builds
+run). Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
     not via static detection. PC installs default to Revive's **OpenVR** backend (`pcvr.revive_openvr` on) and
     auto-start SteamVR on Play (`winhost.start_steamvr`); the Frame launcher always uses `/openxr`. UI (`game.py`
     where()) states per-game where it runs; installing an Oculus game on the Frame shows a warning. Migration
