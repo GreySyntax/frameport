@@ -201,3 +201,25 @@ def stop_steam(root: Path, wait: float = 40) -> bool:
 
 def start_steam(root: Path) -> None:
     start_detached(root / "steam.exe")
+
+
+def steamvr_running() -> bool:
+    return process_running("vrmonitor.exe") or process_running("vrserver.exe")
+
+
+def start_steamvr(root: Path, wait: float = 25) -> bool:
+    """Start SteamVR (app 250820) and wait until it's up. Revive needs SteamVR running to provide VR; without it an
+    Oculus game falls back to a flat window. No-op (returns True) if it's already running; returns False if SteamVR
+    isn't installed or didn't come up in time."""
+    if steamvr_running():
+        return True
+    if not app_installed(root, STEAMVR_APPID):
+        return False
+    start_detached(root / "steam.exe", ["-applaunch", STEAMVR_APPID])
+    end = time.time() + wait
+    while time.time() < end:
+        time.sleep(1)
+        if steamvr_running():
+            time.sleep(2)  # let vrserver finish coming up before the game connects
+            return True
+    return False

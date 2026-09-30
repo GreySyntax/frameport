@@ -50,6 +50,15 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
     filters helpers + non-GUI PEs, `rank_exes` (Unreal *-Shipping beats its launcher, Steam builds −10, ambiguous →
     `exe_confirmed=False` → GUI exe dialog), `clean_title`, fingerprint (unchanged folders aren't re-analyzed),
     modular-Unreal Oculus plugin DLLs + UTF-16 markers count as LibOVR, `revive_bundled` → as-is.
+  - Rift VR-API routing (`analysis/rift.py`): `openvr`/`openxr`/`libovr` detected from imports + bundled DLLs (NOT the
+    universal-in-Unreal `IVRSystem`/`VR_InitInternal` strings). `frame_native = (openxr or openvr) and not libovr` =
+    confidently runs on the Frame via wineopenxr (SteamVR), no Revive. Any LibOVR game → `needs_revive` → **PC only**
+    on the Frame (Revive's ARM64EC hooks don't work under Proton-arm64, and FramePort does **not** defeat the Oculus
+    runtime Authenticode signature check). Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
+    not via static detection. PC installs default to Revive's **OpenVR** backend (`pcvr.revive_openvr` on) and
+    auto-start SteamVR on Play (`winhost.start_steamvr`); the Frame launcher always uses `/openxr`. UI (`game.py`
+    where()) states per-game where it runs; installing an Oculus game on the Frame shows a warning. Migration
+    `rift_frame_native` re-analyzes + re-derives existing entries.
   - Art for Rift games: `artwork/sources.py` — Quest version package (OculusDB packageName, exact name or +
     "Unplugged"-type suffix, never sequels) → Meta art; OculusDB square cover; Steam (exact names only); exe icon.
   - Store details (`artwork/details.py`, entry `details`): OculusDB (description, genres, publisher, website; by Quest

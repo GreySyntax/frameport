@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 
+from types import SimpleNamespace
+
 from frameport.core import winhost
 from frameport.core.events import Reporter
 from frameport.core.models import Recipe
@@ -133,9 +135,9 @@ def test_library_migration_adds_no_crash_reporter(tmp_path, monkeypatch):
     }, "settings": {}}))
     games = library.load()["games"]
     # the run-correct migration re-derives from engine defaults: Oculus games get Revive + as-is
-    assert set(games["rift.ue"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.no_crash_reporter",
-                                                          "pcvr.oculus_unreal", "pcvr.xr_timefix"}
-    assert set(games["rift.unity"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.xr_timefix"}
+    assert set(games["rift.ue"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr",
+        "pcvr.no_crash_reporter", "pcvr.oculus_unreal", "pcvr.xr_timefix"}
+    assert set(games["rift.unity"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.xr_timefix"}
     assert games["rift.ue"]["recipe"]["as_is"] and games["rift.unity"]["recipe"]["as_is"]
     # runs once: a user who turns it off keeps it off
     data = library.load()
@@ -151,7 +153,7 @@ def test_oculus_unreal_patch():
 
     p = get("pcvr.oculus_unreal")
     ue = SimpleNamespace(engine="Unreal", extra={"kind": "rift"})
-    ue_xr = SimpleNamespace(engine="Unreal", extra={"kind": "rift", "openxr_native": True})
+    ue_xr = SimpleNamespace(engine="Unreal", extra={"kind": "rift", "frame_native": True})
     unity = SimpleNamespace(engine="Unity", extra={"kind": "rift"})
     quest_ue = SimpleNamespace(engine="Unreal", extra={})
     assert p.category == "pcvr" and p.detect(ue).recommended and p.applies(ue)
@@ -221,3 +223,37 @@ def test_migration_respects_catalog_openxr_native(tmp_path, monkeypatch):
     }, "settings": {}}))
     r = library.load()["games"]["rift.xr"]["recipe"]
     assert "pcvr.revive" not in r["patches"]
+
+
+def test_pc_defaults_to_openvr_backend():
+    from frameport.core.models import Recipe
+    from frameport.patches import base
+    from frameport.targets.pc_revive import shortcut_fields
+
+    p = base.get("pcvr.revive_openvr")
+    assert p.detect(SimpleNamespace(extra={"kind": "rift"})).recommended  # on by default (PC)
+    assert not p.detect(SimpleNamespace(extra={"kind": "rift", "frame_native": True})).recommended
+    # OpenVR backend -> no /openxr flag in the launch command
+    dep_ovr = {"exe_win": "C:\\g\\Game.exe", "revive_win": "C:\\Revive", "backend": "openvr", "game_args": []}
+    dep_xr = {**dep_ovr, "backend": "openxr"}
+    assert "/openxr" not in shortcut_fields(dep_ovr)[2] and "Game.exe" in shortcut_fields(dep_ovr)[2]
+    assert "/openxr" in shortcut_fields(dep_xr)[2]
+
+
+def test_start_steamvr(monkeypatch, tmp_path):
+    from frameport.core import winhost
+
+    running = {"vr": False}
+    monkeypatch.setattr(winhost, "process_running", lambda img: running["vr"] if "vr" in img.lower() else False)
+    monkeypatch.setattr(winhost, "app_installed", lambda root, appid: True)
+    started = []
+    monkeypatch.setattr(winhost, "start_detached", lambda exe, args=(), cwd=None: (started.append(list(args)),
+                        running.__setitem__("vr", True))[0])
+    assert winhost.start_steamvr(tmp_path, wait=5) is True and started == [["-applaunch", "250820"]]
+    # already running -> no-op
+    started.clear()
+    assert winhost.start_steamvr(tmp_path) is True and started == []
+    # not installed -> False, nothing started
+    running["vr"] = False
+    monkeypatch.setattr(winhost, "app_installed", lambda root, appid: False)
+    assert winhost.start_steamvr(tmp_path, wait=2) is False and started == []

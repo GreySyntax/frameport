@@ -119,10 +119,16 @@ class GameView:
                                    else "Installed · a newer build is ready"),
                       "missing": "Not installed", None: "Frame not connected"}[st]
         frame_ok = st in ("installed", "outdated")
+        # Oculus/LibOVR Rift games need Revive, which can't run on the Frame — be honest about it
+        rift_oculus = self.rift and "pcvr.revive" in (g.get("recipe") or {}).get("patches", {})
+        frame_color = (T.TEXT_3 if rift_oculus and not frame_ok else
+                       T.OK if st == "installed" else T.WARN if st == "outdated" else T.TEXT_3)
+        frame_sub = ("Oculus game — needs Revive, which doesn't run on the Frame. Play it on this PC (SteamVR)."
+                     if rift_oculus else
+                     f"Last launch test: {last.get('verdict')} · furthest: {last.get('milestone') or '—'}" if last
+                     else "Runs directly — no Revive needed" if self.rift else "")
         cards.append(self.target_card(
-            ft.Icons.VIEW_IN_AR_ROUNDED, "Steam Frame", frame_line,
-            T.OK if st == "installed" else T.WARN if st == "outdated" else T.TEXT_3,
-            f"Last launch test: {last.get('verdict')} · furthest: {last.get('milestone') or '—'}" if last else "",
+            ft.Icons.VIEW_IN_AR_ROUNDED, "Steam Frame", frame_line, frame_color, frame_sub,
             [C.icon_btn(ft.Icons.SCIENCE_OUTLINED, C.tip("Launch test on the Frame. " + HELP["launch_test"]),
                         lambda e: app.test_game(pkg, "frame"), not frame_ok),
              C.icon_btn(ft.Icons.DELETE_OUTLINE_ROUNDED, C.tip("Uninstall from the Frame. " + HELP["uninstall"]),

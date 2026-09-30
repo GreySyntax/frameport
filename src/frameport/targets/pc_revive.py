@@ -218,13 +218,15 @@ class PcReviveTarget(Target):
 
     # ------------------------------------------------------------------ test / manage
     def launch(self, package):
-        """Through Windows Steam's shortcut (SteamVR starts with it), like clicking Play in Steam."""
+        """Through Windows Steam's shortcut, like clicking Play in Steam. Starts SteamVR first (Revive needs it, or the
+        game runs as a flat window)."""
         dep = self._dep(package)
         root = winhost.steam_root()
         if not root or not dep.get("appid"):
             raise RuntimeError("Steam or the game's Steam shortcut wasn't found on this PC")
+        vr = winhost.start_steamvr(root)  # Revive binds to SteamVR; without it the game falls back to flatscreen
         winhost.start_detached(root / "steam.exe", [f"steam://rungameid/{(int(dep['appid']) << 32) | 0x02000000}"])
-        return {"package": package, "title": dep.get("title")}
+        return {"package": package, "title": dep.get("title"), "steamvr": vr}
 
     def launch_test(self, package, reporter, seconds=45):
         reporter.stage("Launch test (this PC)")
@@ -232,6 +234,11 @@ class PcReviveTarget(Target):
         image = Path(dep["exe_local"]).name
         if winhost.process_running(image):
             raise RuntimeError(f"{dep['title']} is already running")
+        root = winhost.steam_root()
+        if root and dep.get("revive_win"):  # a direct injector start bypasses Steam, so bring SteamVR up ourselves
+            reporter.stage("Starting SteamVR")
+            if not winhost.start_steamvr(root):
+                reporter.log("SteamVR didn't start; the game may run as a flat window (no VR).")
         exe, _, opts = shortcut_fields(dep)
         exe_path = winhost.to_local(exe.strip('"'))
         import shlex

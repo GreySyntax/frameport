@@ -398,7 +398,12 @@ def analyze(folder: Path, exe: str | None = None, tree: Tree | None = None) -> A
     libovr = any(m in blob for m in LIBOVR_MARKERS) or \
         any(x in n for n in names for x in ("ovrplugin", "oculushmd", "libovr", "oculusrift"))
     openxr = "openxr_loader.dll" in info.imports or "openxr_loader.dll" in names or b"xrCreateInstance" in data
-    xr = "LibOVR+OpenXR" if libovr and openxr else "LibOVR" if libovr else "OpenXR" if openxr else "?"
+    # OpenVR/SteamVR: the game ships/links openvr_api. NOTE: an Unreal build carries SteamVR plugin binaries + strings
+    # whether or not it uses them, so this alone does NOT prove the game runs on SteamVR — it only matters for routing
+    # when the game has NO Oculus/LibOVR code (see frame_native below). We ignore the (universal in UE) IVRSystem/
+    # VR_InitInternal string markers for exactly this reason.
+    openvr = any(d in info.imports or d in names for d in ("openvr_api64.dll", "openvr_api32.dll", "openvr_api.dll"))
+    xr = "+".join(n for n, on in (("LibOVR", libovr), ("OpenXR", openxr), ("OpenVR", openvr)) if on) or "?"
     gfx_imports = set(info.imports)
     up = exe_path.parent / "UnityPlayer.dll"
     if up.exists():
@@ -429,7 +434,14 @@ def analyze(folder: Path, exe: str | None = None, tree: Tree | None = None) -> A
         oculus_os_classes=False, is_overport_output=False, debuggable=False,
         extra={"kind": "rift", "exe": chosen, "folder": str(folder), "exe_candidates": ranked[:12],
                "exe_confirmed": confirmed, "fingerprint": fingerprint(folder, chosen),
-               "platform_sdk": platform_sdk, "needs_revive": libovr or not openxr, "openxr_native": openxr and not libovr,
+               "platform_sdk": platform_sdk, "openxr_native": openxr and not libovr,
+               "openvr_native": openvr and not libovr,
+               # frame_native = confidently runs on the Frame through wineopenxr (SteamVR), no Revive: only when there
+               # is NO Oculus/LibOVR code (pure OpenXR or pure OpenVR). A LibOVR game is treated as Oculus (needs
+               # Revive, PC only) unless a known-good catalog recipe overrides it (e.g. Rick and Morty, verified on
+               # the Frame) — static analysis can't tell which runtime a dual-API Unreal build picks at runtime.
+               "frame_native": (openxr or openvr) and not libovr,
+               "needs_revive": libovr,
                "vr_found": xr != "?", "data_bytes": tree.size, "files": tree.files,
                # repacks ship a LibRevive64.dll for their own (Virtual Desktop) setup; nothing loads it on its own, so
                # this is informational only — the game still needs FramePort's Revive for LibOVR → OpenXR

@@ -387,12 +387,17 @@ class FramePortApp:
 
     def play(self, pkg: str, to: str = "frame") -> None:
         title = self._title(pkg)
-        where = "the Frame — put the headset on" if to == "frame" else "this PC"
 
         def work():
-            self._target_for(to).launch(pkg)
+            res = self._target_for(to).launch(pkg) or {}
             library.upsert_game(pkg, last_played=time.time())
-            self.toast(f"Starting {title} on {where}")
+            if to == "frame":
+                self.toast(f"Starting {title} on the Frame — put the headset on")
+            elif res.get("steamvr") is False:
+                self.toast(f"Starting {title}, but SteamVR isn't running — it may open as a flat window. Start SteamVR "
+                           "and relaunch.", error=True)
+            else:
+                self.toast(f"Starting SteamVR and {title} — put your headset on")
         self.run_bg(work)
 
     def quick_action(self, g: dict) -> tuple[str | None, str | None]:
@@ -493,7 +498,38 @@ class FramePortApp:
             if i < len(need_exe):
                 show_exe_dialog(self, need_exe[i], remaining=len(need_exe) - i - 1, on_done=lambda: ask_exe(i + 1))
             else:
+                ask_frame_oculus()
+
+        def ask_frame_oculus():
+            # Installing an Oculus/LibOVR Rift game on the Frame: warn that it needs Revive (which can't run there)
+            if to != "frame":
+                return ask_license()
+            oculus = [g for g in games if g.get("kind") == "rift"
+                      and "pcvr.revive" in (g.get("recipe") or {}).get("patches", {})]
+            if not oculus:
+                return ask_license()
+            boxes = {g["package"]: ft.Checkbox(label=self._title(g["package"]), value=False, active_color=T.ACCENT)
+                     for g in oculus}
+
+            def ok(e):
+                nonlocal games
+                self.page.pop_dialog()
+                keep = {p for p, b in boxes.items() if b.value}
+                games = [g for g in games if g not in oculus or g["package"] in keep]
+                if not games:
+                    self.toast("Nothing to install on the Frame — those Oculus games need PC mode (SteamVR + Revive).")
+                    return
                 ask_license()
+            self.page.show_dialog(ft.AlertDialog(
+                title=ft.Text("These games can't run on the Steam Frame", weight=ft.FontWeight.W_600),
+                content=ft.Container(ft.Column([
+                    C.body("They're Oculus games that need Revive to reach VR, and Revive can't run on the Frame. "
+                           "Play them on this PC instead (Install on this PC — SteamVR + Revive). Tick any you still "
+                           "want to put on the Frame to experiment (they'll likely run flat or crash)."),
+                    *boxes.values()], spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=520),
+                bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
+                actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()),
+                         C.primary("Continue", on_click=ok)]))
 
         def ask_license():
             sdk = [g for g in games if g.get("kind") == "rift" and (g["analysis"].get("extra") or {}).get("platform_sdk")]

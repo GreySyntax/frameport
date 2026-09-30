@@ -29,22 +29,30 @@ class Revive(_PcvrPatch):
     order = 10
 
     def detect(self, analysis):
-        # Oculus/LibOVR games need Revive to get VR (the bare exe runs flat). Off only for OpenXR/OpenVR-native games,
-        # which the Frame's SteamVR runs directly (e.g. a SteamVR build like Rick and Morty, handled by its catalog recipe).
+        # Oculus/LibOVR games need Revive to get VR (the bare exe runs flat). Off for games with no Oculus code, which
+        # SteamVR (PC) and the Frame's wineopenxr run directly (e.g. Rick and Morty, handled by its catalog recipe).
         if not _rift(analysis):
             return None
-        if analysis.extra.get("openxr_native"):
-            return Suggestion(False, "The game uses OpenXR directly; SteamVR/the Frame run it without Revive.")
-        return Suggestion(True, "Oculus/LibOVR game: Revive translates it to OpenXR (without it the game runs flat).")
+        if analysis.extra.get("frame_native"):
+            return Suggestion(False, "No Oculus code: SteamVR / the Frame run it directly, without Revive.")
+        return Suggestion(True, "Oculus/LibOVR game: Revive translates it to SteamVR/OpenXR (without it it runs flat).")
 
 
 class ReviveOpenVR(_PcvrPatch):
     id = "pcvr.revive_openvr"
-    title = "Revive: OpenVR backend (PC only)"
-    description = ("Use Revive's older OpenVR backend instead of OpenXR when the game runs on this PC through SteamVR. "
-                   "Try it if a game misbehaves with the OpenXR backend. Ignored on the Frame (OpenXR only).")
+    title = "Revive: SteamVR (OpenVR) backend on PC"
+    description = ("On this PC, launch the game through Revive's OpenVR backend, which talks straight to SteamVR — the "
+                   "original, most reliable Revive path. On by default for PC installs. Turn it off to use Revive's "
+                   "newer OpenXR backend instead. Ignored on the Frame (which always uses OpenXR).")
     order = 20
     requires = ("pcvr.revive",)
+
+    def detect(self, analysis):
+        if not _rift(analysis):
+            return None
+        if analysis.extra.get("frame_native"):
+            return Suggestion(False, "Runs on SteamVR directly; no Revive needed.")
+        return Suggestion(True, "PC: Revive's SteamVR/OpenVR backend is the most reliable path.")
 
 
 class XrTimefix(_PcvrPatch):
@@ -94,8 +102,8 @@ class OculusUnreal(_PcvrPatch):
     def detect(self, analysis):
         if not (_rift(analysis) and analysis.engine == "Unreal"):
             return None
-        if analysis.extra.get("openxr_native"):
-            return Suggestion(False, "OpenXR-native Unreal game: it doesn't use the Oculus plugin.")
+        if analysis.extra.get("frame_native"):
+            return Suggestion(False, "No Oculus plugin in use: runs directly.")
         return Suggestion(True, "Unreal game: its Oculus plugin checks for the Oculus service before it starts VR.")
 
     def applies(self, analysis) -> bool:

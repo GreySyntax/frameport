@@ -97,9 +97,9 @@ def test_unreal_layout_picks_shipping_exe(tmp_path):
     a = rift.analyze(g)
     assert a.engine == "Unreal" and a.xr == "LibOVR"
     assert a.extra["exe"] == "Climb/Binaries/Win64/Climb-Win64-Shipping.exe"
-    r = engine.suggest(a)  # Oculus/LibOVR Unreal: Revive on (for VR), don't modify files (as_is), crash reporter off
-    assert r.as_is and set(r.patches) == {"pcvr.revive", "pcvr.no_crash_reporter", "pcvr.oculus_unreal",
-                                          "pcvr.xr_timefix"}
+    r = engine.suggest(a)  # Oculus/LibOVR Unreal: Revive on (PC OpenVR backend), files unchanged, crash reporter off
+    assert r.as_is and set(r.patches) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.no_crash_reporter",
+                                          "pcvr.oculus_unreal", "pcvr.xr_timefix"}
 
 
 def test_scan_finds_rift_games_not_parents_or_quest(tmp_path):
@@ -511,3 +511,21 @@ def test_platform_sdk_delay_loaded(tmp_path):
     (g / "Engine/Plugins/Runtime/OculusVR/Binaries/Win64").mkdir(parents=True)
     (g / "Engine/Plugins/Runtime/OculusVR/Binaries/Win64/Game-OculusHMD-Win64-Shipping.dll").write_bytes(make_pe())
     assert rift.analyze(g).extra["platform_sdk"]
+
+
+def test_openvr_native_routing(tmp_path):
+    """A game that links OpenVR (openvr_api) and has no Oculus/LibOVR code is Frame-native (no Revive). A game that
+    also has LibOVR is treated as Oculus (needs Revive) — static analysis can't tell which runtime a dual build picks."""
+    g = tmp_path / "SteamVR Game"
+    (g / f"{g.name}_Data").mkdir(parents=True)
+    (g / "SteamVR Game.exe").write_bytes(make_pe(imports=("openvr_api64.dll", "kernel32.dll")))
+    (g / "openvr_api64.dll").write_bytes(make_pe())
+    a = rift.analyze(g)
+    assert a.extra["openvr_native"] and a.extra["frame_native"] and not a.extra["needs_revive"]
+    r = engine.suggest(a)
+    assert "pcvr.revive" not in r.patches and "OpenVR" in a.xr
+    # add LibOVR markers -> Oculus, needs Revive, not Frame-native
+    (g / "OVRPlugin.dll").write_bytes(make_pe(extra=b"LibOVRRT%hs_%d.dll"))
+    a2 = rift.analyze(g)
+    assert not a2.extra["frame_native"] and a2.extra["needs_revive"]
+    assert "pcvr.revive" in engine.suggest(a2).patches

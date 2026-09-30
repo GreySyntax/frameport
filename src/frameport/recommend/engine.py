@@ -93,15 +93,24 @@ def _rift_recipe(analysis: Analysis, recipe: Recipe, entry) -> None:
             recipe.patches["pcvr.proton_tool"] = {"tool": entry.proton_tool}
             recipe.reasons["pcvr.proton_tool"] = why
         recipe.as_is = entry.as_is
+        # drop patches whose requirement the catalog removed (e.g. revive_openvr once revive is gone), so the
+        # requirement pass in suggest() doesn't re-add it
+        for pid in list(recipe.patches):
+            if any(req not in recipe.patches for req in base.get(pid).requires):
+                recipe.patches.pop(pid, None)
+                recipe.reasons.pop(pid, None)
         return
     recipe.source = "heuristics"
-    recipe.as_is = True  # the repacks are pre-patched to run directly; Revive is an opt-in fallback (see pcvr.Revive)
+    recipe.as_is = True  # the dump is installed unchanged; Revive (when on) is a launch-time wrapper, not a file edit
     notes = []
+    if extra.get("frame_native"):
+        notes.append("No Oculus code (SteamVR/OpenXR): runs on the Frame and PC directly, without Revive.")
+    elif extra.get("needs_revive"):
+        notes.append("Oculus/LibOVR game: needs Revive, which works in PC mode with SteamVR running. Not supported on "
+                     "the Steam Frame (Revive can't run there).")
     if extra.get("platform_sdk"):
         notes.append("Uses the Oculus Platform SDK (entitlement check): normally it needs the Oculus app running with a "
-                     "license you own, so it may not start on the headset.")
-    if extra.get("openxr_native"):
-        notes.append("OpenXR-native: runs on SteamVR / the Frame without Revive.")
+                     "license you own, so it may not start.")
     if analysis.abis and analysis.abis[0] not in ("x86", "x86_64"):
         recipe.status = "unsupported"
         notes.append(f"Unexpected executable type {analysis.abis[0]}.")

@@ -79,6 +79,30 @@ def _migrate(data: dict) -> bool:
             g["recipe"] = recipe_to_dict(rec)
         done.append("rift_revive_correct")
         changed = True
+    if "rift_frame_native" not in done:
+        # Re-analyze Rift games so existing entries pick up openvr_native/frame_native (honest Frame vs PC routing),
+        # then re-derive their recipes. Needs the game files; entries without a readable game_dir keep what they have.
+        from ..analysis import rift
+        from ..recommend import engine
+
+        for pkg, g in (data.get("games") or {}).items():
+            a = g.get("analysis") or {}
+            if not (isinstance(g.get("recipe"), dict) and (a.get("extra") or {}).get("kind") == "rift"):
+                continue
+            gd = g.get("game_dir") or (a.get("extra") or {}).get("folder")
+            try:
+                if gd and Path(gd).is_dir():
+                    an = rift.analyze(Path(gd), exe=(a.get("extra") or {}).get("exe"))
+                    g["analysis"] = asdict(an)
+                else:  # no game files: derive frame_native from the old analysis flags (unknown -> Oculus/PC)
+                    x = a.setdefault("extra", {})
+                    x.setdefault("frame_native", bool(x.get("openxr_native") or x.get("openvr_native")))
+                    an = analysis_from_dict(a)
+                g["recipe"] = recipe_to_dict(engine.suggest(an))
+            except Exception:  # noqa: BLE001
+                continue
+        done.append("rift_frame_native")
+        changed = True
     return changed
 
 
