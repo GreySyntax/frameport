@@ -1,4 +1,5 @@
-"""Steam Frame target: one Lepton container per game + a Steam library shortcut."""
+"""Steam Frame target: one Lepton container per Quest game, Proton for Oculus Rift (PC VR) games, plus a Steam
+library shortcut for each."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,14 +38,50 @@ class FrameLeptonTarget(Target):
     def add_to_library(self, packages, reporter):
         return installer.add_to_steam(self.connect().frame, packages, reporter)
 
+    def update_steam_art(self, package, reporter):
+        return installer.update_steam_art(self.connect().frame, package, reporter)
+
     def launch_test(self, package, reporter, seconds=45):
         return device.launch_test(self.connect().frame, package, reporter, seconds)
+
+    def launch(self, package):
+        return self.connect().frame.agent("launch", package=package, timeout=60)
 
     def set_settings(self, package, settings):
         return self.connect().frame.agent("set_settings", package=package, settings=settings)
 
     def uninstall(self, package, keep_data=True):
         return self.connect().frame.agent("uninstall", package=package, keep_data=keep_data, remove_shortcut=True)
+
+    def install_pcvr(self, package, title, game_dir, exe, recipe, reporter, **extra):
+        plan = installer.PcvrPlan(package, title, Path(game_dir), exe, recipe, extra.get("revive_dir"),
+                                  extra.get("exe_sha256"), extra.get("revive_version"), extra.get("art_lookup"))
+        return installer.install_pcvr(self.connect().frame, plan, reporter)
+
+    def proton_status(self, tool: str | None = None) -> dict:
+        return self.connect().frame.agent("proton_status", tool=tool)
+
+    def install_proton(self, unattended: bool = False, tool: str | None = None) -> dict:
+        """Ask Steam on the Frame to install Proton (ARM64) + its runtime. unattended: no confirmation in the headset
+        (Steam restarts once and downloads in the background)."""
+        return self.connect().frame.agent("install_proton", mode="unattended" if unattended else "request", tool=tool)
+
+    def proton_selftest(self, tool: str | None = None, **opts) -> dict:
+        """Runs cmd.exe under the Frame's Proton (first run creates the prefix: a minute or two). opts: vr (default
+        True: SteamGameId set, Proton sets up wineopenxr), log (PROTON_LOG), env, timeout."""
+        seconds = int(opts.pop("timeout", 600))
+        if opts.pop("layer", False):  # also load FramePort's timefix OpenXR layer (as installed games do)
+            from ..core.paths import artifacts_dir
+
+            remote = "/home/" + self.target.user + "/.local/share/frameport/xrlayer"
+            self.frame.run(f"mkdir -p '{remote}'")
+            for f in sorted((artifacts_dir() / "linux-arm64").iterdir()):
+                self.frame.put(f, f"{remote}/{f.name}", resume=False)
+            env = dict(opts.get("env") or {})
+            env.update(XR_API_LAYER_PATH=remote, XR_ENABLE_API_LAYERS="XR_APILAYER_FRAMEPORT_timefix")
+            opts["env"] = env
+        return self.connect().frame.agent("proton_selftest", timeout=seconds + 120, tool=tool,
+                                          **{"timeout_s": seconds, **opts})
 
     def install_lepton(self) -> dict:
         return self.connect().frame.agent("install_lepton")

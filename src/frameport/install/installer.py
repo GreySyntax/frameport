@@ -1,6 +1,8 @@
 """Install a built game on a Steam Frame over SSH (via the FramePort agent)."""
 from __future__ import annotations
 
+import contextlib
+
 import posixpath
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,37 +61,30 @@ def install(frame: Frame, plan: InstallPlan, reporter: Reporter) -> dict:
     total = max(need, 1)
     sent = 0
 
-    def progress_for(label):
-        def cb(done, size):
-            reporter.progress((sent + done) / total, f"{label} {done / 2**20:.0f}/{size / 2**20:.0f} MiB")
-        return cb
+    with transfer_link(frame, reporter, need) as xfer:
+        reporter.stage("Upload APK")
+        if prep["same_apk"]:
+            reporter.log("identical APK already installed; not re-sending")
+        else:
+            def apk_cb(done, size):
+                reporter.check_cancel()
+                reporter.progress(done / total, f"APK {done / 2**20:.0f}/{size / 2**20:.0f} MiB")
+            xfer.put(plan.apk, posixpath.join(incoming, "game.apk"), apk_cb)
+            sent += plan.apk.stat().st_size
+        if to_send:
+            reporter.stage(f"Upload data ({len(to_send)} files)")
+            upload_files(xfer, [(plan.data_dir / rel, f"obb/{rel}", manifest[rel]) for rel in to_send], incoming,
+                         reporter, total, sent)
+        elif manifest:
+            reporter.log("game data already on the Frame; not re-sending")
 
-    reporter.stage("Upload APK")
-    if prep["same_apk"]:
-        reporter.log("identical APK already installed; not re-sending")
-    else:
-        frame.put(plan.apk, posixpath.join(incoming, "game.apk"), progress_for("APK"))
-        sent += plan.apk.stat().st_size
-    if to_send:
-        reporter.stage(f"Upload data ({len(to_send)} files)")
-        for rel in to_send:
-            reporter.check_cancel()
-            frame.put(plan.data_dir / rel, posixpath.join(incoming, "obb", rel), progress_for(rel))
-            sent += manifest[rel]
-    elif manifest:
-        reporter.log("game data already on the Frame; not re-sending")
-
-    reporter.stage("Artwork")
-    art_dir, _ = artwork.fetch(plan.package, plan.apk)
-    remote_art = posixpath.join(prep["base"], "incoming-artwork")
-    frame.run(f"rm -rf '{remote_art}' && mkdir -p '{remote_art}'")
-    for f in artwork.files(plan.package):
-        frame.put(f, posixpath.join(remote_art, f.name), resume=False)
+    artwork.fetch(plan.package, plan.apk)
+    upload_steam_art(frame, plan.package, prep["base"], reporter)
 
     reporter.stage("Finalize install")
     ctx = install_context(plan.recipe)
     result = frame.agent(
-        "finalize", package=plan.package, title=plan.title, dest=plan.dest, apk_sha256=apk_sha,
+        "finalize", package=plan.package, title=plan.title, dest=plan.dest, apk_sha256=apk_sha, tags=_tags(plan.package),
         apk_name=plan.apk.name, settings=ctx.adapter_settings,
         files={k: v.decode() if isinstance(v, bytes) else v for k, v in ctx.files.items()}, env=ctx.env,
         obb_manifest=manifest or None,
@@ -97,6 +92,235 @@ def install(frame: Frame, plan: InstallPlan, reporter: Reporter) -> dict:
     )
     reporter.log(f"installed at {result['base']} (Steam shortcut id {result['appid']})")
     return result
+
+
+@dataclass
+class PcvrPlan:
+    package: str  # "rift.<slug>"
+    title: str
+    game_dir: Path
+    exe: str  # relative to game_dir
+    recipe: Recipe
+    revive_dir: Path | None  # None: launch the exe directly (OpenXR-native game)
+    exe_sha256: str | None = None
+    revive_version: str | None = None
+    art_lookup: str | None = None  # package whose store art to use
+    dest: str | None = None
+
+
+def install_pcvr(frame: Frame, plan: PcvrPlan, reporter: Reporter) -> dict:
+    """Pack a Windows PC VR game + Revive onto the Frame, run by Proton through a generated launch.sh."""
+    from ..patches.pcvr import game_args, launch_env
+    from ..tools import revive as revive_tool
+
+    from ..core.paths import artifacts_dir
+
+    tool = plan.recipe.params("pcvr.proton_tool").get("tool") or None
+    reporter.stage("Prepare Frame")
+    prep = frame.agent("prepare_pcvr", package=plan.package, title=plan.title, dest=plan.dest, tool=tool)
+    if not prep.get("proton"):
+        ensure_proton(frame, reporter, tool)
+        prep = frame.agent("prepare_pcvr", package=plan.package, title=plan.title, dest=plan.dest, tool=tool)
+        if not prep.get("proton"):
+            raise RuntimeError("Proton is still not ready on the Frame")
+    reporter.check("Proton on the Frame", True, prep["proton"]["display_name"])
+    if prep.get("openxr"):
+        reporter.check("OpenXR runtime", True, prep["openxr"].get("name") or prep["openxr"]["path"])
+    else:
+        reporter.check("OpenXR runtime", None, "no active_runtime.json found; the game may not see the headset")
+    manifests = {"game": local_data_manifest(plan.game_dir)}
+    sources = {"game": plan.game_dir}
+    if plan.revive_dir:
+        root = plan.revive_dir
+        manifests["revive"] = {p.relative_to(root).as_posix(): p.stat().st_size
+                               for p in revive_tool.runtime_files(root)}
+        sources["revive"] = root
+    xr_layer = "pcvr.xr_timefix" in plan.recipe.patches
+    if xr_layer:
+        layer = artifacts_dir() / "linux-arm64"
+        manifests["xrlayer"] = {p.name: p.stat().st_size for p in sorted(layer.iterdir()) if p.is_file()}
+        sources["xrlayer"] = layer
+    oculus_hmd = "pcvr.oculus_unreal" in plan.recipe.patches
+    if oculus_hmd:  # fp_oculushmd.exe: provides the OculusHMDConnected event Unreal's Oculus plugin checks for
+        helpers = artifacts_dir() / "win-x64"
+        manifests["helpers"] = {p.name: p.stat().st_size for p in sorted(helpers.iterdir()) if p.is_file()}
+        sources["helpers"] = helpers
+    to_send = [(t, rel) for t, m in manifests.items() for rel, size in m.items()
+               if prep["existing"].get(t, {}).get(rel) != size]
+    need = sum(manifests[t][rel] for t, rel in to_send)
+    if need > prep["free_bytes"] - (1 << 30):
+        raise RuntimeError(f"not enough space on the Frame: need {need / 2**30:.1f} GiB + 1 GiB headroom, "
+                           f"have {prep['free_bytes'] / 2**30:.1f} GiB")
+    total = max(need, 1)
+    if to_send:
+        already = sum(sum(m.values()) for m in manifests.values()) - need
+        reporter.stage(f"Upload game ({len(to_send)} files, {need / 2**30:.1f} GiB)"
+                       + (f" — resuming, {already / 2**30:.1f} GiB already there" if already > 0 else ""))
+        with transfer_link(frame, reporter, need) as xfer:
+            upload_files(xfer, [(sources[t] / rel, f"{t}/{rel}", manifests[t][rel]) for t, rel in to_send],
+                         prep["incoming"], reporter, total, 0)
+    else:
+        reporter.log("all game files already on the Frame; not re-sending")
+
+    from ..artwork import sources
+
+    if not sources.has_art(plan.package):
+        artwork.fetch(plan.package, lookup=plan.art_lookup)
+    upload_steam_art(frame, plan.package, prep["base"], reporter)
+
+    reporter.stage("Finalize install")
+    result = frame.agent(
+        "finalize_pcvr", package=plan.package, title=plan.title, dest=plan.dest, tool=tool, exe=plan.exe,
+        tags=_tags(plan.package),
+        manifests=manifests, revive=plan.revive_dir is not None, xr_layer=xr_layer, oculus_hmd=oculus_hmd,
+        env=launch_env(plan.recipe),
+        game_args=game_args(plan.recipe), no_crash_reporter="pcvr.no_crash_reporter" in plan.recipe.patches,
+        exe_sha256=plan.exe_sha256, revive_version=plan.revive_version,
+        recipe={"patches": sorted(plan.recipe.patches), "source": plan.recipe.source},
+    )
+    reporter.log(f"installed at {result['base']} (Proton {result['proton']}, Steam shortcut id {result['appid']})")
+    return result
+
+
+def ensure_proton(frame: Frame, reporter: Reporter, tool: str | None = None, timeout: float = 45 * 60) -> dict:
+    """Install Proton (ARM64) + its runtime on the Frame without user interaction: the agent writes Steam appmanifest
+    stubs and restarts Steam, which downloads them. Waits until they're installed (progress from the appmanifests)."""
+    import time
+
+    st = frame.agent("proton_status", tool=tool)
+    if st.get("ready"):
+        return st["ready"]
+    reporter.stage("Install Proton on the Frame")
+    r = frame.agent("install_proton", mode="unattended", tool=tool)
+    reporter.log(r.get("hint") or f"installing {r.get('tool')}")
+    end = time.time() + timeout
+    last = None
+    while time.time() < end:
+        reporter.check_cancel()
+        time.sleep(10)
+        try:
+            st = frame.agent("proton_status", tool=tool, timeout=60)
+        except Exception:  # SSH can hiccup while Steam restarts
+            continue
+        if st.get("ready"):
+            reporter.check("Proton installed", True, st["ready"]["display_name"])
+            return st["ready"]
+        dl = st.get("download") or {}
+        if dl.get("total"):
+            reporter.progress(dl["done"] / dl["total"], f"downloading Proton {dl['done'] / 2**20:.0f}/"
+                                                         f"{dl['total'] / 2**20:.0f} MiB")
+        elif dl != last:
+            reporter.log("waiting for Steam to start the download…")
+        last = dl
+    raise RuntimeError("Proton didn't finish installing on the Frame in time; check Steam's downloads on the Frame")
+
+
+BIG_FILE = 8 << 20  # bigger files go one by one (resumable); smaller ones are streamed in batches
+BATCH_BYTES, BATCH_FILES = 256 << 20, 2000
+
+
+FAST_LINK_MIN = 64 << 20  # below this a second connection isn't worth it
+
+
+@contextlib.contextmanager
+def transfer_link(frame: Frame, reporter: Reporter, need: int):
+    """The connection bulk uploads should use: a direct link (USB cable / the Frame's hotspot) when this PC has one,
+    else the normal connection. Agent commands keep using `frame`; both see the same files."""
+    xfer, label = (frame, "")
+    if need >= FAST_LINK_MIN:
+        try:
+            xfer, label = frame.fast_link()
+        except Exception:  # noqa: BLE001 - discovery is best effort
+            xfer, label = frame, ""
+    reporter.check("Transfer link", True, label or f"{frame.target.host} (connect this PC to the Frame's hotspot "
+                                                   "or a USB cable for faster uploads)" if need >= FAST_LINK_MIN
+                   else frame.target.host)
+    try:
+        yield xfer
+    finally:
+        if xfer is not frame:
+            xfer.close()
+
+
+def upload_files(frame: Frame, items: list[tuple[Path, str, int]], remote_root: str, reporter: Reporter,
+                 total: int, sent: int = 0) -> int:
+    """Upload (local, relative path, size) items under remote_root. Interruptible (Cancel, dropped connection) and
+    resumable: finished files are skipped next time (the agent counts files already in incoming/), a cut-off big file
+    continues from its .part. Returns bytes sent."""
+    big = [i for i in items if i[2] >= BIG_FILE]
+    small = [i for i in items if i[2] < BIG_FILE]
+    frame.mkdirs(posixpath.dirname(posixpath.join(remote_root, rel)) for _, rel, _ in big)
+    state = {"sent": sent}
+
+    def show(extra: int, label: str):
+        reporter.check_cancel()
+        reporter.progress((state["sent"] + extra) / total, label)
+    for local, rel, size in big:
+        reporter.check_cancel()
+        frame.put(local, posixpath.join(remote_root, rel),
+                  lambda done, size, rel=rel: show(done, f"{rel} {done / 2**20:.0f}/{size / 2**20:.0f} MiB"),
+                  mkdir=False)
+        state["sent"] += size
+    batch: list[tuple[Path, str]] = []
+    batch_bytes = 0
+
+    def flush():
+        nonlocal batch, batch_bytes
+        if batch:
+            base = state["sent"]
+            frame.put_tar(batch, remote_root, lambda done, rel: show(done, f"{len(batch)} files · {rel}"))
+            state["sent"] = base + batch_bytes
+        batch, batch_bytes = [], 0
+    for local, rel, size in small:
+        batch.append((local, rel))
+        batch_bytes += size
+        if batch_bytes >= BATCH_BYTES or len(batch) >= BATCH_FILES:
+            flush()
+    flush()
+    return state["sent"]
+
+
+def _tags(package: str) -> list[str]:
+    from ..artwork.steam import steam_tags
+    from ..core import library
+
+    entry = library.game(package)
+    return steam_tags(entry) if entry else []
+
+
+def upload_steam_art(frame: Frame, package: str, base: str, reporter: Reporter) -> None:
+    """The complete Steam art set (portrait, wide, hero, logo, icon — composed where the store has no such shape)."""
+    from ..artwork.steam import steam_set
+
+    reporter.stage("Artwork for the Steam library")
+    art = steam_set(package)
+    remote_art = posixpath.join(base, "incoming-artwork")
+    frame.run(f"rm -rf '{remote_art}' && mkdir -p '{remote_art}'")
+    for kind, f in art.items():
+        frame.put(f, posixpath.join(remote_art, f"{kind}{f.suffix}"), resume=False)
+    reporter.check("Steam artwork", bool(art) or None, ", ".join(sorted(art)) or "none found")
+
+
+def update_steam_art(frame: Frame, package: str, reporter: Reporter) -> dict:
+    """Replace an installed game's Steam library art with the current artwork (after the user picked new art):
+    the art set goes to the game's anchor, then the shortcut is rewritten (Steam restarts once)."""
+    from ..artwork.steam import steam_set
+
+    dep = next((d for d in frame.agent("list_installed")["games"] if d.get("package") == package), None)
+    if not dep:
+        raise RuntimeError(f"{package} isn't installed on the Frame")
+    if not dep.get("anchor"):
+        raise RuntimeError("the Frame's FramePort agent is too old; reinstall the game to update its art")
+    art = steam_set(package)
+    if not art:
+        raise RuntimeError("no artwork to send")
+    reporter.stage("Artwork for the Steam library")
+    remote = posixpath.join(dep["anchor"], "artwork")
+    frame.run(f"rm -rf '{remote}' && mkdir -p '{remote}'")
+    for kind, f in art.items():
+        frame.put(f, posixpath.join(remote, f"{kind}{f.suffix}"), resume=False)
+    reporter.check("Steam artwork", True, ", ".join(sorted(art)))
+    return add_to_steam(frame, [package], reporter)
 
 
 def add_to_steam(frame: Frame, packages: list[str], reporter: Reporter, wait: float = 120) -> dict:

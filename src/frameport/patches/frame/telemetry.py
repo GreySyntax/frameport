@@ -53,7 +53,8 @@ class MetaXrTelemetry(Patch):
     id = "frame.metaxr_telemetry"
     title = "Meta XR Audio: skip Quest telemetry class"
     description = ("Unreal builds of Meta XR Audio abort ('ClassNotFoundException com.oculus.os.AnalyticsEvent') on "
-                   "non-Quest devices. Patches that one JNI FindClass call so the library continues (NOPE Challenge).")
+                   "non-Quest devices. Patches that one JNI FindClass call so the library continues (e.g. NOPE "
+                   "Challenge).")
     order = 70
     default_on = True
 
@@ -80,19 +81,21 @@ class OculusOsStubs(Patch):
     id = "frame.oculusos"
     title = "Oculus OS telemetry class stubs"
     description = ("Adds no-op com.oculus.os.AnalyticsEvent / UnifiedTelemetryLogger classes for native code that "
-                   "looks them up through the app class loader (Nano, NOPE Challenge).")
+                   "looks them up through the app class loader (e.g. Nano, NOPE Challenge).")
     order = 71
 
     def detect(self, a):
         refs = a.extra.get("oculus_os_refs") or []
         if any(r.startswith("libmetaxraudio") for r in refs):
-            return Suggestion(True, "The Unreal Meta XR Audio build looks up com.oculus.os.AnalyticsEvent (NOPE Challenge).")
+            return Suggestion(True, "The Unreal build of Meta XR Audio looks up com.oculus.os.AnalyticsEvent and "
+                                    "aborts without it (e.g. NOPE Challenge).")
         if len(refs) >= 2:
             return Suggestion(True, f"Several Meta SDK libraries look up com.oculus.os.AnalyticsEvent ({', '.join(refs)}); "
-                                    "Nano aborted without the stub.")
+                                    "games like this abort without the stub (e.g. Nano).")
         if a.oculus_os_classes:
             return Suggestion(False, f"{', '.join(refs) or 'Native code'} references com.oculus.os.AnalyticsEvent; usually "
-                                     "harmless (Batman, LEGO run without). Enable if the game aborts with ClassNotFoundException.")
+                                     "harmless (e.g. Batman: Arkham Shadow and LEGO Bricktales run without it). Enable "
+                                     "if the game aborts with ClassNotFoundException.")
         return None
 
     def applies(self, a):

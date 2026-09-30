@@ -1,5 +1,5 @@
-"""Install targets. The pipeline only talks to this interface, so new targets (e.g. Revive for PC/Rift games) plug in
-without touching the build, recommend or UI layers."""
+"""Install targets. The pipeline only talks to this interface, so new targets plug in without touching the build,
+recommend or UI layers. Quest games go through install(); Oculus Rift (PC VR) games through install_pcvr()."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -29,8 +29,17 @@ class Target(ABC):
     @abstractmethod
     def launch_test(self, package: str, reporter: Reporter, seconds: int = 45): ...
 
+    def launch(self, package: str) -> dict:
+        """Start an installed game for playing, through the target's Steam (Steam library shortcut)."""
+        raise NotImplementedError(f"{self.label} can't launch games")
+
     @abstractmethod
     def set_settings(self, package: str, settings: dict) -> dict: ...
 
     @abstractmethod
     def uninstall(self, package: str, keep_data: bool = True) -> dict: ...
+
+    def install_pcvr(self, package: str, title: str, game_dir: Path, exe: str, recipe: Recipe, reporter: Reporter,
+                     **extra) -> dict:
+        """Install an Oculus Rift (Windows PC VR) game: game_dir + its exe (relative), launched through Revive."""
+        raise NotImplementedError(f"{self.label} can't install PC VR games")

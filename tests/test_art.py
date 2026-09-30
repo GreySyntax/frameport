@@ -1,0 +1,217 @@
+"""Artwork for Rift games (mocked network), thumbnails, Quest/Rift twin titles, uninstall."""
+import io
+import json
+import zipfile
+from pathlib import Path
+
+import pytest
+
+from frameport.artwork import fetch, sources, thumbs
+from frameport.core import library
+
+
+def png(w=800, h=1200, color=(40, 80, 160)) -> bytes:
+    from PIL import Image
+
+    b = io.BytesIO()
+    Image.new("RGB", (w, h), color).save(b, "PNG")
+    return b.getvalue()
+
+
+class Resp:
+    def __init__(self, content=b"", status=200, data=None):
+        self.content, self.status_code, self._data = content, status, data
+
+    def json(self):
+        return self._data
+
+
+@pytest.fixture
+def net(monkeypatch):
+    """Fake OculusDB / Steam / Meta art: search results by URL substring, images by URL."""
+    db = {"rift": [], "all": [], "steam": [], "images": {}, "meta": {}}
+
+    def cached_json(name, url, max_age=0, fallback=None):
+        if "oculusdb" in url:
+            term = url.split("/search/")[1].split("?")[0]
+            rows = db["rift"] if "headsets=RIFT" in url else db["all"]
+            return [r for r in rows if r.get("_term", "").lower() in term.lower().replace("%20", " ")]
+        if "storesearch" in url:
+            return {"items": db["steam"]}
+        return fallback
+
+    def http_get(url, timeout=30):
+        if "by_package" in url:
+            pkg = url.split("package=")[1]
+            if pkg in db["meta"]:
+                return Resp(data={"status": "ok", "displayName": "Meta name", "images": [
+                    {"image_type": "APP_IMG_COVER_PORTRAIT", "uri": __import__("base64").b64encode(png()).decode()}]})
+            return Resp(data={"status": "not found"})
+        if url in db["images"]:
+            return Resp(db["images"][url])
+        return Resp(b"", 404)
+    monkeypatch.setattr(sources.cache, "cached_json", cached_json)
+    monkeypatch.setattr(sources.cache, "http_get", http_get)
+    monkeypatch.setattr(fetch.cache, "http_get", http_get)
+    return db
+
+
+def test_norm_and_terms():
+    assert sources.norm("Asgard's Wrath") == sources.norm("Asgards Wrath")
+    assert sources.norm("Lone Echo II") == sources.norm("Lone Echo 2")
+    assert sources.norm("Vader Immortal: Episode III") == sources.norm("Vader Immortal - Episode III")
+    assert "Asgard" in sources.search_terms("Asgards Wrath")
+
+
+def test_quest_version_rules(net):
+    net["all"] = [{"_term": "robo recall", "appName": "Robo Recall: Unplugged", "packageName": "com.YC.RoboRecall"},
+                  {"_term": "the climb", "appName": "The Climb 2", "packageName": "com.crytek.climb2"},
+                  {"_term": "chronos", "appName": "Chrono Strike", "packageName": "com.greensky.chronostrike"}]
+    assert sources.match_quest("Robo Recall") == "com.YC.RoboRecall"
+    assert sources.match_quest("The Climb") is None  # a sequel isn't the Quest version
+    assert sources.match_quest("Chronos") is None
+
+
+def test_rift_art_chain(net):
+    # 1. OculusDB square cover, exact (apostrophe-insensitive) match found through a shorter search term
+    net["rift"] = [{"_term": "asgard", "appName": "Asgard's Wrath", "id": "111", "imageLink": "/cdn/images/111",
+                    "canonicalName": "sanzaru-asgards-wrath"}]
+    net["images"][sources.OCULUSDB + "/cdn/images/111"] = png(720, 720)
+    found = sources.fetch_rift("rift.asgards_wrath", "Asgards Wrath")
+    assert found["source"] == "oculusdb" and found["title"] == "Asgard's Wrath"
+    assert {p.stem for p in fetch.files("rift.asgards_wrath")} == {"square"}
+    # 2. the Quest version's full Meta art wins when there is one
+    net["all"] = [{"_term": "robo recall", "appName": "Robo Recall: Unplugged", "packageName": "com.YC.RoboRecall"}]
+    net["meta"]["com.YC.RoboRecall"] = True
+    found = sources.fetch_rift("rift.robo_recall", "Robo Recall")
+    assert found["source"] == "meta" and found["quest_package"] == "com.YC.RoboRecall"
+    # 3. Steam, exact names only ("Stormlander" isn't "Stormland")
+    net["steam"] = [{"id": 1, "name": "Stormlander"}, {"id": 469610, "name": "Rick and Morty: Virtual Rick-ality"}]
+    for f in sources.STEAM_FILES.values():
+        net["images"][sources.STEAM_CDN.format(id=469610, file=f)] = png()
+    assert sources.fetch_rift("rift.stormland", "Stormland").get("source") is None
+    found = sources.fetch_rift("rift.rm", "Rick and Morty - Virtual Rick-ality")
+    assert found["source"] == "steam" and {"portrait", "hero", "landscape", "logo"} <= \
+        {p.stem for p in fetch.files("rift.rm")}
+
+
+def test_exe_icon_fallback(net, tmp_path, monkeypatch):
+    exe = tmp_path / "g.exe"
+    exe.write_bytes(b"MZ")
+    monkeypatch.setattr("frameport.analysis.rift.exe_icon", lambda p: png(64, 64))
+    assert sources.fetch_rift("rift.none", "Totally Unknown Game", exe=exe)["source"] == "icon"
+
+
+def test_thumbnails_and_urls():
+    d = fetch.artwork_dir("com.x")
+    (d / "portrait.png").write_bytes(png(1000, 1500))
+    url = thumbs.url("com.x", ("portrait",), 400)
+    assert url.startswith("/artwork/com.x/t_portrait_400_") and url.endswith(".jpg")
+    from PIL import Image
+
+    t = next(d.glob("t_portrait_400_*.jpg"))
+    assert Image.open(t).size == (400, 600)
+    assert thumbs.url("com.x", ("portrait",), 400) == url  # cached
+    assert "t_portrait" not in "".join(p.name for p in fetch.files("com.x"))  # thumbnails aren't artwork kinds
+
+
+def test_twin_titles():
+    from frameport.core.titles import counterparts, display_title, twins
+
+    games = [{"package": "com.YC.RoboRecall", "title": "Robo Recall"},
+             {"package": "rift.robo_recall", "kind": "rift", "title": "Robo Recall", "quest_package": None},
+             {"package": "rift.lone_echo", "kind": "rift", "title": "Lone Echo"},
+             {"package": "com.x.vader", "title": "Vader Immortal: Episode I"},
+             {"package": "rift.vader1", "kind": "rift", "title": "Vader Immortal - Episode I",
+              "quest_package": "com.x.vader"}]
+    tw = twins(games)
+    assert tw == {"com.YC.RoboRecall", "rift.robo_recall", "com.x.vader", "rift.vader1"}
+    assert display_title(games[0], tw) == "Robo Recall (Quest)" and display_title(games[1], tw) == "Robo Recall (Rift)"
+    assert display_title(games[2], tw) == "Lone Echo"
+    assert [g["package"] for g in counterparts(games[3], games)] == ["rift.vader1"]
+
+
+def test_steam_title_uses_twin_suffix():
+    from frameport import pipeline
+
+    library.upsert_game("com.YC.RoboRecall", title="Robo Recall")
+    library.upsert_game("rift.robo_recall", kind="rift", title="Robo Recall")
+    assert pipeline.steam_title(library.game("rift.robo_recall")) == "Robo Recall (Rift)"
+
+
+# ------------------------------------------------------------------------------------------ uninstall
+def test_uninstall_backs_up_keys_and_removes_data(tmp_path, monkeypatch):
+    from frameport import uninstall
+    from frameport.core.events import Reporter
+    from frameport.core.paths import user_data_dir
+
+    data = user_data_dir()
+    ks = data / "overport-workspace" / "signatures"
+    ks.mkdir(parents=True)
+    (ks / "com.x.keystore").write_bytes(b"key")
+    (data / "ssh").mkdir()
+    (data / "ssh" / "id_ed25519").write_text("secret")
+    library.upsert_game("com.x", title="X")
+    monkeypatch.setattr(uninstall, "wsl_revive_copy", lambda: None)
+    pl = uninstall.plan()
+    assert pl.keys and pl.items[0].path == str(data)
+    out = uninstall.run(Reporter(), backup_dir=tmp_path / "backup")
+    z = zipfile.ZipFile(out["backup"])
+    assert {"overport-workspace/signatures/com.x.keystore", "ssh/id_ed25519", "README.txt"} <= set(z.namelist())
+    assert not data.exists()
+
+
+# ------------------------------------------------------------------------------------------ details / Steam art
+def test_details_from_oculusdb_and_steam(net, monkeypatch):
+    from frameport import pipeline
+    from frameport.artwork import details
+
+    net["all"] = [{"_term": "com.x.game", "appName": "Game", "packageName": "com.x.game", "id": "9",
+                   "display_long_description": "Fight <b>robots</b>.<br/>Save the day.", "genre_names": ["Action"],
+                   "publisher_name": "Pub", "website_url": "https://game.example"}]
+    net["steam"] = [{"id": 5, "name": "Game"}]
+    steam = {"5": {"success": True, "data": {"steam_appid": 5, "short_description": "Robots!",
+                                             "genres": [{"description": "Action"}, {"description": "Indie"}],
+                                             "developers": ["Dev"], "publishers": ["Pub"],
+                                             "release_date": {"date": "Apr 20, 2017"},
+                                             "screenshots": [{"path_full": "https://img/ss1.jpg"},
+                                                             {"path_full": "https://img/ss2.jpg"}]}}}
+    real = sources.cache.cached_json
+    monkeypatch.setattr(details.cache, "cached_json",
+                        lambda name, url, **k: steam if "appdetails" in url else real(name, url, **k))
+    net["images"]["https://img/ss1.jpg"] = png(1920, 1080)
+    net["images"]["https://img/ss2.jpg"] = png(1920, 1080)
+    monkeypatch.setattr(details.cache, "http_get", sources.cache.http_get)
+    library.upsert_game("com.x.game", title="Game")
+    d = pipeline.fetch_details("com.x.game")
+    assert d["description"] == "Fight robots.\nSave the day." and d["genres"] == ["Action", "Indie"]
+    assert (d["developer"], d["publisher"], d["release_date"]) == ("Dev", "Pub", "Apr 20, 2017")
+    assert d["screenshots"] == ["shot_1.jpg", "shot_2.jpg"] and sorted(d["sources"]) == ["oculusdb", "steam"]
+    assert [x[0] for x in details.store_links(d)] == ["Meta store", "Steam store", "game.example"]
+    from frameport.ui.views.library import auto_tags
+
+    assert "Indie" in auto_tags(library.game("com.x.game"))
+
+
+def test_steam_set_from_square_cover_and_screenshot():
+    from PIL import Image
+
+    from frameport.artwork import steam
+
+    d = fetch.artwork_dir("rift.sq")
+    (d / "square.webp").write_bytes(png(720, 720))
+    (d / "shot_1.jpg").write_bytes(png(1920, 1080))
+    art = steam.steam_set("rift.sq")
+    assert set(art) == {"portrait", "landscape", "hero", "icon"}
+    assert Image.open(art["portrait"]).size == (600, 900) and Image.open(art["hero"]).size == (1920, 620)
+    assert Image.open(art["landscape"]).size == (920, 430) and Image.open(art["icon"]).size == (256, 256)
+    assert steam.steam_set("rift.sq") == art  # cached
+
+
+def test_steam_tags():
+    from frameport.artwork.steam import steam_tags
+
+    rift = {"kind": "rift", "details": {"genres": ["Action", "Shooter"]}, "tags": ["Favorite"]}
+    assert steam_tags(rift) == ["PC VR on Frame", "Oculus Rift", "Action", "Shooter", "Favorite"]
+    assert steam_tags(rift, "pc")[:2] == ["Rift via Revive", "Oculus Rift"]
+    assert steam_tags({"package": "com.x"})[:2] == ["Quest on Frame", "Meta Quest"]

@@ -26,4 +26,7 @@ def test_settings_classification():
 
 def test_report_counts():
     text = render()
-    assert "23 work" in text and "Path of the Warrior" in text
+    from frameport.recommend import catalog
+
+    works = sum(1 for e in catalog.load().values() if e.status == "works")
+    assert f"{works} work" in text and "Path of the Warrior" in text

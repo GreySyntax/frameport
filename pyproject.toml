@@ -45,6 +45,7 @@ testpaths = ["tests"]
 markers = [
     "device: needs a reachable Steam Frame (FRAMEPORT_FRAME=user@host)",
     "games: needs the local game dumps (FRAMEPORT_GAMES=<downloads dir>)",
+    "native: compiles native code with the NDK from native/build.py (FRAMEPORT_NATIVE_TESTS=1; slow)",
 ]
 
 [tool.flet]

@@ -20,6 +20,7 @@ KINDS = {
     "APP_IMG_LOGO_TRANSPARENT": "logo",
     "APP_IMG_ICON": "icon",
 }
+EXTRA_KINDS = ("square",)  # OculusDB's square cover (Rift games)
 
 
 def artwork_dir(package: str) -> Path:
@@ -32,14 +33,17 @@ def _ext(data: bytes) -> str:
     return ".png" if data[:4] == b"\x89PNG" else ".jpg"
 
 
-def fetch(package: str, apk: Path | None = None, refresh: bool = False) -> tuple[Path, str | None]:
-    """Returns (folder with <kind>.<ext> files, store display name or None)."""
+def fetch(package: str, apk: Path | None = None, refresh: bool = False,
+          lookup: str | None = None) -> tuple[Path, str | None]:
+    """Returns (folder with <kind>.<ext> files, store display name or None). `lookup` is the package whose store art
+    to use (a Rift game borrows its Quest version's art); Rift ids without one have no store art."""
     out = artwork_dir(package)
     have = {p.stem for p in out.iterdir()}
     title = None
-    if refresh or not {"portrait", "landscape", "hero", "icon"} <= have:
+    lookup = lookup or (None if package.startswith("rift.") else package)
+    if lookup and (refresh or not {"portrait", "landscape", "hero", "icon"} <= have):
         try:
-            data = cache.http_get(API.format(package=package), timeout=30).json()
+            data = cache.http_get(API.format(package=lookup), timeout=30).json()
         except Exception:
             data = {}
         if data.get("status") == "ok":
@@ -81,4 +85,4 @@ def apk_icon(apk: Path) -> bytes | None:
 
 
 def files(package: str) -> list[Path]:
-    return sorted(p for p in artwork_dir(package).iterdir() if p.stem in KINDS.values())
+    return sorted(p for p in artwork_dir(package).iterdir() if p.stem in KINDS.values() or p.stem in EXTRA_KINDS)

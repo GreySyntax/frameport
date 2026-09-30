@@ -36,6 +36,47 @@
   VK_INSTANCE_LAYERS (set `VK_INSTANCE_LAYERS=""` through `device.lepton_env` to test without them).
 - GL ES: Zink (Mesa GL on Vulkan). Strict GLSL (see PLAYBOOK) and occasional `DEVICE LOST` with MSAA render-to-texture.
 
+## Proton / Windows games (surveyed 2026-09-29; running a Rift game under it not yet verified)
+- Steam on the Frame registers ARM64 compat tools from the app **"Steam Frame ARM64 Compat List"** (appinfo
+  `extended.compat_tools`, found dynamically by the agent): `proton_11-arm64` (4628740, needs
+  `steamlinuxruntime_steamrt4-arm64` 4185400), `proton-experimental-arm64` (4427310), `fex` (3127680, FEX-Emu for
+  Linux x86 binaries; `/usr/bin/FEXBash` shows the chain steam-launch-wrapper → reaper → fex-compat-tool →
+  SteamLinuxRuntime_4). None are installed by default.
+- `steam -ifrunning steam://install/<appid>` only opens a confirmation dialog in the headset. The agent's unattended
+  mode writes an appmanifest stub (StateFlags 1026, installdir from appinfo) and restarts Steam, which then downloads it.
+- The command Steam runs is built from each tool's `toolmanifest.vdf` (`commandline`, `require_tool_appid`):
+  `<SLR4-arm64>/_v2-entry-point --verb=waitforexitandrun -- <Proton>/proton waitforexitandrun <exe>`.
+- Proton sets up VR (vrclient/wineopenxr registry) only when `SteamGameId` is set (steam_helper `setup_vr_registry`).
+- Host OpenXR runtime for Linux processes: `~/.config/openxr/1/active_runtime.json` → `/opt/steamvr/steamxr_linuxarm64.json`
+  ("SteamVR", `bin/linuxarm64/vrclient.so`); implicit API layer `XrApiLayer_VALVE_fdm_injection`.
+- The "Steam" VR games in the Frame's library (Pistol Whip, Job Simulator, SUPERHOT VR) are APKs run by Lepton, not
+  Proton.
+- Verified on the device (agent `proton_selftest`, `xr_layer_test`): FramePort installs Proton 11 (ARM64) + SLR4 by
+  itself (~90 s); Proton runs x86 `cmd.exe` in ~3 s; with `SteamGameId` set it registers wineopenxr
+  (`HKLM\Software\Khronos\OpenXR\1` → `C:\openxr\wineopenxr64.json`). Headless launches need the display session (`DISPLAY=:0`,
+  `GAMESCOPE_WAYLAND_DISPLAY=gamescope-0`), else Wine can't create windows and the process hangs.
+- The Linux SteamVR runtime (Proton's loader `files/lib/aarch64-linux-gnu/libopenxr_loader.so.1`) **does** support
+  `XR_KHR_convert_timespec_time` (unlike the Android runtime Quest games see), so wineopenxr's
+  `XR_KHR_win32_convert_performance_counter_time` works.
+- **The Linux SteamVR runtime only accepts OpenXR 1.0 apps**: `xrCreateInstance` with `apiVersion` 1.1 returns
+  `XR_ERROR_API_VERSION_UNSUPPORTED` (-4), with any extensions; 1.0 works (checked 2026-09-29, SteamOS 0.4.2). Proton
+  11's VR helper (`proton_vrhelper`) requests 1.1, so without help VR never starts for Proton games: the log shows
+  `LoaderInstance::CreateInstance chained CreateInstance call failed`, games run as a flat window (Rick and Morty) and
+  Revive's OVRPlugin reports `ovr_Initialize failed: Unable to load LibOVRRT DLL` (Lies Beneath, then a crash).
+  FramePort's OpenXR layer (`native/xrlayer`, patch `pcvr.xr_timefix`, default on for PC VR games) retries such a
+  create as 1.0; enabled by `XR_ENABLE_API_LAYERS` from launch.sh. Proton's Steam Linux Runtime container drops
+  `XR_API_LAYER_PATH` (it keeps `XR_ENABLE_API_LAYERS`), so the agent registers the layer as an explicit layer in
+  `~/.local/share/openxr/1/api_layers/explicit.d/` (home is shared into the container) with an absolute library path.
+- Oculus Store builds that delay-load `LibOVRPlatform64_1.dll` (Platform SDK, e.g. Lies Beneath) crash with
+  `0xc06d007e` (delay-load module not found): that DLL comes with the Oculus app, which the Frame doesn't have. (No Oculus runtime DLLs or
+  registry keys are needed: Revive's LibOVRRT hook works once OpenXR does.)
+- Unreal's Oculus plugin (and LibOVR's `ovr_Detect`) first checks for the Windows event `OculusHMDConnected` (created
+  by the Oculus service on a PC) and silently skips VR without it. Revive hooks `OpenEventW` for that — Lies Beneath
+  got as far as OVRPlugin, so the hook evidently works there — but it depends on Detours patching Wine's kernelbase,
+  which is ARM64EC code under Proton arm64. Patch `pcvr.oculus_unreal` (default for Unreal Rift games) makes it
+  independent of that: launch.sh starts the injector through `helpers/fp_oculushmd.exe` (`native/oculushmd`), which
+  creates the real event and keeps it until the game (tracked by a job object) has exited.
+
 ## Steam integration
 - Non-Steam shortcut: binary `userdata/<id>/config/shortcuts.vdf`; appid = crc32(exe+title) | 0x80000000;
   artwork in `config/grid/<appid>p.*` (portrait), `<appid>.*` (landscape), `<appid>_hero.*`, `<appid>_logo.*`.

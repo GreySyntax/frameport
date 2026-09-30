@@ -38,6 +38,14 @@ class CatalogEntry:
     device_files: dict = field(default_factory=dict)
     lepton_env: dict = field(default_factory=dict)
     pcvr_alternative: str | None = None
+    # Rift (PC VR) recipes: package is "rift.<slug>"; kind "rift"
+    kind: str = "quest"
+    quest_package: str | None = None  # the Quest version of the same game (links the two in the UI)
+    pcvr: list[str] = field(default_factory=list)  # pcvr.* patches to enable
+    pcvr_remove: list[str] = field(default_factory=list)
+    proton_env: dict = field(default_factory=dict)
+    proton_tool: str = ""
+    as_is: bool = False  # Rift: the dump runs unchanged (e.g. a SteamVR build: no Revive)
     verified: dict = field(default_factory=dict)
     source_hint: str = ""
     origin: str = "bundled"
@@ -51,7 +59,7 @@ class CatalogEntry:
         out = {}
         for k, f in self.__dataclass_fields__.items():
             v = getattr(self, k)
-            if k == "origin" or v in (None, "", [], {}, False):
+            if k == "origin" or v in (None, "", [], {}, False) or (k == "kind" and v == "quest"):
                 continue
             out[k] = v
         return out

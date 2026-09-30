@@ -69,6 +69,7 @@ class Recipe:
     status: str = "unknown"  # works | issues | unsupported | unknown
     notes: str = ""
     source: str = "heuristics"  # catalog | heuristics | user
+    as_is: bool = False  # install the game unchanged (already patched): no overport / Frame fixes / Revive
     reasons: dict[str, str] = field(default_factory=dict)  # patch id -> why it was suggested
 
     def enabled(self, patch_id: str) -> bool:

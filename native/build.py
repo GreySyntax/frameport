@@ -5,10 +5,12 @@ Everything is fetched on demand into native/.cache (git-ignored):
   - Android NDK r27c (27.2.12479018) from Google's repository (checksummed via repository2-3.xml)
   - OpenXR headers at the commits each component was written against (KhronosGroup/OpenXR-SDK)
   - Temurin JDK 21 (javac) and Android build-tools (d8) for the Java stub classes
-Then builds: FrameBridge adapter (arm64 + arm32), VrApi bridge, platform compat, GL shim, oculusos stub dex, and
+Then builds: FrameBridge adapter (arm64 + arm32), VrApi bridge, platform compat, GL shim, oculusos stub dex, the
+timefix OpenXR layer for Proton games (linux-arm64, glibc; the NDK's clang builds it freestanding), the
+OculusHMDConnected helper for Rift games under Proton (win-x64 PE; the NDK's clang + lld-link, no Windows SDK), and
 rewrites artifacts/SHA256SUMS. Run `frameport parity` afterwards to see which games change.
 
-    python native/build.py [--only adapter,bridge,compat,glshim,dex] [--ndk PATH]
+    python native/build.py [--only adapter,bridge,compat,glshim,dex,xrlayer,oculushmd] [--ndk PATH]
 """
 from __future__ import annotations
 
@@ -34,8 +36,9 @@ REPO = "https://dl.google.com/android/repository/"
 OPENXR = {  # component -> OpenXR-SDK commit its headers came from
     "adapter": "f2448a8797c85814aa892efc1ab8707900fbcc78",
     "bridge": "7f9285bce1ce8b69bb75554bf788666579d0c35e",
+    "xrlayer": "f2448a8797c85814aa892efc1ab8707900fbcc78",
 }
-OPENXR_HEADERS = ("openxr.h", "openxr_platform.h", "openxr_platform_defines.h")
+OPENXR_HEADERS = ("openxr.h", "openxr_platform.h", "openxr_platform_defines.h", "openxr_loader_negotiation.h")
 
 
 def log(msg):
@@ -81,11 +84,27 @@ def ndk(explicit: str | None) -> Path:
         with zipfile.ZipFile(z) as zf:
             zf.extractall(CACHE / "ndk-extract")
         top = next((CACHE / "ndk-extract").iterdir())
-        top.rename(dest)
+        shutil.move(str(top), str(dest))  # (a plain rename can fail on NTFS while the folder is being scanned)
         shutil.rmtree(CACHE / "ndk-extract", ignore_errors=True)
+        restore_symlinks(z, dest)
         for p in (dest / "toolchains/llvm/prebuilt").rglob("bin/*"):
             p.chmod(0o755)
     return dest
+
+
+def restore_symlinks(archive: Path, dest: Path) -> None:
+    """zipfile writes symlinks (clang -> clang-18, ...) as small text files; replace them with copies of their
+    targets (copies also work on filesystems without symlinks)."""
+    with zipfile.ZipFile(archive) as zf:
+        links = [i for i in zf.infolist() if (i.external_attr >> 16) & 0o170000 == 0o120000]
+        for _ in range(3):  # links to links
+            for info in links:
+                rel = Path(*Path(info.filename).parts[1:])
+                path = dest / rel
+                target = (path.parent / zf.read(info).decode()).resolve()
+                if target.is_file() and (not path.exists() or path.stat().st_size < 256):
+                    path.unlink(missing_ok=True)
+                    shutil.copy2(target, path)
 
 
 def clang_dir(ndk_root: Path) -> Path:
@@ -122,6 +141,44 @@ def build_adapter(tc: Path):
          "-ldl", "-llog", "-o", ART / "arm64-v8a/libopenxr_loader_generic.so"], cwd=src)
     run([exe(tc, "armv7a-linux-androideabi29-clang"), *common, "frame_adapter.c", "forwarders_arm32.S", "-ldl", "-llog",
          "-o", ART / "armeabi-v7a/libopenxr_loader_generic.so"], cwd=src)
+
+
+def build_xrlayer(tc: Path):
+    """OpenXR API layer for Linux aarch64 (glibc), loaded by Proton's wineopenxr host loader on the Frame. Freestanding:
+    no libc headers or link-time libs; clock_gettime binds to the process's libc at load time."""
+    src = HERE / "xrlayer"
+    inc = openxr_include("xrlayer")
+    out = ART / "linux-arm64"
+    out.mkdir(parents=True, exist_ok=True)
+    run([tc / "bin/clang", "--target=aarch64-linux-gnu", "-ffreestanding", "-nostdlibinc", "-fno-stack-protector",
+         "-fvisibility=hidden", "-fPIC", "-O2", "-Wall", "-Wextra", "-Werror", "-I", src / "include", "-I", inc,
+         f"-ffile-prefix-map={HERE}=native", "-shared", "-nostdlib", "-fuse-ld=lld", "-Wl,--build-id=none",
+         "-Wl,-z,max-page-size=65536", "-Wl,--hash-style=both", "-Wl,-soname,libxr_frameport_timefix.so",
+         "timefix_layer.c", "-o", out / "libxr_frameport_timefix.so"], cwd=src)
+    shutil.copy(src / "XR_APILAYER_FRAMEPORT_timefix.json", out / "XR_APILAYER_FRAMEPORT_timefix.json")
+
+
+OCULUSHMD_IMPORTS = ("CreateEventW", "CreateJobObjectW", "AssignProcessToJobObject", "QueryInformationJobObject",
+                     "CreateProcessW", "ResumeThread", "WaitForSingleObject", "GetExitCodeProcess", "CloseHandle",
+                     "Sleep", "GetCommandLineW", "GetLastError", "GetStdHandle", "WriteFile", "ExitProcess")
+
+
+def build_oculushmd(tc: Path, out: Path | None = None, defines=()):
+    """fp_oculushmd.exe (Windows x64, run by Proton on the Frame): provides the OculusHMDConnected event for Unreal
+    Rift games. Freestanding: no CRT; the kernel32 import library is generated from a .def by llvm-dlltool."""
+    src = HERE / "oculushmd"
+    out = out or ART / "win-x64"
+    out.mkdir(parents=True, exist_ok=True)
+    work = CACHE / "oculushmd"
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "kernel32.def").write_text("LIBRARY kernel32.dll\nEXPORTS\n" + "".join(f"    {n}\n" for n in OCULUSHMD_IMPORTS))
+    run([tc / "bin/llvm-dlltool", "-m", "i386:x86-64", "-d", work / "kernel32.def", "-l", work / "kernel32.lib"])
+    run([tc / "bin/clang", "--target=x86_64-pc-windows-msvc", "-ffreestanding", "-nostdlibinc", "-fno-stack-protector",
+         "-fno-builtin", "-O2", "-Wall", "-Wextra", "-Werror", f"-ffile-prefix-map={HERE}=native", *defines, "-c",
+         "fp_oculushmd.c", "-o", work / "fp_oculushmd.obj"], cwd=src)
+    run([tc / "bin/lld-link", "/nologo", "/Brepro", "/nodefaultlib", "/entry:start", "/subsystem:console",
+         "/dynamicbase", "/highentropyva", "/nxcompat", work / "fp_oculushmd.obj", work / "kernel32.lib",
+         f"/out:{out / 'fp_oculushmd.exe'}"])
 
 
 def build_bridge(tc: Path):
@@ -197,7 +254,7 @@ def write_sums():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", default="adapter,bridge,compat,glshim,dex")
+    ap.add_argument("--only", default="adapter,bridge,compat,glshim,dex,xrlayer,oculushmd")
     ap.add_argument("--ndk")
     args = ap.parse_args()
     parts = set(args.only.split(","))
@@ -205,8 +262,9 @@ def main():
         (ART / d).mkdir(parents=True, exist_ok=True)
     tc = clang_dir(ndk(args.ndk)) if parts - {"dex"} else None
     steps = {"adapter": lambda: build_adapter(tc), "bridge": lambda: build_bridge(tc), "compat": lambda: build_compat(tc),
-             "glshim": lambda: build_glshim(tc), "dex": build_dex}
-    for name in ("adapter", "bridge", "compat", "glshim", "dex"):
+             "glshim": lambda: build_glshim(tc), "dex": build_dex, "xrlayer": lambda: build_xrlayer(tc),
+             "oculushmd": lambda: build_oculushmd(tc)}
+    for name in ("adapter", "bridge", "compat", "glshim", "dex", "xrlayer", "oculushmd"):
         if name in parts:
             log(f"build {name}")
             steps[name]()

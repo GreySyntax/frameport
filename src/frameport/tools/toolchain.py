@@ -34,6 +34,7 @@ class ToolStatus:
     path: Path | None
     latest: str | None = None
     detail: str = ""
+    optional: bool = False  # only needed for some games (Revive: Rift/PC VR games)
 
 
 def _os_arch() -> tuple[str, str]:
@@ -200,7 +201,7 @@ def install_apksigner(progress=None) -> ToolStatus:
 
 
 # ------------------------------------------------------------------------------------------ status / all
-def status(check_latest: bool = False) -> list[ToolStatus]:
+def status(check_latest: bool = False, include_optional: bool = True) -> list[ToolStatus]:
     st = _state()
     out = []
     for name, getter in (("java", java_path), ("overport", overport_jar), ("apksigner", apksigner_jar)):
@@ -217,17 +218,55 @@ def status(check_latest: bool = False) -> list[ToolStatus]:
             except Exception:
                 latest = None
         out.append(ToolStatus(name, bool(path and path.exists()), version, path, latest))
+    if not include_optional:
+        return out
+    from . import revive
+
+    rdir = revive.revive_dir()
+    latest = None
+    if check_latest:
+        try:
+            latest = (revive.latest() or (None,))[0]
+        except Exception:
+            latest = None
+    where = {"system": "your installed Revive", "env": "FRAMEPORT_REVIVE_DIR", "managed": "FramePort's copy"}.get(
+        revive.source() or "", "")
+    out.append(ToolStatus("revive", rdir is not None, revive.installed_version(), rdir, latest,
+                          "Revive (LibreVR): runs Oculus Rift games on OpenXR/SteamVR"
+                          + (f" · using {where}" if where else ""), optional=True))
     return out
 
 
-def ensure_all(progress=None, update: bool = False) -> list[ToolStatus]:
-    """Install whatever is missing (or outdated when update=True)."""
+def revive_is_users() -> bool:
+    from . import revive
+
+    return revive.source() in ("env", "system")
+
+
+def install_revive(progress=None) -> ToolStatus:
+    from . import revive
+
+    path = revive.install(progress)
+    return ToolStatus("revive", True, revive.installed_version(), path, optional=True)
+
+
+def ensure_all(progress=None, update: bool = False, optional: bool = False) -> list[ToolStatus]:
+    """Install whatever is missing (or outdated when update=True). Optional tools only with optional=True or when
+    already installed (then they are updated like the others)."""
     results = []
     for s in status(check_latest=update):
-        if s.installed and not (update and s.latest and s.version and s.latest != s.version):
+        if s.optional and not optional and not s.installed:
             results.append(s)
             continue
-        installer = {"java": install_java, "overport": install_overport, "apksigner": install_apksigner}[s.name]
+        if s.name == "revive" and s.installed and revive_is_users():
+            results.append(s)  # never replace a Revive the user installed themselves
+            continue
+        if s.installed and not (update and s.latest and s.version and s.latest != s.version
+                                and s.version != "external"):
+            results.append(s)
+            continue
+        installer = {"java": install_java, "overport": install_overport, "apksigner": install_apksigner,
+                     "revive": install_revive}[s.name]
         results.append(installer(progress))
     return results
 

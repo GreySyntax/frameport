@@ -50,7 +50,7 @@ class UnityNoMsaa(Patch):
     id = "frame.unity_no_msaa"
     title = "Unity: disable MSAA"
     description = ("Sets Unity QualitySettings antiAliasing to 0. Unity's multisampled render-to-texture path can hang "
-                   "the Frame's GL driver ('zink: DEVICE LOST', Sniper Elite VR). Try it for GLES Unity games that "
+                   "the Frame's GL driver ('zink: DEVICE LOST', e.g. Sniper Elite VR). Try it for GLES Unity games that "
                    "freeze or crash the GPU.")
     order = 40
 
@@ -59,7 +59,7 @@ class UnityNoMsaa(Patch):
             return None
         if a.xr == "VrApi":
             return Suggestion(True, f"Legacy VrApi Unity game on GLES with MSAA ({a.unity_msaa_levels} quality levels): "
-                                    "multisampled render-to-texture hangs the Frame's GL driver (Sniper Elite VR).")
+                                    "multisampled render-to-texture hangs the Frame's GL driver (e.g. Sniper Elite VR).")
         return Suggestion(False, f"GLES Unity game with MSAA on ({a.unity_msaa_levels} quality levels); enable if it "
                                  "hangs the GPU ('zink: DEVICE LOST').")
 

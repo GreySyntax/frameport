@@ -106,7 +106,94 @@ signatures:
     severity: warning
     diagnosis: The game created folders it can't write (saves break). The FramePort launcher repairs permissions every 2 s.
     suggest: []
+  # ---- PC VR (Oculus Rift games under Revive; on the Frame under Proton). kind: pcvr = only for those logs
+  - id: proton-missing-runtime
+    kind: pcvr
+    pattern: 'needs Steam app \d+ \(runtime\)|_v2-entry-point: (No such file|not found)'
+    severity: fatal
+    diagnosis: The Steam Linux Runtime that Proton needs isn't installed on the Frame.
+    suggest: []
+  - id: revive-inject-failed
+    kind: pcvr
+    pattern: 'Failed to create process'
+    severity: fatal
+    diagnosis: Revive's injector could not start the game (wrong exe path, or a 32-bit/64-bit mismatch).
+    suggest: []
+  - id: oculus-hmd-event
+    kind: pcvr
+    pattern: 'FramePort oculushmd: could not (create the OculusHMDConnected event|start the command)'
+    severity: error
+    diagnosis: FramePort's Oculus detection helper couldn't provide the OculusHMDConnected event (or couldn't start the game). Unreal's Oculus plugin then skips VR silently and the game runs as a flat window.
+    suggest: [pcvr.oculus_unreal, pcvr.proton_log]
+  - id: openxr-no-runtime
+    kind: pcvr
+    # (not the loader's 'xrCreateInstance failed': Proton's own OpenXR probe fails once and retries on the Frame)
+    pattern: 'XR_ERROR_RUNTIME_(UNAVAILABLE|FAILURE)|No OpenXR runtime|OpenXR runtime (is )?not (found|available)|failed to (create|initialize) (the )?OpenXR'
+    severity: fatal
+    diagnosis: No OpenXR runtime reached the game. On a PC start SteamVR (or set it as the OpenXR runtime); on the Frame Proton couldn't bridge to the Frame runtime.
+    suggest: []
+  - id: openxr-missing-ext
+    kind: pcvr
+    pattern: 'XR_ERROR_EXTENSION_NOT_PRESENT|XR_KHR_D3D11_enable.*(not|unsupported)'
+    severity: fatal
+    diagnosis: The OpenXR runtime lacks an extension Revive requires (XR_KHR_D3D11_enable / win32 time conversion).
+    suggest: [pcvr.xr_timefix, pcvr.revive_openvr]
+  - id: openxr-api-version
+    kind: pcvr
+    pattern: 'LoaderInstance::CreateInstance chained CreateInstance call failed|XR_ERROR_API_VERSION_UNSUPPORTED|Unable to load LibOVRRT DLL'
+    severity: fatal
+    diagnosis: Proton's VR setup couldn't create an OpenXR instance (the Frame's SteamVR runtime only accepts OpenXR 1.0 apps; Proton asks for 1.1), so the game got no VR — a flat window, or Revive fails with "Unable to load LibOVRRT DLL".
+    suggest: [pcvr.xr_timefix]
+  - id: openxr-time-conversion
+    kind: pcvr
+    pattern: 'xrConvert(TimespecTimeToTime|TimeToTimespecTime)KHR failed|XR_KHR_convert_timespec_time not available'
+    severity: error
+    diagnosis: The OpenXR runtime refused time conversion, which Proton needs for Windows games' performance-counter times.
+    suggest: [pcvr.xr_timefix]
+  - id: delayload-missing
+    kind: pcvr
+    pattern: '[Ee]xception:? 0xc06d007e|code=c06d007e'
+    severity: fatal
+    diagnosis: A DLL the game loads on demand is missing (Windows delay-load error). For Oculus Store games this is usually LibOVRPlatform64_1.dll, the Oculus Platform SDK that the Oculus app installs for the licence check; FramePort doesn't replace it, so such games need the Oculus app (PC mode).
+    suggest: []
+  - id: oculus-entitlement
+    kind: pcvr
+    pattern: '(?i)entitlement (check )?fail|ovr_PlatformInitialize.*(fail|error)|ovrPlatformInitialize_(NotEntitled|Uninitialized|PreLoaded|FileInvalid|SignatureInvalid|UnableToVerify)'
+    severity: fatal
+    diagnosis: The Oculus Platform SDK entitlement check failed. The game needs the Oculus app running with a license you own (PC mode only).
+    suggest: []
+  - id: vcruntime-missing
+    kind: pcvr
+    pattern: '(?i)(MSVCP|VCRUNTIME)\d+[_\d]*\.dll.*(not found|missing)'
+    severity: error
+    diagnosis: The game needs a Microsoft Visual C++ runtime. Install the vc_redist that ships with the game (or winetricks vcrun2019 in the prefix).
+    suggest: []
+  - id: dxvk-device-lost
+    kind: pcvr
+    pattern: 'DXVK: .*(DEVICE_LOST|Device lost)|VK_ERROR_DEVICE_LOST'
+    severity: fatal
+    diagnosis: The GPU driver lost the device while running the game (D3D through DXVK on freedreno).
+    suggest: [pcvr.proton_log]
+  - id: unreal-crash
+    kind: pcvr
+    pattern: 'CrashReportClient|UE4CC-Windows|UECC-Windows|Fatal error!|Unhandled Exception: EXCEPTION'
+    severity: fatal
+    diagnosis: The game crashed (Unreal's crash reporter started). See the game log and crash summary in the log. Common causes are that no VR runtime reached the game (Revive off) or a GPU or driver problem under Proton.
+    suggest: [pcvr.revive, pcvr.proton_log, pcvr.no_crash_reporter]
+  - id: wine-crash
+    kind: pcvr
+    pattern: 'Unhandled exception: page fault|wine: Unhandled|Backtrace:'
+    severity: error
+    diagnosis: The game crashed under Wine/Proton (set the Proton debug log and check steam-<appid>.log).
+    suggest: [pcvr.proton_log]
+
 milestones:  # progress markers, in order; the furthest one reached is reported
+  - {id: pcvr-launch, kind: pcvr, pattern: 'FramePort: launching|Launched injector with', label: Launcher started}
+  - {id: pcvr-oculus-hmd, kind: pcvr, pattern: 'FramePort oculushmd: OculusHMDConnected event ready', label: Oculus headset event provided}
+  - {id: pcvr-inject, kind: pcvr, pattern: 'Succesfully injected|Successfully injected', label: Revive injected into the game}
+  - {id: pcvr-window, kind: pcvr, pattern: 'Executable name: (?!steam\.exe|CrashReportClient)\S+\.exe|Creating Gamescope surface', label: Game window created}
+  - {id: pcvr-openxr, kind: pcvr, pattern: 'wineopenxr: .*[Ss]ession|LibReviveXR|Revive.*OpenXR|xrCreateSession', label: OpenXR reached}
+  - {id: pcvr-session, kind: pcvr, pattern: 'xrCreateSession|XR_SESSION_STATE_(READY|SYNCHRONIZED)', label: OpenXR session created}
   - {id: container, pattern: 'Boot complete!', label: Lepton container started}
   - {id: process, pattern: 'Start proc \d+:', label: App process started}
   - {id: adapter, pattern: 'FrameBridge: scale=', label: FrameBridge adapter loaded}

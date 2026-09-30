@@ -1,15 +1,15 @@
 # Architecture
 
 ```
-            ┌────────────── UI (Flet, ui/app.py) ─────────────┐   ┌── CLI (cli.py) ──┐
+            ┌──────── UI (Flet, ui/: app shell + views/) ─────┐   ┌── CLI (cli.py) ──┐
             └───────────────────────┬─────────────────────────┘   └────────┬─────────┘
                                     ▼                                      ▼
                           pipeline.py  (add → suggest → build → install → test)
       ┌──────────────┬──────────────┼───────────────┬───────────────┬──────────────┐
   sources/      analysis/      recommend/        build.py        targets/       validate/
   quest_dump    detect, elf    catalog, engine   overport →      base.Target    static, device,
-                stubgen        (+ catalog/*.yaml) patches(apk) →  frame_lepton   triage (+triage.yaml)
-                                                  apk/sign        revive (todo)
+  rift_dump     stubgen, rift  (+ catalog/*.yaml) patches(apk) →  frame_lepton   triage (+triage.yaml)
+                                                  apk/sign        pc_revive
                                     │                │                 │
                               patches/ registry   tools/ toolchain   frame/ ssh, discovery, pairing
                               overport, frame/*,  (JRE, overport,    install/installer ──► agent (on Frame)
@@ -39,7 +39,22 @@
   `tests/test_heuristics.py`.
 - **New game recipe**: `catalog/games/<package>.yaml` (or "Save as known-good" in the GUI, which writes to the user
   catalog). Publish recipes by serving a folder with `index.json` and pointing `FRAMEPORT_CATALOG_URL` at it.
-- **New target** (Revive/PC VR): implement `targets/base.Target`; the pipeline and UI only use that interface.
+- **New target**: implement `targets/base.Target`; the pipeline and UI only use that interface.
+
+## Oculus Rift (PC VR) games
+`sources/rift_dump` finds Windows game folders; `analysis/rift` (own PE reader) detects exe, bitness, engine, LibOVR vs
+OpenXR, D3D version and Oculus Platform SDK use; ids are `rift.<slug>`. Their only patches are the `pcvr` category
+(`patches/pcvr.py`: Revive, OpenVR backend, crash reporter, Oculus detection, OpenXR layer, Proton
+log/version/env); `base.for_game` keeps Quest and PC VR patches
+apart. "Build" = `pipeline.prepare_rift` (checks + Revive). Revive is a portable tool (`tools/revive.py` unpacks
+`ReviveInstaller.exe` in pure Python: NSIS header + deflate blocks). Targets:
+- `targets/pc_revive.PcReviveTarget`: Windows/WSL (`core/winhost.py`), non-Steam shortcut running
+  `ReviveInjector.exe /openxr <exe>` via the agent's VDF code, grid art, local records in `<user data>/pc/`.
+- `FrameLeptonTarget.install_pcvr` → `installer.install_pcvr` → agent `prepare_pcvr`/`finalize_pcvr`: upload
+  `game/` + `revive/` (+ `xrlayer/` for `pcvr.xr_timefix`, `helpers/` for `pcvr.oculus_unreal`; size-manifest dedupe,
+  stale files removed), `launch.sh` running the ARM64 Proton chain (built from toolmanifest.vdf; with
+  `pcvr.oculus_unreal` the injector runs through `helpers/fp_oculushmd.exe`, which provides Unreal's
+  `OculusHMDConnected` event); `proton_status`/`install_proton` manage Proton from Valve's ARM64 compat list.
 - **Native binaries** (`artifacts/`): edit `native/…`, run `native/build.sh`, commit the new artifacts + SHA256SUMS,
   run `frameport parity` to see which games change.
 

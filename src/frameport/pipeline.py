@@ -2,9 +2,14 @@
 
     add (scan/import) → analyze → suggest recipe → [user confirms] → build → static checks
         → install on target → add to library → launch test (+ triage suggestions)
+
+Quest games (APK + OBB) are rebuilt with overport and installed on the Frame (Lepton). Oculus Rift games (Windows PC VR
+folders, ids "rift.<slug>") aren't modified: "build" checks them and fetches Revive, and they install either on this
+PC (Revive + local Steam) or on the Frame (Proton + Revive).
 """
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from . import build as builder
@@ -15,20 +20,234 @@ from .core.events import Reporter
 from .core.models import Recipe, SourceGame
 from .core.paths import output_dir
 from .recommend import engine
-from .sources import quest_dump
+from .sources import quest_dump, rift_dump
 from .targets.base import Target
 
 
-def add_path(path: Path, reporter: Reporter | None = None) -> list[dict]:
-    """Scan a file/folder, analyze every game found and store it with a suggested recipe."""
+def add_path(path: Path, reporter: Reporter | None = None, on_added=None, force_rift: bool = False,
+             art: bool = False) -> list[dict]:
+    """Scan a file/folder (recursively), analyze every game found (Quest APKs and Rift game folders) and store it with
+    a suggested recipe. on_added(entry) is called as each game lands in the library (the GUI streams cards in).
+    force_rift: `path` is one Rift game folder (added even if no VR runtime is detected). art: fetch artwork too."""
+    path = Path(path)
     added = []
-    for src in quest_dump.scan(Path(path)):
-        try:
-            added.append(add_game(src, reporter))
-        except Exception as exc:  # keep scanning; report the broken one
+
+    def done(entry):
+        added.append(entry)
+        if on_added:
+            on_added(entry)
+    if not force_rift:
+        for src in quest_dump.scan(path):
             if reporter:
-                reporter.log(f"skipped {src.apk.name}: {exc}")
+                reporter.check_cancel()
+            try:
+                entry = add_game(src, reporter)
+                if art:
+                    try:
+                        artwork.fetch(entry["package"], Path(entry["apk"]))
+                    except Exception:  # noqa: BLE001
+                        pass
+                    if not entry.get("details"):
+                        fetch_details(entry["package"], reporter)
+                        entry = library.game(entry["package"])
+                done(entry)
+            except Exception as exc:  # keep scanning; report the broken one
+                if reporter:
+                    reporter.log(f"skipped {src.apk.name}: {exc}")
+    if path.is_dir():
+        trees: dict = {}
+        if reporter:
+            reporter.stage("Looking for PC VR games")
+        folders = [path] if force_rift else rift_dump.scan(path, trees=trees)
+        for i, folder in enumerate(folders):
+            if reporter:
+                reporter.check_cancel()
+                reporter.progress(i / max(len(folders), 1), f"{i + 1} / {len(folders)} · {folder.name}")
+            try:
+                entry = add_rift_game(folder, reporter, tree=trees.get(folder), force=force_rift, art=art)
+                if entry and art and not entry.get("details"):
+                    fetch_details(entry["package"], reporter)
+                    entry = library.game(entry["package"])
+                if entry:
+                    done(entry)
+            except Exception as exc:
+                if reporter:
+                    reporter.log(f"skipped {folder.name}: {exc}")
     return added
+
+
+def _norm_title(t: str) -> str:
+    import re
+
+    t = re.sub(r"\b(vr|quest( edition)?|rift|oculus)\b|[^a-z0-9]+", " ", (t or "").lower())
+    return " ".join(t.split())
+
+
+def quest_counterpart(title: str) -> str | None:
+    """Package of the Quest version of a Rift game (catalog or library, by title) for linking and store artwork."""
+    from .recommend import catalog
+
+    want = _norm_title(title)
+    if not want:
+        return None
+    for e in catalog.load().values():
+        if e.kind != "rift" and _norm_title(e.title) == want:
+            return e.package
+    for g in library.games():
+        if g.get("kind") != "rift" and _norm_title(g.get("title") or "") == want:
+            return g["package"]
+    return None
+
+
+def _existing_rift(folder: Path) -> dict | None:
+    """The library entry for this game folder: same folder, or the same game scanned one level up/down (a repack's
+    wrapper folder vs. the game folder inside it)."""
+    rifts = [g for g in library.games() if g.get("kind") == "rift" and g.get("game_dir")]
+    exact = next((g for g in rifts if g["game_dir"] == str(folder)), None)
+    if exact:
+        return exact
+    for g in rifts:
+        other = Path(g["game_dir"])
+        if other in folder.parents or folder in other.parents:
+            return g
+    return None
+
+
+def add_rift_game(folder: Path, reporter: Reporter | None = None, tree=None, exe: str | None = None,
+                  force: bool = False, art: bool = False) -> dict | None:
+    """Analyze one Rift game folder and store it. Unchanged folders (same program, size, date) are not analyzed again;
+    the user's exe choice, recipe and tags survive rescans. Returns None for folders without a VR runtime (unless
+    force)."""
+    from .analysis import rift
+    from .recommend import catalog
+
+    folder = Path(folder)
+    old = _existing_rift(folder)
+    old_extra = ((old or {}).get("analysis") or {}).get("extra") or {}
+    forced = exe is not None  # set_exe: always analyze with the user's choice
+    exe = exe or (old.get("exe") if old and old.get("exe_confirmed") else None)
+    if old and not forced and old_extra.get("fingerprint") and \
+            old_extra["fingerprint"] == rift.fingerprint(folder, old.get("exe") or ""):
+        if reporter:
+            reporter.log(f"{old.get('title')}: unchanged")
+        if art and not _has_art(old["package"]):
+            _rift_art(old, reporter)
+        return library.game(old["package"])
+    if reporter:
+        reporter.log(f"analyzing {folder.name}")
+    a = rift.analyze(folder, exe=exe, tree=tree)
+    if not a.extra.get("vr_found") and not force and not old:
+        if reporter:
+            reporter.log(f"skipped {folder.name}: no Oculus/OpenXR runtime found in {a.extra['exe']}")
+        return None
+    package = old["package"] if old else a.package
+    a.package = package
+    recipe = engine.suggest(a)
+    entry = catalog.lookup(package)
+    quest = (old or {}).get("quest_package") or (entry.quest_package if entry else None) or \
+        quest_counterpart(recipe.title or a.label)
+    fields = dict(kind="rift", name=folder.name, apk=None, game_dir=str(folder), exe=a.extra["exe"],
+                  exe_confirmed=a.extra["exe_confirmed"], data_dir=None, data_bytes=a.extra["data_bytes"],
+                  origin=str(folder.parent), quest_package=quest, analysis=a.to_dict(),
+                  suggested=library.recipe_to_dict(recipe))
+    if not old or (old.get("recipe") or {}).get("source") != "user":
+        fields.update(recipe=library.recipe_to_dict(recipe), status=recipe.status)
+    if not old or not (old.get("title_locked") or old.get("art_source") in ("oculusdb", "meta", "steam")):
+        fields["title"] = recipe.title or a.label  # (store-matched titles are kept)
+    stored = library.upsert_game(package, **fields)
+    if art and not _has_art(package):
+        _rift_art(stored, reporter)
+    return library.game(package)
+
+
+def _has_art(package: str) -> bool:
+    from .artwork import sources
+
+    return sources.has_art(package)
+
+
+def _rift_art(entry: dict, reporter: Reporter | None = None) -> dict:
+    """Find artwork for a Rift game (Quest version / OculusDB / Steam / exe icon) and record what matched."""
+    from .artwork import sources, thumbs
+
+    pkg = entry["package"]
+    extra = (entry.get("analysis") or {}).get("extra") or {}
+    try:
+        found = sources.fetch_rift(pkg, entry.get("title") or pkg, extra.get("canonical_name"),
+                                   entry.get("quest_package"), Path(entry["game_dir"]) / entry["exe"])
+    except Exception as exc:  # noqa: BLE001 - artwork is optional
+        if reporter:
+            reporter.log(f"{entry.get('title')}: no artwork ({exc})")
+        return {}
+    update = {"art_source": found.get("source") or "none"}  # "none": don't retry on every start
+    if found.get("quest_package") and not entry.get("quest_package"):
+        update["quest_package"] = found["quest_package"]
+    if found.get("oculus_app_id"):
+        update["oculus_app_id"] = found["oculus_app_id"]
+    if found.get("title") and not entry.get("title_locked"):
+        update["title"] = found["title"]
+    library.upsert_game(pkg, **update)
+    try:
+        thumbs.prewarm(pkg)
+    except Exception:  # noqa: BLE001
+        pass
+    if reporter:
+        reporter.log(f"{entry.get('title')}: artwork from {found.get('source') or 'nowhere'}")
+    return found
+
+
+def fetch_art(package: str, reporter: Reporter | None = None) -> dict:
+    """(Re)fetch artwork for any game in the library."""
+    entry = library.game(package)
+    if entry.get("kind") == "rift":
+        return _rift_art(entry, reporter)
+    artwork.fetch(package, Path(entry["apk"]) if entry.get("apk") else None, refresh=True)
+    return {"source": "meta"}
+
+
+def fetch_details(package: str, reporter: Reporter | None = None) -> dict:
+    """Description, genres, developer/publisher, release date, links and screenshots (see artwork/details.py)."""
+    from .artwork import details, thumbs
+
+    entry = library.game(package)
+    try:
+        d = details.fetch_details(entry)
+    except Exception as exc:  # noqa: BLE001 - details are optional
+        if reporter:
+            reporter.log(f"{entry.get('title')}: no details ({exc})")
+        d = {"sources": [], "fetched": time.time()}
+    library.upsert_game(package, details=d)
+    for shot in details.screenshot_files(package):
+        try:
+            thumbs.thumb(shot, 480, shot.stem)
+        except Exception:  # noqa: BLE001
+            pass
+    if reporter:
+        reporter.log(f"{entry.get('title')}: details from {', '.join(d.get('sources') or []) or 'nowhere'}"
+                     + (f", {len(d.get('screenshots') or [])} screenshots" if d.get("screenshots") else ""))
+    return d
+
+
+def set_exe(package: str, exe: str) -> dict:
+    """The user picked the program that starts a Rift game: re-analyze with it (keeps recipe choices and tags)."""
+    entry = library.game(package)
+    if not entry or entry.get("kind") != "rift":
+        raise ValueError(f"{package} is not a Rift game")
+    folder = Path(entry["game_dir"])
+    if not (folder / exe).is_file():
+        raise FileNotFoundError(folder / exe)
+    return add_rift_game(folder, exe=exe, force=True)
+
+
+def steam_title(entry: dict) -> str:
+    """Name for the Steam library: "<Title> (Quest)" / "(Rift)" while both versions of a game are in the library."""
+    from .core.titles import display_title, twins
+
+    return display_title(entry, twins(library.games()))
+
+
+def is_rift(entry: dict) -> bool:
+    return entry.get("kind") == "rift"
 
 
 def add_game(src: SourceGame, reporter: Reporter | None = None) -> dict:
@@ -55,14 +274,88 @@ def set_recipe(package: str, recipe: Recipe) -> None:
 
 
 def reset_recipe(package: str) -> Recipe:
+    if is_rift(library.game(package) or {}):
+        entry = library.game(package)
+        a = library.analysis_from_dict(entry["analysis"])
+        recipe = engine.suggest(a)
+        set_recipe(package, recipe)
+        return recipe
     entry = library.game(package)
     recipe = engine.suggest(library.analysis_from_dict(entry["analysis"]))
     set_recipe(package, recipe)
     return recipe
 
 
+def prepare_rift(package: str, reporter: Reporter) -> dict:
+    """Rift games aren't rebuilt: check the folder still matches the analysis and make sure Revive is available."""
+    from .build import sha256
+    from .tools import revive
+
+    entry = library.game(package)
+    recipe = library.recipe_from_dict(entry["recipe"])
+    extra = entry["analysis"].get("extra", {})
+    reporter.stage("Check game files")
+    exe = Path(entry["game_dir"]) / entry["exe"]
+    checks = []
+
+    def check(name, ok, msg=""):
+        checks.append({"name": name, "ok": ok, "message": msg})
+        reporter.check(name, ok, msg)
+    check("Game executable", exe.is_file(), str(exe))
+    check("64-bit" if entry["analysis"]["abis"] == ["x86_64"] else "Executable type",
+          True if entry["analysis"]["abis"][0] in ("x86", "x86_64") else False, entry["analysis"]["abis"][0])
+    check("Oculus Platform SDK", None if extra.get("platform_sdk") else True,
+          "entitlement check: needs the Oculus app with a license you own (PC mode only)"
+          if extra.get("platform_sdk") else "not used")
+    if "pcvr.revive" in recipe.patches:
+        reporter.stage("Revive")
+        rdir = revive.revive_dir() or revive.install(lambda f: reporter.progress(f, "downloading Revive"))
+        check("Revive", True, f"{revive.installed_version()} ({rdir})")
+    art, store_title = artwork.fetch(package, lookup=entry.get("quest_package"))
+    info = {"sha256": sha256(exe) if exe.is_file() else None, "checks": checks,
+            "ok": all(c["ok"] is not False for c in checks), "revive": revive.installed_version(), "kind": "rift"}
+    library.upsert_game(package, build=info)
+    return info
+
+
+def prepare_as_is(package: str, reporter: Reporter) -> dict:
+    """'Install as is': the APK is used unchanged (already patched). Only checks that it can start in Lepton."""
+    from .apk import axml
+    from .build import sha256
+
+    entry = library.game(package)
+    apk = Path(entry["apk"])
+    a = entry["analysis"]
+    reporter.stage("Checking the game (installing it as it is)")
+    checks = []
+
+    def check(name, ok, msg=""):
+        checks.append({"name": name, "ok": ok, "message": msg})
+        reporter.check(name, ok, msg)
+    check("APK", apk.is_file(), str(apk))
+    check("64-bit (arm64-v8a)", "arm64-v8a" in (a.get("abis") or []) or None, ", ".join(a.get("abis") or []))
+    try:
+        import zipfile
+
+        with zipfile.ZipFile(apk) as z:
+            cats = axml.categories(z.read("AndroidManifest.xml"))
+        check("Launcher entry for Lepton", axml.LAUNCHER in cats or None,
+              "present" if axml.LAUNCHER in cats else "missing: Lepton may not find the game (turn off 'Install as is')")
+    except Exception as exc:  # noqa: BLE001
+        check("Manifest", None, str(exc))
+    art, store_title = artwork.fetch(package, apk)
+    info = {"apk": str(apk), "alt_apk": None, "sha256": sha256(apk), "alt_sha256": None, "applied": [],
+            "checks": checks, "ok": all(c["ok"] is not False for c in checks), "as_is": True}
+    library.upsert_game(package, build=info, title=entry.get("title") or store_title)
+    return info
+
+
 def build_game(package: str, reporter: Reporter, outdir: Path | None = None) -> dict:
     entry = library.game(package)
+    if is_rift(entry):
+        return prepare_rift(package, reporter)
+    if library.recipe_from_dict(entry["recipe"]).as_is:
+        return prepare_as_is(package, reporter)
     src = source_of(entry)
     a = library.analysis_from_dict(entry["analysis"])
     recipe = library.recipe_from_dict(entry["recipe"])
@@ -79,24 +372,57 @@ def build_game(package: str, reporter: Reporter, outdir: Path | None = None) -> 
 def install_game(package: str, target: Target, reporter: Reporter, apk_only: bool = False,
                  add_to_library: bool = True) -> dict:
     entry = library.game(package)
+    if is_rift(entry):
+        return install_rift(package, target, reporter, add_to_library)
     b = entry.get("build") or {}
     recipe = library.recipe_from_dict(entry["recipe"])
     apk = Path(b["alt_apk"] if recipe.use_alt and b.get("alt_apk") else b["apk"])
     data_dir = Path(entry["data_dir"]) if entry.get("data_dir") else None
-    title = entry.get("title") or package
+    title = steam_title(entry)
     result = target.install(package, title, apk, data_dir, recipe, reporter, apk_only)
     if add_to_library:
         target.add_to_library([package], reporter)
     installs = entry.get("installs", {})
-    installs[target.label] = {"apk": str(apk), "result": result}
+    installs[target.label] = {"apk": str(apk), "result": result, "time": time.time()}
+    library.upsert_game(package, installs=installs)
+    return result
+
+
+def install_rift(package: str, target: Target, reporter: Reporter, add_to_library: bool = True) -> dict:
+    from .tools import revive
+
+    entry = library.game(package)
+    if not (entry.get("build") or {}).get("ok"):
+        prepare_rift(package, reporter)
+        entry = library.game(package)
+    recipe = library.recipe_from_dict(entry["recipe"])
+    title = steam_title(entry)
+    rdir = revive.revive_dir() if "pcvr.revive" in recipe.patches else None
+    result = target.install_pcvr(package, title, Path(entry["game_dir"]), entry["exe"], recipe, reporter,
+                                 revive_dir=rdir, revive_version=revive.installed_version() if rdir else None,
+                                 exe_sha256=entry["build"].get("sha256"), art_lookup=entry.get("quest_package"))
+    if add_to_library:
+        target.add_to_library([package], reporter)
+    installs = entry.get("installs", {})
+    installs[target.label] = {"exe": entry["exe"], "result": result, "time": time.time()}
     library.upsert_game(package, installs=installs)
     return result
 
 
 def test_game(package: str, target: Target, reporter: Reporter, seconds: int = 45) -> dict:
-    result, _log = target.launch_test(package, reporter, seconds)
+    result, log = target.launch_test(package, reporter, seconds)
+    from .core.paths import user_data_dir
+
+    logs = user_data_dir() / "logs"
+    logs.mkdir(exist_ok=True)
+    log_path = logs / f"{package}-{time.strftime('%Y%m%d-%H%M%S')}.log"
+    log_path.write_text(log or "", encoding="utf-8", errors="replace")
+    for old in sorted(logs.glob(f"{package}-*.log"))[:-5]:  # keep the last 5 per game
+        old.unlink(missing_ok=True)
+    reporter.log(f"full launch log ({len((log or '').splitlines())} lines): {log_path}")
     summary = {"state": result.state, "verdict": result.verdict, "milestone": result.milestone, "fps": result.fps,
-               "findings": [f.__dict__ for f in result.findings], "suggestions": result.suggestions()}
+               "findings": [f.__dict__ for f in result.findings], "suggestions": result.suggestions(),
+               "time": time.time(), "target": target.label, "log_path": str(log_path)}
     library.upsert_game(package, last_test=summary)
     return summary
 

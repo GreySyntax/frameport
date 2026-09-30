@@ -25,7 +25,7 @@ class PlatformCompat(Patch):
     id = "frame.ovrplatformcompat"
     title = "Platform compat (ovrMessageType_ToString)"
     description = ("Adds a real ovrMessageType_ToString (from the Android-XR-Bridge fork) for games whose platform "
-                   "loader lacks it (The Climb 2).")
+                   "loader lacks it (e.g. The Climb 2).")
     order = 30
     default_on = True
 
@@ -47,7 +47,7 @@ class OvrStubs(Patch):
     id = "frame.ovrstubs"
     title = "Stub missing Meta platform functions"
     description = ("Generates no-op stubs for ovr_* functions the game imports but overport's platform loader "
-                   "lacks (Espire 1/2, Wallace & Gromit, The Climb 2). Symptom: UnsatisfiedLinkError / "
+                   "lacks (e.g. Espire 1/2, Wallace & Gromit, The Climb 2). Symptom: UnsatisfiedLinkError / "
                    "'cannot locate symbol ovr_...'. Online/store features stay unavailable.")
     order = 31
     default_on = True

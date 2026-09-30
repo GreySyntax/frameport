@@ -72,6 +72,19 @@ def save_target(target: FrameTarget) -> None:
     (user_data_dir() / "frames.json").write_text(json.dumps([t.__dict__ for t in items], indent=2))
 
 
+# direct links to the Frame, fastest first (interface → what it is)
+FAST_LINKS = {"usb0": "USB cable", "wlanap": "the Frame's own Wi-Fi hotspot"}
+
+
+def bundled_agent_version() -> int | None:
+    """AGENT_VERSION of the agent this app ships (it's uploaded to the Frame whenever it differs)."""
+    try:
+        m = re.search(r"^AGENT_VERSION = (\d+)", (agent_dir() / "frameport_agent.py").read_text(), re.M)
+        return int(m.group(1)) if m else None
+    except OSError:
+        return None
+
+
 class AgentFailed(RuntimeError):
     pass
 
@@ -117,6 +130,35 @@ class Frame:
         self.client = client
         self.home = self.run("printf %s \"$HOME\"")[1].strip() or f"/home/{self.target.user}"
         return self
+
+    def addresses(self) -> list[tuple[str, str]]:
+        """(interface, IPv4) of every link the Frame has up."""
+        out = self.run("ip -4 -o addr show up 2>/dev/null")[1]
+        return re.findall(r"^\d+:\s+(\S+)\s+inet\s+([\d.]+)/", out, re.M)
+
+    def fast_link(self, timeout: float = 1.5) -> tuple["Frame", str]:
+        """A second connection over the fastest direct link, for bulk uploads: the USB cable (usb0) or the Frame's own
+        hotspot (wlanap; the PC joins it with a Wi-Fi adapter, e.g. Valve's USB dongle) — several times faster than
+        both going through the home router (measured 83-97 vs 15-18 MB/s). Used only if this PC can reach it and it
+        presents the same SSH host key as this connection. Returns (frame, link name); (self, "") if none."""
+        import socket
+
+        key = self.client.get_transport().get_remote_server_key()
+        for iface in FAST_LINKS:
+            for name, ip in self.addresses():
+                if name != iface or ip == self.target.host:
+                    continue
+                try:
+                    socket.create_connection((ip, self.target.port), timeout=timeout).close()
+                    other = Frame(FrameTarget(ip, self.target.user, self.target.port), self.password)
+                    other.connect(timeout=5)
+                except (OSError, ConnectionError, paramiko.SSHException):
+                    continue
+                if other.client.get_transport().get_remote_server_key() != key:  # not our Frame: don't use it
+                    other.close()
+                    continue
+                return other, f"{FAST_LINKS[iface]} ({ip})"
+        return self, ""
 
     def close(self) -> None:
         if self._sftp:
@@ -175,12 +217,20 @@ class Frame:
         return reply["result"]
 
     # ------------------------------------------------------------------ files
-    def put(self, local: Path, remote: str, progress=None, resume: bool = True) -> None:
-        """Upload with resume: data goes to <remote>.part, appended from the existing size, then renamed."""
+    def mkdirs(self, dirs) -> None:
+        """Create many remote folders with one command."""
+        dirs = sorted(set(dirs))
+        if dirs:
+            self.run("xargs -0 mkdir -p", stdin="\0".join(dirs))
+
+    def put(self, local: Path, remote: str, progress=None, resume: bool = True, mkdir: bool = True) -> None:
+        """Upload with resume: data goes to <remote>.part, appended from the existing size, then renamed. progress may
+        raise (e.g. Cancelled): the .part stays and the next put continues from there."""
         local = Path(local)
         size = local.stat().st_size
         part = remote + ".part"
-        self.run(f"mkdir -p {sh_quote(posixpath.dirname(remote))}")
+        if mkdir:
+            self.run(f"mkdir -p {sh_quote(posixpath.dirname(remote))}")
         offset = 0
         if resume:
             try:
@@ -202,6 +252,31 @@ class Frame:
                 if progress:
                     progress(done, size)
         self.run(f"mv -f {sh_quote(part)} {sh_quote(remote)}")
+
+    def put_tar(self, files: list[tuple[Path, str]], remote_root: str, progress=None) -> None:
+        """Upload many small files in one stream (tar → `tar -x` on the Frame): far faster than one SFTP transfer per
+        file. files: (local path, path relative to remote_root). progress(done_bytes, rel) may raise to stop; files that
+        arrived stay (a cut-off last file has the wrong size, so it's sent again next time)."""
+        import tarfile
+
+        stdin, stdout, stderr = self.client.exec_command(
+            f"mkdir -p {sh_quote(remote_root)} && tar -xf - -C {sh_quote(remote_root)}")
+        done = 0
+        try:
+            with tarfile.open(fileobj=stdin, mode="w|", format=tarfile.PAX_FORMAT) as tar:
+                for local, rel in files:
+                    tar.add(str(local), arcname=rel, recursive=False)
+                    done += Path(local).stat().st_size
+                    if progress:
+                        progress(done, rel)
+        finally:
+            try:
+                stdin.channel.shutdown_write()
+            except Exception:  # noqa: BLE001
+                pass
+            code = stdout.channel.recv_exit_status()
+        if code:
+            raise OSError(f"remote tar failed ({code}): {stderr.read().decode(errors='replace')[-300:]}")
 
     def get_text(self, remote: str, max_bytes: int = 64 << 20) -> str:
         with self.sftp.open(remote, "rb") as f:

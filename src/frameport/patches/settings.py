@@ -17,14 +17,17 @@ SETTINGS = [
      "Multiplies the recommended eye-buffer width and height (0.5–2.0). 1.5 ≈ 2.25× pixels."),
     ("foveation_fix", "int", 1, "Hide Quest foveation", "Hides Quest foveation extensions the Frame runtime lacks."),
     ("controller_fix", "int", 1, "Report Touch controllers",
-     "Reports Frame controllers as Oculus Touch and hides synthetic hand tracking. 0 for hand-tracking games (Silhouette)."),
+     "Reports Frame controllers as Oculus Touch and hides synthetic hand tracking. Set 0 for games that require hand "
+     "tracking (e.g. Silhouette)."),
     ("swapchain_fix", "int", 1, "Swapchain format fallback", "Retry rejected GLES formats/MSAA with sRGB, samples=1."),
     ("layer_fix", "int", 1, "Drop invalid layers", "Drop layers whose swapchain failed or whose extension isn't enabled."),
     ("passthrough_emul", "int", 1, "Emulate passthrough", "XR_FB_passthrough via ALPHA_BLEND (Frame greyscale cameras)."),
     ("flip_emul", "int", 1, "Emulate flipped quads",
-     "Blit quads flagged XrCompositionLayerImageLayoutFB VERTICAL_FLIP upside down (Vulkan; AC Nexus UI)."),
+     "Blit quads flagged XrCompositionLayerImageLayoutFB VERTICAL_FLIP upside down (Vulkan). Fixes UI panels and "
+     "text that show upside down (e.g. Assassin's Creed Nexus)."),
     ("scene_emul", "int", 0, "Emulate Meta scene (room)",
-     "Fake XR_FB_scene/spatial entities: a guardian-sized room with floor, ceiling and four walls (Demeter)."),
+     "Fake XR_FB_scene/spatial entities: a guardian-sized room with floor, ceiling and four walls, for mixed-reality "
+     "games that build their level from the room (e.g. Demeter)."),
     ("scene_height", "float", 2.5, "Emulated room height (m)", "Ceiling height for scene_emul."),
     ("scene_width", "float", 0.0, "Emulated room width (m)", "Override the guardian width (0 = use guardian, min 1.5 m)."),
     ("scene_depth", "float", 0.0, "Emulated room depth (m)", "Override the guardian depth (0 = use guardian, min 1.5 m)."),
@@ -32,9 +35,11 @@ SETTINGS = [
     ("strip_depth", "int", 0, "Strip depth layers", "Remove XR_KHR_composition_layer_depth chains (diagnostic)."),
     ("mutable_fix", "int", 0, "Mutable swapchain fix", "Experimental Vulkan mutable-format workaround."),
     ("respace_kick", "int", 0, "Re-create reference space", "Recreate spaces after the first frames (diagnostic)."),
-    ("flip_quads", "int", 0, "Rotate quads 180°", "Old AC Nexus workaround (quads are single-sided; prefer flip_emul)."),
+    ("flip_quads", "int", 0, "Rotate quads 180°", "Older workaround for upside-down quads: rotates them 180° (quads are single-sided; prefer "
+     "flip_emul)."),
     ("gl_hide_multiview", "int", 1, "GL shim: hide multiview",
-     "GL shim only: hide GL_OVR_multiview so all passes use single-view shaders (Path of the Warrior)."),
+     "GL shim only: hide GL_OVR_multiview so all passes use single-view shaders. For GLES games whose multiview "
+     "shaders fail on single-view render targets (e.g. Path of the Warrior)."),
 ]
 
 
@@ -55,10 +60,10 @@ class AdapterSetting(Patch):
 
         if self.key == "controller_fix" and a.extra.get("hand_tracking_only"):
             return Suggestion(True, "Hand tracking is required by the game: pass hands through instead of reporting "
-                                    "Touch controllers (Silhouette).", {"value": 0})
+                                    "Touch controllers (e.g. Silhouette).", {"value": 0})
         if self.key == "scene_emul" and needs_scene(a):
             return Suggestion(True, "Mixed-reality game that builds its level from the room model: emulate a "
-                                    "guardian-sized room (Demeter).", {"value": 1})
+                                    "guardian-sized room (e.g. Demeter).", {"value": 1})
         return None
 
     def applies(self, a):
@@ -103,16 +108,17 @@ def adapter_settings(recipe_patches: dict) -> dict:
 class DeviceFiles(Patch):
     id = "device.files"
     title = "Game config files"
-    description = ("Writes files into the game's Android/data/<package>/files/ on the Frame, e.g. The Climb 2's "
-                   "user.cfg with r_variable_rate_shading = 0 (CryEngine VRS is unsupported on the Frame).")
+    description = ("Writes config files into the game's Android/data/<package>/files/ on the Frame, to turn off engine "
+                   "features the Frame doesn't support (e.g. a CryEngine user.cfg with r_variable_rate_shading = 0, "
+                   "as The Climb 2 needs).")
     category = "device"
     stage = "install"
     params = [Param("files", "text", {}, "path relative to files/ -> content")]
 
     def detect(self, a):
         if a.engine == "CryEngine" and a.graphics.startswith("Vulkan") or (a.engine == "CryEngine" and "libCryRenderVulkan.so" in a.libs):
-            return Suggestion(True, "CryEngine: variable-rate shading isn't supported on the Frame (The Climb 2 needed "
-                                    "user.cfg r_variable_rate_shading = 0).",
+            return Suggestion(True, "CryEngine: variable-rate shading isn't supported on the Frame, so user.cfg turns "
+                                    "it off (r_variable_rate_shading = 0; e.g. The Climb 2).",
                               {"files": {"user.cfg": "r_variable_rate_shading = 0\n"}})
         return None
 

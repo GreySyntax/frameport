@@ -8,6 +8,9 @@
     frameport frame discover | pair | info --frame steamos@frame.local
     frameport install <pkg> --frame steamos@frame.local [--apk-only]
     frameport test <pkg> --frame ...             # headless launch + triage
+    frameport frame proton [--install]           # Proton on the Frame, for Oculus Rift (PC VR) games
+    frameport install rift.<game> --to pc|frame  # Rift games: this PC (Revive + Steam) or the Frame (Proton)
+    frameport pc info                            # Windows Steam / SteamVR / Revive on this PC
     frameport parity --known-good <PATCHED dir>  # rebuild everything and diff against known-good APKs
 """
 from __future__ import annotations
@@ -27,11 +30,19 @@ from .patches import base
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="Port Meta Quest games to the Steam Frame.")
 tools_app = typer.Typer(help="Manage the portable toolchain.")
 frame_app = typer.Typer(help="Find and connect to a Steam Frame.")
+pc_app = typer.Typer(help="This PC as a target for Oculus Rift (PC VR) games via Revive.")
 app.add_typer(tools_app, name="tools")
 app.add_typer(frame_app, name="frame")
+app.add_typer(pc_app, name="pc")
 
 
-def _target(frame: Optional[str], password: Optional[str] = None):
+def _target(frame: Optional[str], password: Optional[str] = None, to: str = "frame"):
+    if to == "pc":
+        from .targets.pc_revive import PcReviveTarget
+
+        return PcReviveTarget()
+    if to != "frame":
+        raise typer.BadParameter("--to must be 'frame' or 'pc'")
     from .frame.connection import parse_target, saved_targets
     from .targets.frame_lepton import FrameLeptonTarget
 
@@ -69,11 +80,14 @@ def tools_status(check_latest: bool = typer.Option(False, "--latest", help="also
 
 
 @tools_app.command("install")
-def tools_install(update: bool = typer.Option(False, help="update to the newest versions")):
+def tools_install(update: bool = typer.Option(False, help="update to the newest versions"),
+                  revive: bool = typer.Option(False, help="also install Revive (for Oculus Rift games)")):
     from .tools import overport as ov
     from .tools import toolchain
 
-    for s in toolchain.ensure_all(update=update):
+    for s in toolchain.ensure_all(update=update, optional=revive):
+        if s.optional and not s.installed:
+            continue
         typer.echo(f"{s.name:10} {s.version}  {s.path}")
     from .patches import overport as op
 
@@ -124,7 +138,7 @@ def show(package: str, as_json: bool = typer.Option(False, "--json"),
     from .recommend.engine import visible_patches
 
     shown, hidden = visible_patches(library.analysis_from_dict(a), library.recipe_from_dict(r))
-    for p in (base.all_patches() if all_ else shown):
+    for p in (shown + hidden if all_ else shown):
         on = p.id in r["patches"]
         params = r["patches"].get(p.id) or {}
         typer.echo(f"  [{'x' if on else ' '}] {p.id:36} {p.title}{'  ' + json.dumps(params) if params else ''}"
@@ -146,7 +160,9 @@ def patches():
 @app.command()
 def recipe(package: str, enable: list[str] = typer.Option([], "--enable"), disable: list[str] = typer.Option([], "--disable"),
            set_: list[str] = typer.Option([], "--set", help="adapter setting key=value"),
-           use_alt: Optional[bool] = typer.Option(None, "--use-alt/--no-alt"), reset: bool = False):
+           use_alt: Optional[bool] = typer.Option(None, "--use-alt/--no-alt"), reset: bool = False,
+           as_is: Optional[bool] = typer.Option(None, "--as-is/--patch", help="install unchanged (already patched)"),
+           exe: Optional[str] = typer.Option(None, help="Rift games: the program that starts the game (relative)")):
     """Change a game's patch selection."""
     [pkg] = _pkgs(package, False)
     r = pipeline.reset_recipe(pkg) if reset else library.recipe_from_dict(library.game(pkg)["recipe"])
@@ -161,7 +177,14 @@ def recipe(package: str, enable: list[str] = typer.Option([], "--enable"), disab
         r.patches[f"adapter.{k}"] = {"value": float(v) if "." in v else int(v)}
     if use_alt is not None:
         r.use_alt = use_alt
-    r.source = "user" if (enable or disable or set_ or use_alt is not None) else r.source
+    if as_is is not None:
+        r.as_is = as_is
+        if library.game(pkg).get("kind") == "rift":
+            r.patches.pop("pcvr.revive", None) if as_is else r.patches.setdefault("pcvr.revive", {})
+    if exe:
+        pipeline.set_exe(pkg, exe)
+        r = library.recipe_from_dict(library.game(pkg)["recipe"])
+    r.source = "user" if (enable or disable or set_ or use_alt is not None or as_is is not None) else r.source
     pipeline.set_recipe(pkg, r)
     show(pkg)
 
@@ -176,7 +199,7 @@ def build(package: Optional[str] = typer.Argument(None), all_: bool = typer.Opti
         rep = printing_reporter(verbose)
         try:
             info = pipeline.build_game(pkg, rep, outdir / pkg if outdir and all_ else outdir)
-            typer.echo(f"{pkg}: {'OK' if info['ok'] else 'CHECKS FAILED'} -> {info['apk']}")
+            typer.echo(f"{pkg}: {'OK' if info['ok'] else 'CHECKS FAILED'} -> {info.get('apk') or 'ready (Rift game)'}")
             if not info["ok"]:
                 failed.append(pkg)
         except Exception as exc:  # noqa: BLE001
@@ -189,8 +212,9 @@ def build(package: Optional[str] = typer.Argument(None), all_: bool = typer.Opti
 def install(package: Optional[str] = typer.Argument(None), all_: bool = typer.Option(False, "--all"),
             frame: Optional[str] = typer.Option(None, help="steamos@host"), password: Optional[str] = None,
             apk_only: bool = typer.Option(False, help="reuse game data already on the Frame"),
-            no_library: bool = typer.Option(False, help="don't add to the Steam library now")):
-    target = _target(frame, password)
+            no_library: bool = typer.Option(False, help="don't add to the Steam library now"),
+            to: str = typer.Option("frame", help="frame, or pc (Oculus Rift games only: run on this PC via Revive)")):
+    target = _target(frame, password, to)
     pkgs = _pkgs(package, all_)
     for pkg in pkgs:
         pipeline.install_game(pkg, target, printing_reporter(False), apk_only, add_to_library=False)
@@ -200,9 +224,10 @@ def install(package: Optional[str] = typer.Argument(None), all_: bool = typer.Op
 
 @app.command()
 def test(package: Optional[str] = typer.Argument(None), all_: bool = typer.Option(False, "--all"),
-         frame: Optional[str] = None, seconds: int = 45):
-    """Headless launch on the Frame + log triage."""
-    target = _target(frame)
+         frame: Optional[str] = None, seconds: int = 45,
+         to: str = typer.Option("frame", help="frame, or pc (Rift games installed on this PC)")):
+    """Headless launch on the Frame (or this PC) + log triage."""
+    target = _target(frame, to=to)
     installed = {g["package"] for g in target.installed()}
     for pkg in _pkgs(package, all_):
         if pkg not in installed:
@@ -290,6 +315,53 @@ def frame_info(frame: Optional[str] = None):
     typer.echo(json.dumps(_target(frame).describe(), indent=1, default=str))
 
 
+@frame_app.command("proton")
+def frame_proton(frame: Optional[str] = None,
+                 install_: bool = typer.Option(False, "--install", help="install it (Steam on the Frame restarts once "
+                                               "and downloads it; waits until done)"),
+                 in_headset: bool = typer.Option(False, help="with --install: only ask Steam (confirm in the headset)"),
+                 test: bool = typer.Option(False, "--test", help="run a Windows program under Proton on the Frame"),
+                 tool: Optional[str] = typer.Option(None, help="compat tool name, e.g. proton-experimental-arm64")):
+    """Proton (ARM64) on the Frame, needed for Oculus Rift (PC VR) games."""
+    t = _target(frame)
+    if test:
+        r = t.proton_selftest(tool)
+        r.pop("log_tail", None)
+        typer.echo(json.dumps(r, indent=1))
+        raise typer.Exit(0 if r.get("ran") else 1)
+    if install_ and in_headset:
+        typer.echo(json.dumps(t.install_proton(False, tool), indent=1))
+        return
+    if install_:
+        from .install.installer import ensure_proton
+
+        ready = ensure_proton(t.frame, printing_reporter(False), tool)
+        typer.echo(f"ready: {ready['display_name']}")
+        return
+    st = t.proton_status(tool)
+    for p in st["tools"]:
+        state = "installed" if p["installed"] and p["require_installed"] else \
+            "needs runtime" if p["installed"] else "not installed"
+        typer.echo(f"{p['name']:28} {p['display_name']:32} {state}")
+    typer.echo(f"ready: {st['ready']['name'] if st.get('ready') else 'no (frameport frame proton --install)'}")
+    typer.echo(f"OpenXR runtime: {(st.get('openxr') or {}).get('name') or 'none'}")
+
+
+# ------------------------------------------------------------------------------------------ pc (Revive)
+@pc_app.command("info")
+def pc_info():
+    typer.echo(json.dumps(_target(None, to="pc").describe(), indent=1, default=str))
+
+
+@pc_app.command("install-revive")
+def pc_install_revive():
+    """Download Revive's latest release and unpack it into FramePort's tools (no installer, no admin rights)."""
+    from .tools import revive
+
+    path = revive.install(lambda f: None)
+    typer.echo(f"Revive {revive.installed_version()} at {path}")
+
+
 # ------------------------------------------------------------------------------------------ parity
 @app.command()
 def parity(known_good: Path = typer.Option(..., help="folder of known-good game folders (PATCHED layout)"),
@@ -321,6 +393,32 @@ def parity_device(results: Path = typer.Option(Path("parity-out/parity.json")), 
 
     ok = install_and_test(results, _target(frame), baseline, report, printing_reporter(False), only, seconds, test_only)
     raise typer.Exit(0 if ok else 1)
+
+
+@app.command("uninstall-app")
+def uninstall_app(frame: bool = typer.Option(False, help="also remove FramePort's games and files from the Frame"),
+                  keep_frame_saves: bool = typer.Option(True, help="with --frame: keep game saves on the Frame"),
+                  backup_keys: Optional[Path] = typer.Option(None, help="folder for a zip of the signing keys "
+                                                                          "(default: your Documents folder)"),
+                  backup: bool = typer.Option(True, "--backup/--no-backup", help="back up the signing keys first"),
+                  yes: bool = typer.Option(False, "--yes", "-y", help="don't ask for confirmation")):
+    """Remove everything FramePort created on this PC (and optionally on the Frame). Then delete the app itself."""
+    from . import uninstall as un
+
+    target = _target(None) if frame else None
+    info = target.describe() if target else None
+    pl = un.plan(info)
+    typer.echo("This removes:")
+    for it in pl.items:
+        typer.echo(f"  - {it.what}" + (f"  ({it.path})" if it.path else "") +
+                   (f"  {it.size / 2**30:.1f} GiB" if it.size > 2**28 else ""))
+    dest = (backup_keys or un.default_backup_dir()) if backup else None
+    typer.echo(f"Signing keys: {len(pl.keys)} " + ("(not backed up!)" if dest is None else f"→ backup zip in {dest}"))
+    if not yes and not typer.confirm("Uninstall FramePort?", default=False):
+        raise typer.Exit(1)
+    out = un.run(printing_reporter(False), target.frame if target else None, keep_frame_saves, dest, frame)
+    typer.echo("Done." + (f" Keys backup: {out['backup']}" if out.get("backup") else "") +
+               " Delete the FramePort program folder to finish (or `uv tool uninstall frameport`).")
 
 
 def main():  # pragma: no cover

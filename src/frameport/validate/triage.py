@@ -80,14 +80,19 @@ def game_lines(log: str, package: str | None = None) -> list[str]:
 
 def triage(log: str, state: str = "UNKNOWN", package: str | None = None) -> TriageResult:
     db = database()
-    lines = game_lines(log, package)
+    kind = "pcvr" if package and package.startswith("rift.") else "quest"  # Proton/Revive logs vs Lepton logcat
+    lines = game_lines(log, package) if kind == "quest" else [ANSI.sub("", l) for l in log.splitlines()]
     text = "\n".join(lines)
     res = TriageResult(state, None)
     for m in db["milestones"]:
+        if m.get("kind", "quest") != kind:
+            continue
         if re.search(m["pattern"], text):
             res.milestones.append(m["label"])
             res.milestone = m["label"]
     for sig in db["signatures"]:
+        if sig.get("kind", "quest") != kind:
+            continue
         hit = re.search(sig["pattern"], text)
         if hit:
             line = next((l for l in lines if re.search(sig["pattern"], l)), hit.group(0))

@@ -5,13 +5,19 @@ The PC app uploads this file to ~/.local/share/frameport/agent/ and calls:
     python3 frameport_agent.py <command>        (JSON arguments on stdin, one JSON object on stdout)
 
 Commands: info, prepare, finalize, shortcuts, shortcut_status, launch_test, stop, set_settings, uninstall,
-          install_lepton, list_installed.
+          install_lepton, list_installed, proton_status, install_proton, prepare_pcvr, finalize_pcvr.
 
 Install layout (one Lepton container per game; same as the manual installs from 2026-09):
     ~/Applications/quest-frame/<pkg>/            anchor: launch.sh, deployment.json, artwork/ (always internal storage)
     <dest>/<pkg>/lepton-app/{game.apk,obb/}      game files (dest defaults to ~/Applications/quest-frame)
     <dest>/<pkg>/lepton-data/                    container data + saves (kept across reinstalls)
     <dest>/<pkg>/lepton-shaders/, settings.conf, launch.log
+
+PC VR (Oculus Rift) games packed for the Frame (id "rift.<slug>"), run by Proton (ARM64; x86 via FEX in Proton):
+    ~/Applications/quest-frame/<id>/             anchor: launch.sh, deployment.json (kind "pcvr"), artwork/
+    <dest>/<id>/game/                            the Windows game folder
+    <dest>/<id>/revive/                          Revive (ReviveInjector.exe + DLLs)
+    <dest>/<id>/compatdata/                      Proton prefix = saves (kept across reinstalls), launch.log
 """
 import glob
 import hashlib
@@ -26,7 +32,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 5
+AGENT_VERSION = 17
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -94,6 +100,461 @@ def lepton_path():
     return None, app
 
 
+def find_app_id(appid):
+    """{appid, name, dir} of an installed app by id (its appmanifest), or None."""
+    for lib in steam_libraries():
+        acf = os.path.join(lib, f"appmanifest_{appid}.acf")
+        try:
+            text = open(acf, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        installdir = re.search(r'"installdir"\s+"([^"]*)"', text)
+        name = re.search(r'"name"\s+"([^"]*)"', text)
+        state = re.search(r'"StateFlags"\s+"(\d+)"', text)
+        d = os.path.join(lib, "common", installdir[1]) if installdir else None
+        num = {k: int(m[1]) for k in ("BytesDownloaded", "BytesToDownload", "SizeOnDisk")
+               for m in [re.search(r'"%s"\s+"(\d+)"' % k, text)] if m}
+        return {"appid": str(appid), "name": name[1] if name else "", "dir": d, "state": int(state[1]) if state else 0,
+                "complete": bool(state and int(state[1]) & 4 and d and os.path.isdir(d)),
+                "downloaded": num.get("BytesDownloaded", 0), "to_download": num.get("BytesToDownload", 0)}
+    return None
+
+
+# ------------------------------------------------------------------------------------------ Steam appinfo (binary)
+APPINFO = os.path.join(STEAM, "appcache/appinfo.vdf")
+
+
+def appinfo_entries(want=None, path=APPINFO):
+    """Parse Steam's appinfo.vdf (v28/v29) into {appid: appinfo dict}; only the apps in `want` (or all)."""
+    data = open(path, "rb").read()
+    magic = struct.unpack_from("<I", data, 0)[0]
+    if magic >> 8 != 0x075644 or magic & 0xFF not in (0x28, 0x29):
+        raise AgentError(f"unknown appinfo.vdf version {magic:#x}")
+    v29 = magic & 0xFF == 0x29
+    strings = []
+    end = len(data)
+    if v29:
+        str_off = struct.unpack_from("<q", data, 8)[0]
+        n = struct.unpack_from("<I", data, str_off)[0]
+        p = str_off + 4
+        for _ in range(n):
+            e = data.index(b"\0", p)
+            strings.append(data[p:e].decode("utf-8", "replace"))
+            p = e + 1
+        end = str_off
+
+    def key(p):
+        if v29:
+            return strings[struct.unpack_from("<I", data, p)[0]], p + 4
+        e = data.index(b"\0", p)
+        return data[p:e].decode("utf-8", "replace"), e + 1
+
+    def kv(p):
+        obj = {}
+        while True:
+            t = data[p]
+            p += 1
+            if t == 8:
+                return obj, p
+            k, p = key(p)
+            if t == 0:
+                obj[k], p = kv(p)
+            elif t == 1:
+                e = data.index(b"\0", p)
+                obj[k] = data[p:e].decode("utf-8", "replace")
+                p = e + 1
+            elif t in (2, 3, 4, 6):  # int32, float, pointer, color
+                obj[k] = struct.unpack_from("<f" if t == 3 else "<i", data, p)[0]
+                p += 4
+            elif t in (7, 10):  # uint64 / int64
+                obj[k] = struct.unpack_from("<Q", data, p)[0]
+                p += 8
+            else:
+                raise AgentError(f"unsupported appinfo value type {t}")
+
+    out, p = {}, 16 if v29 else 8
+    while p + 8 <= end:
+        appid, size = struct.unpack_from("<II", data, p)
+        if appid == 0:
+            break
+        body = p + 8
+        if want is None or appid in want:
+            try:
+                obj, _ = kv(body + 60)  # infostate, last updated, pics token, sha1, change number, binary sha1
+                out[appid] = obj.get("appinfo", obj)
+            except (AgentError, IndexError, struct.error, ValueError):
+                pass
+        p = body + size
+    return out
+
+
+def arm64_compat_tools():
+    """Steam compat tools for this device from Valve's ARM64 compat list app (appinfo extended.compat_tools):
+    {name: {appid, display_name, require_tool_appid, aliases, from_oslist}}. Found dynamically (no hardcoded ids)."""
+    best = {}
+    for info in appinfo_entries().values():
+        tools = ((info.get("extended") or {}).get("compat_tools"))
+        if isinstance(tools, dict) and any(k.endswith("-arm64") for k in tools):
+            if len(tools) > len(best):
+                best = tools
+    return best
+
+
+def proton_tools():
+    """Proton builds for Windows games on this (ARM64) device, newest first, with install state."""
+    out = []
+    for name, t in arm64_compat_tools().items():
+        if t.get("from_oslist") != "windows" or not isinstance(t, dict) or "appid" not in t:
+            continue
+        app = find_app_id(t["appid"])
+        req = t.get("require_tool_appid")
+        if app and app["complete"]:
+            req = tool_manifest(app["dir"]).get("require_tool_appid") or req
+        req_app = find_app_id(req) if req else None
+        ver = re.findall(r"\d+", name)
+        out.append({"name": name, "appid": int(t["appid"]), "display_name": t.get("display_name", name),
+                    "aliases": t.get("aliases", ""), "experimental": "experimental" in name,
+                    "installed": bool(app and app["complete"]), "dir": app["dir"] if app else None,
+                    "require_tool_appid": int(req) if req else None,
+                    "require_installed": (not req) or bool(req_app and req_app["complete"]),
+                    "require_dir": req_app["dir"] if req_app else None,
+                    "sort": (0 if "experimental" in name else 1, int(ver[0]) if ver else 0)})
+    out.sort(key=lambda t: t.pop("sort"), reverse=True)
+    return out
+
+
+def tool_manifest(tool_dir):
+    """commandline / require_tool_appid from a compat tool's toolmanifest.vdf (text KeyValues)."""
+    try:
+        text = open(os.path.join(tool_dir, "toolmanifest.vdf"), encoding="utf-8", errors="replace").read()
+    except OSError:
+        return {}
+    out = {}
+    for k in ("commandline", "require_tool_appid", "version"):
+        m = re.search(r'"%s"\s+"((?:[^"\\]|\\.)*)"' % k, text)
+        if m:
+            out[k] = m[1].replace('\\"', '"')
+    if "require_tool_appid" in out:
+        out["require_tool_appid"] = int(out["require_tool_appid"])
+    return out
+
+
+def compat_command(tool_dir, verb="waitforexitandrun", depth=0):
+    """argv prefix Steam would run for a compat tool: its required runtime's command first, then the tool's own
+    (e.g. SteamLinuxRuntime_4-arm64/_v2-entry-point --verb=... -- Proton/proton waitforexitandrun)."""
+    man = tool_manifest(tool_dir)
+    cmd = man.get("commandline")
+    if not cmd:
+        raise AgentError(f"no toolmanifest.vdf commandline in {tool_dir}")
+    own = [os.path.join(tool_dir, a.lstrip("/")) if i == 0 else a
+           for i, a in enumerate(shlex.split(cmd.replace("%verb%", verb)))]
+    req = man.get("require_tool_appid")
+    if req and depth < 3:
+        app = find_app_id(req)
+        if not app or not app["complete"]:
+            raise AgentError(f"{os.path.basename(tool_dir)} needs Steam app {req} (runtime), which isn't installed")
+        return compat_command(app["dir"], verb, depth + 1) + own
+    return own
+
+
+def pick_proton(tools, wanted=None):
+    ready = [t for t in tools if t["installed"] and t["require_installed"]]
+    if wanted:
+        return next((t for t in tools if wanted in (t["name"], t["display_name"]) or wanted in t["aliases"].split(",")),
+                    None)
+    return ready[0] if ready else (tools[0] if tools else None)
+
+
+def openxr_runtime():
+    for d in (os.path.join(HOME, ".config/openxr/1"), "/etc/xdg/openxr/1", "/usr/share/openxr/1"):
+        p = os.path.join(d, "active_runtime.json")
+        if os.path.exists(p):
+            try:
+                return {"path": os.path.realpath(p), "name": json.load(open(p))["runtime"].get("name")}
+            except (OSError, ValueError, KeyError):
+                return {"path": os.path.realpath(p), "name": None}
+    return None
+
+
+def cmd_proton_status(args):
+    try:
+        tools = proton_tools()
+    except (OSError, AgentError) as exc:
+        return {"tools": [], "ready": None, "error": str(exc), "openxr": openxr_runtime()}
+    ready = pick_proton(tools, args.get("tool"))
+    ok = bool(ready and ready["installed"] and ready["require_installed"])
+    download = {"done": 0, "total": 0}
+    if ready and not ok:
+        for a in (ready["appid"], ready.get("require_tool_appid")):
+            app = find_app_id(a) if a else None
+            if app and not app["complete"]:
+                download["done"] += app["downloaded"]
+                download["total"] += app["to_download"]
+    return {"tools": tools, "ready": ready if ok else None, "suggested": ready, "openxr": openxr_runtime(),
+            "download": download}
+
+
+SELFTEST_DIR = os.path.join(HOME, ".local/share/frameport/proton-selftest")
+
+
+SESSION_VARS = ("DISPLAY", "WAYLAND_DISPLAY", "GAMESCOPE_WAYLAND_DISPLAY", "XAUTHORITY", "XDG_SESSION_TYPE")
+
+
+def session_env():
+    """The display session variables of the running Steam client (gamescope's X/Wayland), for headless launches."""
+    p = run(["pgrep", "-x", "steam"])
+    for pid in p.stdout.split():
+        try:
+            raw = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+        except OSError:
+            continue
+        env = dict(kv.decode(errors="replace").split("=", 1) for kv in raw if b"=" in kv)
+        return {k: env[k] for k in SESSION_VARS if k in env}
+    return {}
+
+
+def run_tree(cmd, env, cwd, log_path, timeout):
+    """Run a command in its own process group with output to a file; on timeout kill the whole group (Wine leaves
+    children that keep pipes open, so subprocess.run(timeout=...) would hang). Returns (output, exit code | None)."""
+    import signal
+
+    with open(log_path, "wb") as log:
+        p = subprocess.Popen(cmd, env=env, cwd=cwd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                             start_new_session=True)
+        try:
+            code = p.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            code = None
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                try:
+                    os.killpg(p.pid, sig)
+                except ProcessLookupError:
+                    break
+                try:
+                    p.wait(timeout=10)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+    return open(log_path, errors="replace").read(), code
+
+
+def stop_prefix(tool, prefix):
+    """wineserver -k for a Proton prefix (ends every process of that prefix)."""
+    wineserver = next(iter(glob.glob(os.path.join(tool["dir"], "files/bin*/wineserver"))), None)
+    if wineserver and os.path.isdir(prefix):
+        try:
+            run([wineserver, "-k"], env=dict(os.environ, WINEPREFIX=prefix), timeout=20)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+def cmd_proton_selftest(args):
+    """Run a Windows program (cmd.exe) under the Frame's Proton, the way FramePort launches PC VR games (SteamGameId
+    set so Proton sets up VR), and report whether it ran and whether wineopenxr was registered as the OpenXR runtime."""
+    tool = pick_proton(proton_tools(), args.get("tool"))
+    if not tool or not (tool["installed"] and tool["require_installed"]):
+        raise AgentError("Proton isn't installed on the Frame yet")
+    os.makedirs(os.path.join(SELFTEST_DIR, "compatdata"), exist_ok=True)
+    appid = str(shortcut_appid("frameport-proton-selftest", "FramePort"))
+    env = dict(os.environ, SteamAppId=appid, STEAM_COMPAT_APP_ID=appid,
+               STEAM_COMPAT_DATA_PATH=os.path.join(SELFTEST_DIR, "compatdata"),
+               STEAM_COMPAT_CLIENT_INSTALL_PATH=STEAM, STEAM_COMPAT_INSTALL_PATH=SELFTEST_DIR,
+               STEAM_COMPAT_LIBRARY_PATHS=SELFTEST_DIR, XDG_RUNTIME_DIR=f"/run/user/{os.getuid()}",
+               PROTON_LOG_DIR=SELFTEST_DIR)
+    for k, v in session_env().items():
+        env.setdefault(k, v)
+    if args.get("vr", True):
+        env["SteamGameId"] = appid  # Proton sets up vrclient/wineopenxr only for "game" processes
+    if args.get("log"):
+        env["PROTON_LOG"] = "1"
+    for k, v in (args.get("env") or {}).items():
+        env[str(k)] = str(v)
+    marker = os.path.join(SELFTEST_DIR, "marker.txt")
+    if os.path.exists(marker):
+        os.remove(marker)
+    cmd = compat_command(tool["dir"], args.get("verb", "waitforexitandrun")) + \
+        ["c:\\windows\\system32\\cmd.exe", "/c", f"echo FRAMEPORT_PROTON_OK>{windows_path(marker)}"]
+    start = time.time()
+    out, code = run_tree(cmd, env, SELFTEST_DIR, os.path.join(SELFTEST_DIR, "selftest.log"),
+                         int(args.get("timeout_s", 600)))
+    stop_prefix(tool, os.path.join(SELFTEST_DIR, "compatdata/pfx"))
+    reg = os.path.join(SELFTEST_DIR, "compatdata/pfx/system.reg")
+    text = open(reg, errors="replace").read() if os.path.exists(reg) else ""
+    m = re.search(r'\[Software\\\\Khronos\\\\OpenXR\\\\1\][^\[]*"ActiveRuntime"="([^"]*)"', text)
+    plog = os.path.join(SELFTEST_DIR, f"steam-{appid}.log")
+    ran = os.path.exists(marker) and "FRAMEPORT_PROTON_OK" in open(marker, errors="replace").read()
+    return {"tool": tool["name"], "ran": ran, "exit_code": code, "proton_log": plog
+            if os.path.exists(plog) else None,
+            "seconds": round(time.time() - start), "openxr_runtime": m[1] if m else None,
+            "prefix_created": bool(text), "log_tail": out[-3000:]}
+
+
+def xr_probe(payload):
+    """(child process) Create an OpenXR instance with XR_KHR_convert_timespec_time through Proton's loader and call
+    xrConvertTimespecTimeToTimeKHR. Prints one JSON line. The layer (if any) is enabled via the environment."""
+    import ctypes as C
+
+    args = json.loads(payload)
+    out = {"loader": args["loader"]}
+    try:
+        xr = C.CDLL(args["loader"])
+        xr.xrGetInstanceProcAddr.argtypes = [C.c_uint64, C.c_char_p, C.POINTER(C.c_void_p)]
+        xr.xrDestroyInstance.argtypes = [C.c_uint64]
+
+        class AppInfo(C.Structure):
+            _fields_ = [("applicationName", C.c_char * 128), ("applicationVersion", C.c_uint32),
+                        ("engineName", C.c_char * 128), ("engineVersion", C.c_uint32), ("apiVersion", C.c_uint64)]
+
+        class CreateInfo(C.Structure):
+            _fields_ = [("type", C.c_int), ("next", C.c_void_p), ("createFlags", C.c_uint64), ("app", AppInfo),
+                        ("layerCount", C.c_uint32), ("layers", C.c_void_p), ("extCount", C.c_uint32),
+                        ("exts", C.POINTER(C.c_char_p))]
+
+        class LayerProps(C.Structure):
+            _fields_ = [("type", C.c_int), ("next", C.c_void_p), ("layerName", C.c_char * 256),
+                        ("specVersion", C.c_uint64), ("layerVersion", C.c_uint32), ("description", C.c_char * 256)]
+
+        n = C.c_uint32()
+        xr.xrEnumerateApiLayerProperties(0, C.byref(n), None)
+        props = (LayerProps * max(n.value, 1))()
+        for p in props:
+            p.type = 1  # XR_TYPE_API_LAYER_PROPERTIES
+        xr.xrEnumerateApiLayerProperties(n.value, C.byref(n), props)
+        out["layers"] = [props[i].layerName.decode() for i in range(n.value)]
+        exts = (C.c_char_p * 1)(b"XR_KHR_convert_timespec_time")
+        ci = CreateInfo(3, None, 0, AppInfo(b"FramePort timefix probe", 1, b"FramePort", 1, 1 << 48), 0, None, 1, exts)
+        inst = C.c_uint64()
+        out["create"] = xr.xrCreateInstance(C.byref(ci), C.byref(inst))
+        if out["create"] == -4:  # the runtime sometimes fails the first attempt (as Proton's own probe sees)
+            out["create"] = xr.xrCreateInstance(C.byref(ci), C.byref(inst))
+        if out["create"] == 0:
+            fn = C.c_void_p()
+            out["proc"] = xr.xrGetInstanceProcAddr(inst.value, b"xrConvertTimespecTimeToTimeKHR", C.byref(fn))
+            if out["proc"] == 0 and fn.value:
+                class Ts(C.Structure):
+                    _fields_ = [("tv_sec", C.c_long), ("tv_nsec", C.c_long)]
+                now = Ts()
+                C.CDLL(None).clock_gettime(1, C.byref(now))
+                t = C.c_int64()
+                conv = C.CFUNCTYPE(C.c_int, C.c_uint64, C.POINTER(Ts), C.POINTER(C.c_int64))(fn.value)
+                out["convert"] = conv(inst.value, C.byref(now), C.byref(t))
+                out["time"] = t.value
+            xr.xrDestroyInstance(inst.value)
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = f"{type(exc).__name__}: {exc}"
+    print(json.dumps(out))
+
+
+def cmd_xr_layer_test(args):
+    """Does the timefix layer fix time conversion on this runtime? Runs xr_probe with Proton's OpenXR loader, without
+    and with the layer (layer_dir = folder with XR_APILAYER_FRAMEPORT_timefix.json)."""
+    tool = pick_proton(proton_tools(), args.get("tool"))
+    loader = next(iter(glob.glob(os.path.join(tool["dir"], "files/lib/aarch64-linux-gnu/libopenxr_loader.so.1")))
+                  if tool and tool.get("dir") else [], None) or "/opt/steamvr/bin/linuxarm64/libopenxr_loader.so"
+    results = {}
+    for name, layer in (("without_layer", None), ("with_layer", args.get("layer_dir"))):
+        if name == "with_layer" and not layer:
+            continue
+        env = dict(os.environ, XDG_RUNTIME_DIR=f"/run/user/{os.getuid()}", XR_LOADER_DEBUG="error")
+        env.pop("XR_API_LAYER_PATH", None)
+        env.pop("XR_ENABLE_API_LAYERS", None)
+        for k, v in session_env().items():
+            env.setdefault(k, v)
+        if layer:
+            env.update(XR_API_LAYER_PATH=os.path.expanduser(layer), XR_ENABLE_API_LAYERS=XR_LAYER)
+        try:
+            p = run([sys.executable, os.path.abspath(__file__), "_xr_probe", json.dumps({"loader": loader})],
+                    env=env, timeout=60)
+            line = next((l for l in reversed(p.stdout.splitlines()) if l.startswith("{")), None)
+            results[name] = json.loads(line) if line else {"error": (p.stderr or p.stdout)[-800:]}
+        except subprocess.TimeoutExpired:
+            results[name] = {"error": "timed out"}
+    return results
+
+
+def write_stub_manifest(appid, name, installdir, lib=None):
+    """An appmanifest with StateFlags 'update required': Steam downloads the app on its next start."""
+    lib = lib or os.path.join(STEAM, "steamapps")
+    path = os.path.join(lib, f"appmanifest_{appid}.acf")
+    if os.path.exists(path):
+        return False
+    text = ('"AppState"\n{\n' + "".join(f'\t"{k}"\t\t"{v}"\n' for k, v in (
+        ("appid", appid), ("Universe", 1), ("name", name), ("StateFlags", 1026), ("installdir", installdir),
+        ("AutoUpdateBehavior", 0))) + "}\n")
+    with open(path + ".tmp", "w") as f:
+        f.write(text)
+    os.replace(path + ".tmp", path)
+    return True
+
+
+def cmd_install_proton(args):
+    """Install Proton for Windows games (plus the Steam Linux Runtime it needs). mode "request" asks Steam
+    (steam://install; the user confirms in the headset); mode "unattended" writes appmanifest stubs and restarts
+    Steam so it downloads them by itself."""
+    tools = proton_tools()
+    tool = pick_proton(tools, args.get("tool"))
+    if not tool:
+        raise AgentError("this Steam has no ARM64 Proton in its compat list (update SteamOS/Steam)")
+    need = [a for a, ok in ((tool["appid"], tool["installed"]),
+                            (tool["require_tool_appid"], tool["require_installed"])) if a and not ok]
+    if not need:
+        return {"tool": tool["name"], "installed": True, "requested": []}
+    if args.get("mode") == "unattended":
+        info = appinfo_entries(set(need))
+        stubs = []
+        for a in need:
+            common = (info.get(a) or {}).get("common") or {}
+            installdir = ((info.get(a) or {}).get("config") or {}).get("installdir")
+            if not installdir:
+                raise AgentError(f"Steam's app cache has no install folder for app {a}")
+            stubs.append({"appid": a, "name": common.get("name", str(a)), "installdir": installdir})
+        payload = json.dumps({"stubs": stubs})
+        unit = f"frameport-tools-{int(time.time())}"
+        run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={unit}", "--setenv=HOME=" + HOME,
+             sys.executable, os.path.abspath(__file__), "_tools_worker", payload])
+        return {"tool": tool["name"], "installed": False, "requested": need, "mode": "unattended", "unit": unit,
+                "hint": "Steam restarts once and downloads Proton in the background (a few hundred MB)."}
+    for a in need:
+        subprocess.Popen(["steam", "-ifrunning", f"steam://install/{a}"], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    return {"tool": tool["name"], "installed": False, "requested": need, "mode": "request",
+            "hint": "Put the headset on and confirm the install in Steam (one dialog per item)."}
+
+
+def stop_steam():
+    service = run(["systemctl", "--user", "is-active", "--quiet", "steam.service"]).returncode == 0
+    if service:
+        run(["systemctl", "--user", "stop", "steam.service"])
+    else:
+        run(["steam", "-shutdown"])
+    for _ in range(40):
+        if run(["pgrep", "-x", "steam"]).returncode:
+            break
+        time.sleep(1)
+    if run(["pgrep", "-x", "steam"]).returncode == 0:
+        raise AgentError("Steam did not close")
+    return service
+
+
+def start_steam(service):
+    if service:
+        run(["systemctl", "--user", "start", "steam.service"])
+    else:
+        subprocess.Popen(["systemd-run", "--user", "--collect", f"--unit=frameport-steam-{int(time.time())}",
+                          "/usr/bin/steam"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def tools_worker(payload):
+    args = json.loads(payload)
+    service = True
+    try:
+        service = stop_steam()
+        for st in args["stubs"]:
+            write_stub_manifest(st["appid"], st["name"], st["installdir"])
+    finally:
+        start_steam(service)
+
+
 def steam_users():
     return sorted(d for d in os.listdir(os.path.join(STEAM, "userdata")) if d.isdigit() and d != "0") \
         if os.path.isdir(os.path.join(STEAM, "userdata")) else []
@@ -155,6 +616,7 @@ def cmd_info(args):
         "installed": cmd_list_installed({})["games"],
         "steam_running": run(["pgrep", "-x", "steam"]).returncode == 0,
         "host_fixes": ensure_host_fixes(), "kernel_keys": key_usage(),
+        "proton": cmd_proton_status({}) if args.get("proton", True) else None,
     }
 
 
@@ -229,17 +691,23 @@ def vdf_encode(obj):
     return bytes(out) + bytes([TYPE_END])
 
 
-def upsert_shortcut(vdf_path, exe, title, start_dir, icon=""):
+def upsert_shortcut(vdf_path, exe, title, start_dir, icon="", tag="Quest on Frame", launch_options="", tags=None):
+    """Add/update a non-Steam shortcut (matched by Exe, so its appid never changes). `tags` (genres, the user's tags)
+    are merged with tags already on the shortcut, so ones set in Steam are kept."""
     data = open(vdf_path, "rb").read() if os.path.exists(vdf_path) else b""
     root = vdf_decode(data) if data else {"shortcuts": {}}
     shortcuts = root.setdefault("shortcuts", {})
     entry = next((v for v in shortcuts.values() if isinstance(v, dict) and v.get("Exe") == exe), None)
     ident = entry["appid"] if entry else shortcut_appid(exe, title)
     if entry is None:
-        entry = {"appid": ident, "LastPlayTime": 0, "tags": {"0": "Quest on Frame"}}
+        entry = {"appid": ident, "LastPlayTime": 0, "tags": {"0": tag}}
         shortcuts[str(max([int(k) for k in shortcuts if k.isdigit()] + [-1]) + 1)] = entry
+    if tags:
+        have = [v for v in (entry.get("tags") or {}).values() if isinstance(v, str)]
+        merged = list(dict.fromkeys(have + [t for t in [tag] + list(tags) if t]))
+        entry["tags"] = {str(i): t for i, t in enumerate(merged)}
     entry.update(appname=title, Exe=exe, StartDir=start_dir, icon=icon or entry.get("icon", ""), ShortcutPath="",
-                 LaunchOptions="", IsHidden=0, AllowDesktopConfig=1, AllowOverlay=1, OpenVR=1, Devkit=0,
+                 LaunchOptions=launch_options, IsHidden=0, AllowDesktopConfig=1, AllowOverlay=1, OpenVR=1, Devkit=0,
                  DevkitGameID="", DevkitOverrideAppID=0, FlatpakAppID="")
     if data:
         shutil.copy2(vdf_path, f"{vdf_path}.backup-{time.strftime('%Y%m%d-%H%M%S')}")
@@ -249,6 +717,28 @@ def upsert_shortcut(vdf_path, exe, title, start_dir, icon=""):
         f.write(vdf_encode(root))
     os.replace(tmp, vdf_path)
     return ident
+
+
+def prune_shortcuts(vdf_path, title, keep_exe, tag):
+    """Remove FramePort-tagged shortcuts for `title` whose Exe differs from keep_exe (a reinstall that changed the
+    launch command, e.g. Revive -> direct, would otherwise leave the old, crashing shortcut behind). Returns the
+    removed appids."""
+    if not os.path.exists(vdf_path):
+        return []
+    root = vdf_decode(open(vdf_path, "rb").read())
+    sc = root.get("shortcuts", {})
+    removed = [v.get("appid") for v in sc.values() if isinstance(v, dict) and v.get("appname") == title
+               and v.get("Exe") != keep_exe and tag in (v.get("tags") or {}).values()]
+    if not removed:
+        return []
+    keep = [v for v in sc.values() if not (isinstance(v, dict) and v.get("appname") == title
+            and v.get("Exe") != keep_exe and tag in (v.get("tags") or {}).values())]
+    root["shortcuts"] = {str(i): v for i, v in enumerate(keep)}
+    shutil.copy2(vdf_path, f"{vdf_path}.backup-{time.strftime('%Y%m%d-%H%M%S')}")
+    with open(vdf_path + ".tmp", "wb") as f:
+        f.write(vdf_encode(root))
+    os.replace(vdf_path + ".tmp", vdf_path)
+    return removed
 
 
 def remove_shortcut(vdf_path, exe):
@@ -295,17 +785,10 @@ def shortcuts_worker(payload):
         if len(users) != 1:
             raise AgentError(f"found {len(users)} Steam users; not guessing which library to edit")
         vdf = os.path.join(STEAM, "userdata", users[0], "config/shortcuts.vdf")
-        service = run(["systemctl", "--user", "is-active", "--quiet", "steam.service"]).returncode == 0
-        if service:
-            run(["systemctl", "--user", "stop", "steam.service"])
-        else:
-            run(["steam", "-shutdown"])
-        for _ in range(40):
-            if run(["pgrep", "-x", "steam"]).returncode:
-                break
-            time.sleep(1)
-        if run(["pgrep", "-x", "steam"]).returncode == 0:
-            raise AgentError("Steam did not close; library not modified")
+        try:
+            service = stop_steam()
+        except AgentError:
+            raise AgentError("Steam did not close; library not modified") from None
         grid = os.path.join(os.path.dirname(vdf), "grid")
         os.makedirs(grid, exist_ok=True)
         for pkg in args["packages"]:
@@ -313,7 +796,9 @@ def shortcuts_worker(payload):
                 anchor = os.path.join(ANCHORS, pkg)
                 dep = json.load(open(os.path.join(anchor, "deployment.json")))
                 icon = next(iter(glob.glob(os.path.join(anchor, "artwork/icon.*"))), "")
-                got = upsert_shortcut(vdf, f'"{anchor}/launch.sh"', dep["title"], anchor, icon)
+                tag = "PC VR on Frame" if dep.get("kind") == "pcvr" else "Quest on Frame"
+                got = upsert_shortcut(vdf, f'"{anchor}/launch.sh"', dep["title"], anchor, icon, tag,
+                                      tags=dep.get("tags") or [])
                 for kind, suffix in (("portrait", "p"), ("landscape", ""), ("hero", "_hero"), ("logo", "_logo")):
                     img = next(iter(glob.glob(os.path.join(anchor, f"artwork/{kind}.*"))), None)
                     if not img:
@@ -324,11 +809,8 @@ def shortcuts_worker(payload):
                 result["added"].append({"package": pkg, "appid": got, "expected": dep["appid"]})
             except Exception as exc:  # noqa: BLE001
                 result["errors"].append(f"{pkg}: {exc}")
-        if service:
-            run(["systemctl", "--user", "start", "steam.service"])
-        elif args.get("restart", True):
-            subprocess.Popen(["systemd-run", "--user", "--collect", f"--unit=frameport-steam-{int(time.time())}",
-                              "/usr/bin/steam"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if service or args.get("restart", True):
+            start_steam(service)
     except Exception as exc:  # noqa: BLE001
         result["state"] = "failed"
         result["errors"].append(str(exc))
@@ -361,11 +843,81 @@ def cmd_list_installed(args):
             dep = json.load(open(dep_path))
         except (OSError, ValueError):
             continue
-        apk = os.path.join(dep["base"], "lepton-app/game.apk")
-        dep["apk_present"] = os.path.exists(apk)
-        dep["apk_size"] = os.path.getsize(apk) if dep["apk_present"] else 0
+        dep.setdefault("kind", "quest")
+        dep["anchor"] = os.path.dirname(dep_path)  # its artwork/ feeds the Steam grid (shortcuts)
+        if dep["kind"] == "pcvr":
+            exe = os.path.join(dep["base"], "game", dep.get("exe", ""))
+            dep["apk_present"] = os.path.isfile(exe)
+            dep["apk_size"] = sum((dep.get("files") or {}).get("game", {}).values())
+            dep.pop("files", None)  # large; not needed by the PC
+        else:
+            apk = os.path.join(dep["base"], "lepton-app/game.apk")
+            dep["apk_present"] = os.path.exists(apk)
+            dep["apk_size"] = os.path.getsize(apk) if dep["apk_present"] else 0
         games.append(dep)
     return {"games": games}
+
+
+def steam_gameid(appid):
+    """steam://rungameid/ id of a non-Steam shortcut: the 32-bit shortcut appid in the high word, type 0x02000000."""
+    return (int(appid) << 32) | 0x02000000
+
+
+def cmd_launch(args):
+    """Start an installed game the way the headset's library does: ask the running Steam to launch its shortcut, so
+    it gets Steam's VR session, overlay and controller setup (unlike launch_test's direct, headless start)."""
+    pkg = check_pkg(args["package"])
+    dep = deployment(pkg)
+    if not dep or not dep.get("appid"):
+        raise AgentError(f"{pkg} is not installed")
+    if run(["pgrep", "-x", "steam"]).returncode != 0:
+        raise AgentError("Steam isn't running on the Frame")
+    gid = steam_gameid(dep["appid"])
+    # systemd-run: the launch request must outlive this SSH session
+    run(["systemd-run", "--user", "--collect", "--quiet", f"--unit=frameport-launch-{int(time.time())}",
+         "steam", "-ifrunning", f"steam://rungameid/{gid}"])
+    return {"package": pkg, "gameid": gid, "title": dep.get("title")}
+
+
+def cmd_list_files(args):
+    """Every file of an installed game on the Frame, for the PC's file browser: {roots: [{name, path, files:
+    [[rel, size], ...]}], missing: [[rel, expected size, actual size or None], ...], truncated}. Roots are the install
+    folder (game files, Proton prefix / Lepton data) and, when separate, the launcher folder (launch.sh, artwork).
+    `missing` compares against the file list recorded at install time (PC VR games)."""
+    pkg = check_pkg(args["package"])
+    dep = deployment(pkg)
+    if not dep:
+        raise AgentError(f"{pkg} is not installed")
+    limit = int(args.get("limit", 200000))
+    anchor = os.path.join(ANCHORS, pkg)
+    roots, count, truncated = [], 0, False
+    for name, root in (("Install folder", dep["base"]), ("Launcher", anchor)):
+        if not os.path.isdir(root) or any(os.path.realpath(root) == os.path.realpath(r["path"]) for r in roots):
+            continue
+        files = []
+        for r, dirs, names in os.walk(root):
+            dirs.sort()
+            for n in sorted(names):
+                if count >= limit:
+                    truncated = True
+                    break
+                p = os.path.join(r, n)
+                try:
+                    files.append([os.path.relpath(p, root), os.lstat(p).st_size])
+                except OSError:
+                    continue
+                count += 1
+        roots.append({"name": name, "path": root, "files": files})
+    missing = []
+    for t, manifest in (dep.get("files") or {}).items():
+        for rel, size in manifest.items():
+            p = os.path.join(dep["base"], t, rel)
+            actual = os.path.getsize(p) if os.path.isfile(p) else None
+            if actual is None and rel.lower().endswith("crashreportclient.exe") and os.path.isfile(p + ".disabled"):
+                continue  # renamed by the no-crash-reporter patch
+            if actual != size:
+                missing.append([f"{t}/{rel}", size, actual])
+    return {"roots": roots, "missing": missing[:1000], "truncated": truncated, "kind": dep.get("kind", "quest")}
 
 
 def cmd_prepare(args):
@@ -389,6 +941,7 @@ def cmd_prepare(args):
         for name in files:
             p = os.path.join(root, name)
             existing[os.path.relpath(p, obb)] = os.path.getsize(p)
+    existing.update(tree_manifest(os.path.join(incoming, "obb")))  # uploaded before an interruption
     apk = os.path.join(app, "game.apk")
     want_sha = args.get("apk_sha256")
     same_apk = bool(want_sha and os.path.exists(apk) and os.path.getsize(apk) == args.get("apk_size")
@@ -521,12 +1074,246 @@ def cmd_finalize(args):
     if os.path.isdir(art_in):
         shutil.rmtree(os.path.join(anchor, "artwork"), ignore_errors=True)
         shutil.move(art_in, os.path.join(anchor, "artwork"))
-    dep = {"package": pkg, "appid": int(appid), "base": base, "title": title, "apk": args.get("apk_name", "game.apk"),
+    dep = {"package": pkg, "appid": int(appid), "base": base, "title": title, "tags": args.get("tags") or [],
+           "apk": args.get("apk_name", "game.apk"),
            "sha256": args.get("apk_sha256"), "recipe": args.get("recipe"), "installed_by": "frameport",
            "agent_version": AGENT_VERSION, "time": time.time()}
     with open(os.path.join(anchor, "deployment.json"), "w") as f:
         json.dump(dep, f, indent=2)
     return {"ok": True, "base": base, "appid": appid, "moved_data_files": moved}
+
+
+# ------------------------------------------------------------------------------------------ PC VR (Rift) under Proton
+PCVR_TREES = ("game", "revive", "xrlayer", "helpers")
+
+
+def tree_manifest(root):
+    out = {}
+    for r, _, files in os.walk(root):
+        for name in files:
+            if name.endswith(".part"):
+                continue
+            p = os.path.join(r, name)
+            rel = os.path.relpath(p, root)
+            if name.lower() == "crashreportclient.exe.disabled":  # renamed by set_crash_reporter: same file
+                rel = rel[:-len(".disabled")]
+            out[rel] = os.path.getsize(p)
+    return out
+
+
+def pcvr_pids(base):
+    """Processes of a PC VR game (the Proton/Wine command lines contain its install folder)."""
+    p = run(["pgrep", "-f", re.escape(base.rstrip("/") + "/")])
+    return [x for x in p.stdout.split() if x != str(os.getpid())]
+
+
+def cmd_prepare_pcvr(args):
+    """Where to upload a Windows game + Revive, and what the Frame already has (unchanged files aren't re-sent)."""
+    pkg = check_pkg(args["package"])
+    title = args["title"]
+    dest = os.path.expanduser(args.get("dest") or ANCHORS)
+    anchor = os.path.join(ANCHORS, pkg)
+    dep = deployment(pkg)
+    base = dep["base"] if dep else os.path.join(dest, pkg)
+    appid = dep["appid"] if dep else shortcut_appid(f'"{anchor}/launch.sh"', title)
+    if dep and pcvr_pids(base):
+        raise AgentError(f"{title} is running on the Frame. Close it first.")
+    incoming = os.path.join(base, "incoming")
+    for t in PCVR_TREES:
+        os.makedirs(os.path.join(incoming, t), exist_ok=True)
+    # files already in place plus files uploaded by an interrupted install (still in incoming/): not sent again
+    existing = {t: {**tree_manifest(os.path.join(base, t)), **tree_manifest(os.path.join(incoming, t))}
+                for t in PCVR_TREES}
+    st = os.statvfs(base if os.path.exists(base) else HOME)
+    status = cmd_proton_status({"tool": args.get("tool")})
+    return {"package": pkg, "base": base, "anchor": anchor, "appid": appid, "incoming": incoming,
+            "installed": bool(dep), "existing": existing, "free_bytes": st.f_bavail * st.f_frsize,
+            "proton": status.get("ready"), "proton_suggested": status.get("suggested"), "openxr": status.get("openxr")}
+
+
+LAUNCH_PROTON_SH = r"""#!/usr/bin/env bash
+# Steam Frame launcher for {title} ({pkg}): Windows PC VR game under Proton ({tool}). Generated by FramePort.
+set -euo pipefail
+base={base_q}
+[[ -d "$base/game" ]] || {{ echo "Game files missing at $base (storage not mounted?)" >&2; exit 1; }}
+export SteamAppId={appid}
+export SteamGameId={appid}
+export STEAM_COMPAT_APP_ID={appid}
+export STEAM_COMPAT_DATA_PATH="$base/compatdata"
+export STEAM_COMPAT_CLIENT_INSTALL_PATH={steam_q}
+export STEAM_COMPAT_INSTALL_PATH="$base/game"
+export STEAM_COMPAT_LIBRARY_PATHS="$base"
+export STEAM_COMPAT_SHADER_PATH="$base/shadercache"
+export PROTON_LOG_DIR="$base"
+{xr_layer}export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+# Wine needs the display session (gamescope's X/Wayland). Steam passes it; headless launches take it from Steam.
+if [[ -z "${{DISPLAY:-}}" ]]; then
+    steam_pid=$(pgrep -x steam | head -n1 || true)
+    if [[ -n "$steam_pid" && -r "/proc/$steam_pid/environ" ]]; then
+        while IFS= read -r -d '' kv; do
+            case "$kv" in DISPLAY=*|WAYLAND_DISPLAY=*|GAMESCOPE_WAYLAND_DISPLAY=*|XAUTHORITY=*|XDG_SESSION_TYPE=*)
+                export "$kv";; esac
+        done < "/proc/$steam_pid/environ"
+    fi
+fi
+{extra_env}
+mkdir -p "$STEAM_COMPAT_DATA_PATH" "$STEAM_COMPAT_SHADER_PATH"
+cd "$base/game"{workdir}
+echo "FramePort: launching {pkg} with {tool}" >"$base/launch.log"
+exec {command} >>"$base/launch.log" 2>&1
+"""
+
+
+def windows_path(path):
+    """Unix path as Wine sees it through drive Z: (the root filesystem)."""
+    return "Z:" + os.path.abspath(path).replace("/", "\\")
+
+
+XR_LAYER = "XR_APILAYER_FRAMEPORT_timefix"
+XR_LAYER_ENV = (f'# FramePort OpenXR layer: OpenXR 1.1 -> 1.0 fallback for the Frame runtime (+ timespec time emulation)\n'
+                f'export XR_API_LAYER_PATH="$base/xrlayer${{XR_API_LAYER_PATH:+:$XR_API_LAYER_PATH}}"\n'
+                f'export XR_ENABLE_API_LAYERS="{XR_LAYER}${{XR_ENABLE_API_LAYERS:+:$XR_ENABLE_API_LAYERS}}"\n')
+
+
+XR_LAYER_MANIFEST = os.path.join(HOME, ".local/share/openxr/1/api_layers/explicit.d", XR_LAYER + ".json")
+
+
+def install_xr_layer(base):
+    """Proton's Steam Linux Runtime container drops XR_API_LAYER_PATH, so the layer is registered where the OpenXR
+    loader also looks for explicit layers ($XDG_DATA_HOME/openxr/1/api_layers/explicit.d, shared into the container
+    with the home dir). Explicit layers only load when XR_ENABLE_API_LAYERS names them (launch.sh does), so other apps
+    are unaffected. The library is a shared copy under the agent's folder."""
+    src = os.path.join(base, "xrlayer")
+    with open(os.path.join(src, XR_LAYER + ".json")) as f:
+        manifest = json.load(f)
+    lib_name = os.path.basename(manifest["api_layer"]["library_path"])
+    dest = os.path.join(AGENT_HOME, "xrlayer")
+    os.makedirs(dest, exist_ok=True)
+    tmp = os.path.join(dest, lib_name + ".tmp")
+    shutil.copyfile(os.path.join(src, lib_name), tmp)
+    os.replace(tmp, os.path.join(dest, lib_name))
+    manifest["api_layer"]["library_path"] = os.path.join(dest, lib_name)
+    os.makedirs(os.path.dirname(XR_LAYER_MANIFEST), exist_ok=True)
+    with open(XR_LAYER_MANIFEST + ".tmp", "w") as f:
+        json.dump(manifest, f, indent=4)
+    os.replace(XR_LAYER_MANIFEST + ".tmp", XR_LAYER_MANIFEST)
+
+
+OCULUS_HMD_HELPER = "fp_oculushmd.exe"
+
+
+def write_proton_launcher(anchor, base, pkg, title, appid, tool, exe_rel, revive, env, xr_layer=False, game_args=(),
+                          oculus_hmd=False):
+    exe = os.path.join(base, "game", exe_rel)
+    prefix = compat_command(tool["dir"])
+    injector = os.path.join(base, "revive", "ReviveInjector.exe")
+    if oculus_hmd:
+        # FramePort's helper provides the OculusHMDConnected event (Unreal's Oculus plugin checks for it) and runs the
+        # rest of its command line, staying alive until the game has exited
+        argv = prefix + [os.path.join(base, "helpers", OCULUS_HMD_HELPER)]
+        argv += [windows_path(injector), "/openxr", windows_path(exe)] if revive else [windows_path(exe)]
+    elif revive:
+        # ReviveInjector joins its arguments into one command line; /openxr = LibReviveXR (OpenXR -> wineopenxr)
+        argv = prefix + [injector, "/openxr", windows_path(exe)]
+    else:
+        argv = prefix + [exe]
+    argv += [a for a in game_args or () if re.fullmatch(r"-[A-Za-z0-9_=.:-]+", a)]
+    extra = "".join(f"export {k}={shlex.quote(str(v))}\n" for k, v in (env or {}).items()
+                    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k))
+    workdir = os.path.dirname(exe_rel)
+    text = LAUNCH_PROTON_SH.format(
+        title=title.replace("\n", " "), pkg=pkg, base_q=shlex.quote(base), appid=appid, steam_q=shlex.quote(STEAM),
+        tool=tool["name"], extra_env=extra, workdir=("/" + shlex.quote(workdir)) if workdir else "",
+        xr_layer=XR_LAYER_ENV if xr_layer else "",
+        command=" ".join(shlex.quote(a) for a in argv))
+    path = os.path.join(anchor, "launch.sh")
+    with open(path + ".tmp", "w") as f:
+        f.write(text)
+    os.chmod(path + ".tmp", 0o755)
+    os.replace(path + ".tmp", path)
+
+
+def set_crash_reporter(base, enabled):
+    """Unreal's CrashReportClient.exe in the Frame copy of the game: renamed to .disabled so a crash just closes the
+    game (and back when enabled)."""
+    game = os.path.join(base, "game")
+    for root, _, files in os.walk(game):
+        for name in files:
+            low = name.lower()
+            p = os.path.join(root, name)
+            if not enabled and low == "crashreportclient.exe":
+                os.replace(p, p + ".disabled")
+            elif enabled and low == "crashreportclient.exe.disabled":
+                os.replace(p, p[:-len(".disabled")])
+
+
+def cmd_finalize_pcvr(args):
+    """Move uploaded game/Revive files into place, delete files the new version no longer has, write the Proton
+    launcher and deployment.json. The Proton prefix (saves) is kept."""
+    pkg = check_pkg(args["package"])
+    title = args["title"]
+    prep = cmd_prepare_pcvr({"package": pkg, "title": title, "dest": args.get("dest"), "tool": args.get("tool")})
+    base, anchor, appid, incoming = prep["base"], prep["anchor"], prep["appid"], prep["incoming"]
+    tool = prep["proton"]
+    if not tool:
+        raise AgentError("Proton isn't installed on the Frame yet (FramePort: Frame → Install Proton)")
+    exe_rel = os.path.normpath(args["exe"])
+    if exe_rel.startswith("..") or os.path.isabs(exe_rel):
+        raise AgentError(f"bad exe path {args['exe']!r}")
+    old = (deployment(pkg) or {}).get("files") or {}
+    manifests = args.get("manifests") or {}
+    moved = 0
+    for t in PCVR_TREES:
+        src_root, dst_root = os.path.join(incoming, t), os.path.join(base, t)
+        for rel in tree_manifest(src_root):
+            dst = os.path.join(dst_root, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            os.replace(os.path.join(src_root, rel), dst)
+            moved += 1
+        want = manifests.get(t)
+        if want is None:
+            continue
+        for rel in set(old.get(t) or {}) - set(want):  # files of the previous version that are gone now
+            p = os.path.normpath(os.path.join(dst_root, rel))
+            if p.startswith(dst_root + os.sep) and os.path.isfile(p):
+                os.remove(p)
+        have = tree_manifest(dst_root)
+        bad = [k for k, v in want.items() if have.get(k) != v]
+        if bad:
+            raise AgentError(f"{len(bad)} {t} file(s) missing or incomplete, e.g. {bad[0]}")
+    if not os.path.isfile(os.path.join(base, "game", exe_rel)):
+        raise AgentError(f"game executable {exe_rel} missing after upload")
+    shutil.rmtree(incoming, ignore_errors=True)
+    os.makedirs(anchor, exist_ok=True)
+    revive = bool(args.get("revive", True))
+    if revive and not os.path.isfile(os.path.join(base, "revive", "ReviveInjector.exe")):
+        raise AgentError("Revive files missing")
+    xr_layer = bool(args.get("xr_layer")) and os.path.isfile(os.path.join(base, "xrlayer", XR_LAYER + ".json"))
+    if args.get("xr_layer") and not xr_layer:
+        raise AgentError("timefix layer files missing")
+    if xr_layer:
+        install_xr_layer(base)
+    oculus_hmd = bool(args.get("oculus_hmd"))
+    if oculus_hmd and not os.path.isfile(os.path.join(base, "helpers", OCULUS_HMD_HELPER)):
+        raise AgentError(f"{OCULUS_HMD_HELPER} missing")
+    set_crash_reporter(base, enabled=not args.get("no_crash_reporter"))
+    write_proton_launcher(anchor, base, pkg, title, appid, tool, exe_rel, revive, args.get("env"), xr_layer,
+                          args.get("game_args") or [], oculus_hmd)
+    art_in = os.path.join(base, "incoming-artwork")
+    if os.path.isdir(art_in):
+        shutil.rmtree(os.path.join(anchor, "artwork"), ignore_errors=True)
+        shutil.move(art_in, os.path.join(anchor, "artwork"))
+    dep = {"package": pkg, "kind": "pcvr", "appid": int(appid), "base": base, "title": title, "exe": exe_rel,
+           "tags": args.get("tags") or [],
+           "sha256": args.get("exe_sha256"), "revive": revive, "revive_version": args.get("revive_version"),
+           "proton": tool["name"], "xr_layer": xr_layer, "oculus_hmd": oculus_hmd, "recipe": args.get("recipe"),
+           "installed_by": "frameport",
+           "files": {t: manifests.get(t) or {} for t in PCVR_TREES},
+           "agent_version": AGENT_VERSION, "time": time.time()}
+    with open(os.path.join(anchor, "deployment.json"), "w") as f:
+        json.dump(dep, f, indent=2)
+    return {"ok": True, "base": base, "appid": appid, "moved_files": moved, "proton": tool["name"]}
 
 
 def cmd_set_settings(args):
@@ -561,11 +1348,14 @@ def cmd_uninstall(args):
     dep = deployment(pkg)
     if not dep:
         return {"removed": False}
-    if container_running(dep["appid"]):
-        raise AgentError("the game is running")
     base = dep["base"]
+    pcvr = dep.get("kind") == "pcvr"
+    if (pcvr_pids(base) if pcvr else container_running(dep["appid"])):
+        raise AgentError("the game is running")
     keep_data = args.get("keep_data", True)
-    for name in ("lepton-app", "lepton-shaders", "incoming", "previous-game.apk"):
+    names = ("game", "revive", "xrlayer", "shadercache", "incoming", "incoming-artwork") if pcvr else \
+        ("lepton-app", "lepton-shaders", "incoming", "previous-game.apk")
+    for name in names:
         p = os.path.join(base, name)
         if os.path.isdir(p):
             shutil.rmtree(p, ignore_errors=True)
@@ -581,6 +1371,10 @@ def cmd_uninstall(args):
                                      f'"{anchor}/launch.sh"')  # takes effect after the next Steam restart
     if not keep_data or base != anchor:
         shutil.rmtree(anchor, ignore_errors=True)
+    else:  # saves live next to the launcher (Quest games): keep them, drop what marks the game as installed
+        for name in ("deployment.json", "launch.sh", "artwork", "launch.log", "launch-test.log"):
+            p = os.path.join(anchor, name)
+            shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else (os.path.exists(p) and os.remove(p))
     return {"removed": True, "kept_saves": keep_data, "shortcut_removed": removed_sc}
 
 
@@ -589,8 +1383,52 @@ def cmd_stop(args):
     dep = deployment(check_pkg(args["package"]))
     if dep:
         run(["systemctl", "--user", "stop", f"frameport-test-{dep['appid']}"])
-        run(["podman", "kill", f"lepton-steamlaunch-{dep['appid']}"])
+        if dep.get("kind") == "pcvr":
+            stop_pcvr(dep)
+        else:
+            run(["podman", "kill", f"lepton-steamlaunch-{dep['appid']}"])
     return {"stopped": bool(dep)}
+
+
+def stop_pcvr(dep):
+    """Stop a Proton game: wineserver -k in its prefix, then anything still using its folder."""
+    tool = next((t for t in proton_tools() if t["name"] == dep.get("proton")), None) if dep.get("proton") else None
+    if tool and tool.get("dir"):
+        stop_prefix(tool, os.path.join(dep["base"], "compatdata/pfx"))
+    for pid in pcvr_pids(dep["base"]):
+        run(["kill", "-TERM", pid])
+
+
+PCVR_LOGS = ("compatdata/pfx/drive_c/users/steamuser/AppData/Local/Revive/ReviveInjector.txt",)
+LOCAL_APPDATA = "compatdata/pfx/drive_c/users/steamuser/AppData/Local"
+
+
+def game_logs(base, since=0.0):
+    """The game's own logs from the Proton prefix, newest first: Unreal Saved/Logs/*.log (tail) and crash summaries
+    (Saved/Crashes/*/CrashContext.runtime-xml → error message + call stack), Revive's logs."""
+    out = []
+    local = os.path.join(base, LOCAL_APPDATA)
+    for log in sorted(glob.glob(os.path.join(local, "*", "Saved", "Logs", "*.log")), key=os.path.getmtime,
+                      reverse=True)[:1]:
+        if os.path.getmtime(log) < since:  # left over from an earlier run
+            continue
+        text = open(log, errors="replace").read()
+        out.append(f"===== game log {os.path.relpath(log, base)}\n" + "\n".join(text.splitlines()[-1500:]))
+    for ctx in sorted(glob.glob(os.path.join(local, "*", "Saved", "Crashes", "*", "CrashContext.runtime-xml")),
+                      key=os.path.getmtime, reverse=True)[:2]:
+        if os.path.getmtime(ctx) < since:
+            continue
+        raw = open(ctx, "rb").read().decode("utf-8", "replace")
+        fields = []
+        for tag in ("ErrorMessage", "CrashType", "EngineVersion", "CallStack", "SourceContext"):
+            m = re.search(r"<%s>(.*?)</%s>" % (tag, tag), raw, re.S)
+            if m and m.group(1).strip():
+                fields.append(f"{tag}: {m.group(1).strip()[:3000]}")
+        out.append(f"===== crash {os.path.relpath(os.path.dirname(ctx), base)} (UE4CC)\n" + "\n".join(fields))
+    for rv in glob.glob(os.path.join(local, "Revive", "*.txt")):
+        if not rv.endswith("ReviveInjector.txt") and os.path.getmtime(rv) >= since:
+            out.append(f"===== {os.path.relpath(rv, base)}\n" + open(rv, errors="replace").read()[-100000:])
+    return out
 
 
 def cmd_launch_test(args):
@@ -604,6 +1442,8 @@ def cmd_launch_test(args):
     anchor = os.path.join(ANCHORS, pkg)
     log = os.path.join(dep["base"], "launch.log")
     appid = dep["appid"]
+    if dep.get("kind") == "pcvr":
+        return launch_test_pcvr(dep, anchor, log, seconds)
     if container_running(appid):
         raise AgentError("the game is already running")
     ensure_host_fixes()
@@ -630,6 +1470,136 @@ def cmd_launch_test(args):
     time.sleep(3)
     return {"state": state, "elapsed": elapsed, "log": log, "log_size": os.path.getsize(log) if os.path.exists(log) else 0,
             "kernel_keys_before": keys, "kernel_keys_after": key_usage()}
+
+
+def launch_test_pcvr(dep, anchor, log, seconds):
+    base, appid = dep["base"], dep["appid"]
+    if pcvr_pids(base):
+        raise AgentError("the game is already running")
+    unit = f"frameport-test-{appid}"
+    run(["systemctl", "--user", "reset-failed", unit])
+    p = run(["systemd-run", "--user", "--quiet", f"--unit={unit}", "--property=RemainAfterExit=no",
+             os.path.join(anchor, "launch.sh")])
+    if p.returncode:
+        raise AgentError("could not start the launcher: " + p.stderr[-300:])
+    start = time.time()
+    state = "RUNNING"
+    game_seen = False
+    exe_name = os.path.basename(dep.get("exe", ""))
+    while time.time() - start < seconds:
+        time.sleep(3)
+        # Wine names game processes by their Windows path (X:\...\Game.exe); the Proton command line doesn't start so
+        game_seen = game_seen or bool(exe_name and run(
+            ["pgrep", "-if", r"^[a-z]:\\.*" + re.escape(exe_name)]).returncode == 0)
+        active = run(["systemctl", "--user", "is-active", "--quiet", unit]).returncode == 0
+        if not active:
+            state = "EXITED" if game_seen else "NEVER_STARTED"
+            break
+    elapsed = round(time.time() - start)
+    if state == "RUNNING" and not game_seen:
+        state = "NEVER_STARTED"  # the launcher is up but the game process never appeared
+    run(["systemctl", "--user", "stop", unit])
+    stop_pcvr(dep)
+    time.sleep(3)
+    # one log for triage: launcher/Proton output + Revive's logs + the game's own (Unreal) log and crash summaries +
+    # Proton's own log when enabled
+    parts = []
+    for rel in ("launch.log",) + PCVR_LOGS + (f"steam-{appid}.log",):
+        path = os.path.join(base, rel)
+        if os.path.exists(path) and os.path.getmtime(path) >= start - 5:  # not left over from an earlier run
+            parts.append(f"===== {rel}\n" + open(path, errors="replace").read()[-400000:])
+    parts += game_logs(base, since=start - 5)
+    combined = os.path.join(base, "launch-test.log")
+    with open(combined, "w") as f:
+        f.write("\n".join(parts))
+    return {"state": state, "elapsed": elapsed, "log": combined, "log_size": os.path.getsize(combined),
+            "kind": "pcvr", "game_process": bool(game_seen)}
+
+
+AGENT_HOME = os.path.join(HOME, ".local/share/frameport")
+
+
+def cmd_purge(args):
+    """Remove everything FramePort put on this Frame: its games (keep_saves: leave Quest save data and PC VR Proton
+    prefixes), their Steam shortcuts + grid art, ~/Applications/quest-frame, and ~/.local/share/frameport (this agent,
+    Proton self-test prefix, timefix layer). Runs detached (Steam is closed while shortcuts.vdf changes); poll
+    purge_status. Proton/Lepton stay installed (they're Steam apps) and the podman keyring fix stays (harmless)."""
+    games = cmd_list_installed({})["games"]
+    if any((pcvr_pids(d["base"]) if d.get("kind") == "pcvr" else container_running(d["appid"])) for d in games):
+        raise AgentError("a FramePort game is running on the Frame; close it first")
+    status = os.path.join(HOME, ".cache/frameport-purge.json")
+    os.makedirs(os.path.dirname(status), exist_ok=True)
+    with open(status, "w") as f:
+        json.dump({"state": "running", "started": time.time()}, f)
+    payload = json.dumps({"keep_saves": bool(args.get("keep_saves", True)), "status": status})
+    run(["systemd-run", "--user", "--collect", "--quiet", f"--unit=frameport-purge-{int(time.time())}",
+         "--setenv=HOME=" + HOME, sys.executable, os.path.abspath(__file__), "_purge_worker", payload])
+    return {"started": True, "games": len(games), "status": status}
+
+
+def purge_worker(payload):
+    args = json.loads(payload)
+    keep = args["keep_saves"]
+    result = {"state": "done", "removed": [], "kept": [], "errors": []}
+    service = True
+    try:
+        games = cmd_list_installed({})["games"]
+        users = steam_users()
+        try:
+            service = stop_steam()
+        except AgentError as exc:
+            result["errors"].append(str(exc))
+            service = True
+        for u in users:
+            vdf = os.path.join(STEAM, "userdata", u, "config/shortcuts.vdf")
+            grid = os.path.join(STEAM, "userdata", u, "config/grid")
+            for d in games:
+                try:
+                    if remove_shortcut(vdf, f'"{os.path.join(ANCHORS, d["package"])}/launch.sh"'):
+                        result["removed"].append(f"Steam shortcut: {d.get('title')}")
+                    for art in glob.glob(os.path.join(grid, f"{d['appid']}*")):
+                        os.remove(art)
+                except Exception as exc:  # noqa: BLE001
+                    result["errors"].append(f"{d.get('title')}: {exc}")
+        for d in games:
+            base = d["base"]
+            saves = [os.path.join(base, n) for n in ("lepton-data", "compatdata")]
+            if keep and any(os.path.exists(p) for p in saves):
+                for name in os.listdir(base) if os.path.isdir(base) else []:
+                    p = os.path.join(base, name)
+                    if p not in saves:
+                        shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
+                result["kept"].append(base)
+            else:
+                shutil.rmtree(base, ignore_errors=True)
+            result["removed"].append(d.get("title") or d["package"])
+        if not keep or not result["kept"]:
+            shutil.rmtree(ANCHORS, ignore_errors=True)
+        else:  # anchors hold only launchers/artwork; saves live in the bases
+            for d in games:
+                anchor = os.path.join(ANCHORS, d["package"])
+                if os.path.realpath(anchor) not in [os.path.realpath(k) for k in result["kept"]]:
+                    shutil.rmtree(anchor, ignore_errors=True)
+        shutil.rmtree(AGENT_HOME, ignore_errors=True)
+        result["removed"].append(AGENT_HOME)
+        if os.path.exists(XR_LAYER_MANIFEST):
+            os.remove(XR_LAYER_MANIFEST)
+            result["removed"].append(XR_LAYER_MANIFEST)
+    except Exception as exc:  # noqa: BLE001
+        result["state"] = "failed"
+        result["errors"].append(str(exc))
+    finally:
+        start_steam(service)
+    result["finished"] = time.time()
+    with open(args["status"], "w") as f:
+        json.dump(result, f)
+
+
+def cmd_purge_status(args):
+    try:
+        return json.load(open(os.path.join(HOME, ".cache/frameport-purge.json")))
+    except (OSError, ValueError):
+        return {"state": "none"}
 
 
 def cmd_cleanup(args):
@@ -666,6 +1636,15 @@ COMMANDS = {n[4:]: f for n, f in globals().items() if n.startswith("cmd_")}
 def main():
     if len(sys.argv) >= 3 and sys.argv[1] == "_shortcuts_worker":
         shortcuts_worker(sys.argv[2])
+        return 0
+    if len(sys.argv) >= 3 and sys.argv[1] == "_purge_worker":
+        purge_worker(sys.argv[2])
+        return 0
+    if len(sys.argv) >= 3 and sys.argv[1] == "_xr_probe":
+        xr_probe(sys.argv[2])
+        return 0
+    if len(sys.argv) >= 3 and sys.argv[1] == "_tools_worker":
+        tools_worker(sys.argv[2])
         return 0
     if len(sys.argv) != 2 or sys.argv[1] not in COMMANDS:
         print(json.dumps({"ok": False, "error": f"usage: frameport_agent.py <{'|'.join(sorted(COMMANDS))}>"}))

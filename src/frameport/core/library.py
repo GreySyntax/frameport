@@ -19,9 +19,67 @@ def _path() -> Path:
 
 def load() -> dict:
     try:
-        return json.loads(_path().read_text(encoding="utf-8"))
+        data = json.loads(_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {"games": {}, "settings": {}}
+    if _migrate(data):
+        save(data)
+    return data
+
+
+def _migrate(data: dict) -> bool:
+    """One-time updates of stored recipes when a new default is introduced (each runs once per library)."""
+    done = data.setdefault("settings", {}).setdefault("migrations", [])
+    changed = False
+    if "no_crash_reporter" not in done:
+        # the Unreal crash reporter is disabled by default for PC VR Unreal games, also those added before
+        for g in (data.get("games") or {}).values():
+            a, r = g.get("analysis") or {}, g.get("recipe")
+            if isinstance(r, dict) and (a.get("extra") or {}).get("kind") == "rift" and a.get("engine") == "Unreal":
+                r.setdefault("patches", {}).setdefault("pcvr.no_crash_reporter", {})
+                r.setdefault("reasons", {}).setdefault(
+                    "pcvr.no_crash_reporter", "Unreal game: close on a crash instead of showing the crash reporter.")
+        done.append("no_crash_reporter")
+        changed = True
+    if "xr_compat_layer" not in done:
+        # the Frame OpenXR layer is needed by every PC VR game on the Frame (OpenXR 1.1 → 1.0 fallback)
+        for g in (data.get("games") or {}).values():
+            a, r = g.get("analysis") or {}, g.get("recipe")
+            if isinstance(r, dict) and (a.get("extra") or {}).get("kind") == "rift":
+                r.setdefault("patches", {}).setdefault("pcvr.xr_timefix", {})
+                r.setdefault("reasons", {}).setdefault(
+                    "pcvr.xr_timefix", "The Frame's OpenXR runtime rejects Proton's OpenXR 1.1 request without it.")
+        done.append("xr_compat_layer")
+        changed = True
+    if "oculus_unreal" not in done:
+        # the Oculus detection patch is on by default for Unreal PC VR games that use LibOVR, also those added before
+        for g in (data.get("games") or {}).values():
+            a, r = g.get("analysis") or {}, g.get("recipe")
+            extra = a.get("extra") or {}
+            if (isinstance(r, dict) and extra.get("kind") == "rift" and a.get("engine") == "Unreal"
+                    and not extra.get("openxr_native")):
+                r.setdefault("patches", {}).setdefault("pcvr.oculus_unreal", {})
+                r.setdefault("reasons", {}).setdefault(
+                    "pcvr.oculus_unreal", "Unreal game: its Oculus plugin checks for the Oculus service before it starts VR.")
+        done.append("oculus_unreal")
+        changed = True
+    if "rift_revive_correct" not in done:
+        # Correct the earlier churn: re-derive every Rift recipe from the engine defaults (Oculus games get Revive for
+        # VR; OpenXR/SteamVR-native and catalog games keep their own settings). The dump is never modified (as_is).
+        from ..recommend import engine
+
+        for pkg, g in (data.get("games") or {}).items():
+            a = g.get("analysis") or {}
+            if not (isinstance(g.get("recipe"), dict) and (a.get("extra") or {}).get("kind") == "rift"):
+                continue
+            try:
+                rec = engine.suggest(analysis_from_dict(a))
+            except Exception:  # noqa: BLE001 - a malformed entry keeps its recipe
+                continue
+            g["recipe"] = recipe_to_dict(rec)
+        done.append("rift_revive_correct")
+        changed = True
+    return changed
 
 
 def save(data: dict) -> None:
@@ -72,4 +130,16 @@ def recipe_from_dict(d: dict) -> Recipe:
 
 
 def analysis_from_dict(d: dict) -> Analysis:
-    return Analysis(**{k: v for k, v in d.items() if k in Analysis.__dataclass_fields__})
+    """Build an Analysis, filling in defaults for any field a partial/legacy entry is missing (so old library data
+    still works with newer code)."""
+    import dataclasses
+
+    kwargs = {}
+    for f in dataclasses.fields(Analysis):
+        if f.name in d:
+            kwargs[f.name] = d[f.name]
+        elif f.default is not dataclasses.MISSING or f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
+            continue  # let the dataclass default apply
+        else:
+            kwargs[f.name] = "" if f.type == "str" else [] if "list" in str(f.type) else                 0 if f.type == "int" else False if f.type == "bool" else None
+    return Analysis(**kwargs)

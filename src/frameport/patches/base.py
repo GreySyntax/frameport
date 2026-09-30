@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ..core.models import Analysis
 
 STAGES = ("overport", "apk", "install")
-CATEGORIES = ("overport", "frame", "adapter", "device")
+CATEGORIES = ("overport", "frame", "adapter", "device", "pcvr")
 
 
 @dataclass
@@ -117,6 +117,12 @@ def get(patch_id: str) -> Patch:
         raise KeyError(f"unknown patch {patch_id!r}") from None
 
 
+def for_game(patch: Patch, analysis: "Analysis") -> bool:
+    """Quest patches only for Quest games, PC VR (Revive) patches only for Rift games."""
+    rift = (analysis.extra or {}).get("kind") == "rift"
+    return (patch.category == "pcvr") == rift
+
+
 def all_patches() -> list[Patch]:
     load_all()
     return sorted(REGISTRY.values(), key=lambda p: (CATEGORIES.index(p.category), p.order, p.id))
@@ -133,7 +139,7 @@ def load_all() -> None:
     import importlib
     import pkgutil
 
-    from . import frame, overport, settings  # noqa: F401  (registration side effects)
+    from . import frame, overport, pcvr, settings  # noqa: F401  (registration side effects)
 
     for mod in pkgutil.iter_modules(frame.__path__):
         importlib.import_module(f"{frame.__name__}.{mod.name}")

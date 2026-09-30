@@ -37,7 +37,8 @@ OVERPORT_PATCHES = [
     ("patch_force_passthrough", "Force enable passthrough", False,
      "For mixed-reality-only games. On the Frame, passthrough is emulated by the FrameBridge adapter (greyscale cameras)."),
     ("patch_disable_space_warp", "Disable application space warp if used", False,
-     "For heavy games; space warp causes artifacts/hangs on non-Quest runtimes (Asgard's Wrath 2, Batman)."),
+     "For heavy games that use application space warp: it causes artifacts or hangs on non-Quest runtimes "
+     "(e.g. Asgard's Wrath 2, Batman: Arkham Shadow)."),
     ("patch_disable_controller_offset", "Disable controller tracking offset", False,
      "Removes overport's controller pose offset if controllers look misplaced."),
     ("patch_remove_vrapi", "Remove VrApi library", False,

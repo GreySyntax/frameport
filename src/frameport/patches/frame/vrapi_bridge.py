@@ -14,7 +14,7 @@ class VrApiBridge(Patch):
     description = (
         "Replaces libvrapi.so with a VrApi→OpenXR bridge (Android-XR-Bridge/OVRPort fork, GPL-3.0, patched for the "
         "Frame: GLES sessions, cylinder→quad layers, sRGB format fallback, 30 s VR-mode deadline, emulated time "
-        "conversion). Needed when the engine calls VrApi itself instead of through OVRPlugin (The Climb 2, Path of "
+        "conversion). Needed when the engine calls VrApi itself instead of through OVRPlugin (e.g. The Climb 2, Path of "
         "the Warrior); overport cannot translate those."
     )
     order = 60

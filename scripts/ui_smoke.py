@@ -41,12 +41,16 @@ def main() -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--game", default=None)
     ap.add_argument("--frame", default=None, help="steamos@host: also connect and run a launch-test job for --game")
+    ap.add_argument("--no-test", action="store_true", help="with --frame: skip the launch-test job")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     game = args.game or (library.games()[0]["package"] if library.games() else None)
     steps = [("library", lambda a: a.navigate(0)), ("frame", lambda a: a.navigate(1)), ("tools", lambda a: a.navigate(2))]
     if game:
         steps.insert(1, ("game", lambda a: a.open_game(game)))
+        steps.insert(2, ("game-customize", lambda a: a.open_game(game, advanced=True)))
+        # last: the right-click menu stays open over whatever comes next
+        steps.append(("library-menu", lambda a: (a.navigate(0), time.sleep(3), a.library_view.open_menu(game))))
     if args.frame:
         from frameport.frame.connection import parse_target
 
@@ -64,7 +68,11 @@ def main() -> int:
             while a.job_running:
                 time.sleep(2)
 
-        steps += [("frame-connected", connect), ("launch-test-job", job)]
+        steps += [("frame-connected", connect), ("library-connected", lambda a: a.navigate(0))]
+        if game:
+            steps.append(("game-connected", lambda a: a.open_game(game)))
+        if not args.no_test:
+            steps.append(("launch-test-job", job))
     ready, done = threading.Event(), []
 
     def app_main(page: ft.Page):
@@ -101,7 +109,9 @@ def main() -> int:
         os._exit(1 if ERRORS else 0)
 
     threading.Thread(target=shooter, daemon=True).start()
-    ft.run(app_main, view=ft.AppView.WEB_BROWSER, port=PORT)
+    from frameport.ui.app import assets_dir
+
+    ft.run(app_main, view=ft.AppView.WEB_BROWSER, port=PORT, assets_dir=assets_dir())
     return 1
 
 

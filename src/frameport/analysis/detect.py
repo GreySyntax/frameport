@@ -139,6 +139,7 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
         is_overport_output=is_overport,
         debuggable=bool(axml.Axml(manifest).get_bool("application", "debuggable")),
         extra={
+            "frame_patched": "libframe_settings.so" in libset,  # already has FramePort's FrameBridge adapter
             "missing_ovr_symbols": sorted(missing_ovr_symbols(lib_bytes)), "size": path.stat().st_size,
             "data_bytes": data_bytes or 0,
             "features": features,

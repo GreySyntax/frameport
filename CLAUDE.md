@@ -8,7 +8,69 @@ install over SSH (agent) → Steam shortcut → headless launch test + log triag
 Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRAME_RUNTIME.md` for runtime facts.
 
 ## Layout
-- `src/frameport/` — Python package. `pipeline.py` is the API the CLI (`cli.py`) and GUI (`ui/app.py`, Flet 1.0) share.
+- `src/frameport/` — Python package. `pipeline.py` is the API the CLI (`cli.py`) and GUI (`ui/`, Flet 1.0) share.
+  - `ui/` — `app.py` shell (sidebar with Frame connection + activity cards, routing, actions, 30 s connection poll),
+    `theme.py` (dark design tokens; change colours/spacing only there), `components.py` (pill, card, callout,
+    status_row, art_fill, confirm, `update()` = safe update: in Flet 1.0 reading `.page` of an unmounted control
+    raises), `jobs.py` (background FIFO job queue, one at a time, cancel via Reporter; no Flet), `views/`
+    (library: search/filters/tags/sort as pure tested helpers; game: hero + one-click install, patches under
+    "Customize"; frame: device + readiness + installed, or connect wizard; settings; welcome; activity panel).
+    User tags live in library entries (`tags`), filters in library setting `ui.library`.
+    **Performance rules** (the app froze before): never put image bytes in controls — artwork is served by URL from the
+    GUI assets dir (= user data dir; `ft.run(assets_dir=…)`), as thumbnails (`artwork/thumbs.py`, Pillow); the
+    library view is persistent, streams cards in batches from a background thread and filters by toggling visibility;
+    job/connection events call `app.refresh_view()` (targeted), not `render()`; no I/O in render paths.
+    **Never recreate clickable controls on progress ticks** (sidebar, activity tiles): update their properties —
+    replacing them 5×/s swallowed clicks (couldn't leave the Library during an upload).
+    Help hints: wording for non-obvious terms lives in `ui/help.py` (`HELP`); show it with `C.help_icon(key)` or the
+    `help=` argument of `section`/`status_row`/`kv`, tooltips via `C.tip()` (wraps). Game actions for the Library
+    right-click menu (one `ft.ContextMenu` around the grid, filled on right-click) and the game page's "…" menu come
+    from `app.game_actions()`. Picking art (`sources.apply_choice`) downloads into a staging dir and keeps the old
+    art if nothing came back; "Update Steam art on Frame" re-sends the art set to the game's anchor (agent ≥ 12).
+    Patch descriptions/reasons describe the general case, naming games only as "e.g. …".
+  - Installs: queued/cancelled/failed ones are remembered (library setting `ui.installs`) → Library "Resume" bar;
+    uploads are interruptible (Cancel checked per MiB) and resumable (big files via SFTP `.part` append, small files
+    streamed in tar batches; the agent counts files already in `incoming/`). Multi-select in the Library queues
+    installs after asking every needed question up front. Failures end in one pop-up (Resume / Uninstall / log).
+  - **PC VR repacks are pre-patched to run directly** (proven: Rick and Morty, Vader Immortal run when the exe is
+    launched directly; Revive breaks them). So Rift games default to `as_is` = install the copy unchanged and launch
+    the exe directly (`pcvr.xr_timefix` for the Frame OpenXR-1.1→1.0 fix, `pcvr.no_crash_reporter` for Unreal).
+    **Revive is off by default, opt-in** (`pcvr.revive`, and `pcvr.oculus_unreal`): only for an un-cracked Oculus game
+    that fails at "Initializing OVR session". Those (Lone Echo, Robo Recall, Lies Beneath: crack .7z not extracted /
+    Platform SDK) hit Revive's Oculus-runtime **signature check** under Proton-arm64 — Revive's LoadLibrary/WinVerifyTrust
+    hooks don't install (ARM64EC), and the game's Oculus SDK shim rejects the unsigned Revive runtime (wintrust +
+    crypt32 signer "Oculus VR") — so they don't run on the Frame without extracting the repack's crack (which FramePort
+    doesn't do). `VD.bat` is Virtual Desktop's launcher: ignore it except as an exe-location hint. Library migration
+    `rift_run_direct` resets existing recipes.
+    Auto launch-test is skipped on PC installs (it would start the game on the user's desktop). Launch tests collect the Unreal
+    game log + crash summaries from the Proton prefix; triage `unreal-crash`. Lies Beneath via Proton without Revive
+    crashed (UE 4.23 "Unhandled exception").
+  - Rift scanning: `sources/rift_dump.scan` = the scanned folder's subfolders are games (one per folder; a folder is a
+    game if all candidate exes sit under one child), recursing into collections; `analysis/rift.py` walks once,
+    filters helpers + non-GUI PEs, `rank_exes` (Unreal *-Shipping beats its launcher, Steam builds −10, ambiguous →
+    `exe_confirmed=False` → GUI exe dialog), `clean_title`, fingerprint (unchanged folders aren't re-analyzed),
+    modular-Unreal Oculus plugin DLLs + UTF-16 markers count as LibOVR, `revive_bundled` → as-is.
+  - Art for Rift games: `artwork/sources.py` — Quest version package (OculusDB packageName, exact name or +
+    "Unplugged"-type suffix, never sequels) → Meta art; OculusDB square cover; Steam (exact names only); exe icon.
+  - Store details (`artwork/details.py`, entry `details`): OculusDB (description, genres, publisher, website; by Quest
+    package or Rift match) + Steam appdetails (exact title: developer, release date, up to 6 screenshots → artwork
+    `shot_N.jpg`). Meta store pages reject scraping, so Oculus exclusives have no screenshots. Genres become automatic
+    tags. Steam shortcuts get a complete composed art set (`artwork/steam.py`: 600×900 / 920×430 / 1920×620 / logo /
+    256 icon, blurred-backdrop compositing for square-only covers) and tags: how it runs, the original platform
+    (Meta Quest / Oculus Rift), genres, user tags — merged with tags set in Steam (non-Steam shortcuts can't hold a
+    description).
+  - Quest/Rift twins stay separate entries, shown and named in Steam "Title (Quest)"/"(Rift)" (`core/titles.py`).
+  - `Recipe.as_is` = install unchanged (pre-patched libraries): `pipeline.prepare_as_is`; auto for APKs that already
+    contain FrameBridge (`frame_patched`). For Rift it changes nothing (the dump is never modified; the Frame copy
+    still gets launch fixes like the crash-reporter rename — `-nocrashreports` alone doesn't stop UE 4.23) — it does
+    **not** turn Revive off: a repack's patches (cracks, `VD.bat` = Virtual Desktop's Oculus
+    runtime) give a LibOVR game no Oculus runtime on the Frame; Revive is that runtime (Lone Echo without it: EXITED
+    in seconds). SteamVR builds (Rick and Morty) turn Revive off via their recipe (`pcvr_remove`, catalog `as_is`).
+  - Play: Library hover button / right-click / game page / Frame rows → agent `launch` = `steam://rungameid/<appid<<32
+    | 0x02000000>` through the Frame's Steam (in-headset session); PC: Windows Steam. Launch tests use a
+    flask icon (SCIENCE_OUTLINED) so they aren't confused with Play.
+  - `uninstall.py` + `frameport uninstall-app` + Settings: removes the data dir (after an optional key backup zip),
+    PC Steam shortcuts, the WSL Revive copy, and via agent `purge` FramePort's games/files on the Frame.
   - `patches/` — **the unit of modularity**. `base.py` (Patch interface, registry), `overport.py` (overport CLI patch ids,
     discovered dynamically via `overport patches`), `frame/*.py` (one module per Frame fix), `settings.py` (FrameBridge
     adapter keys + device files as patches). Add a patch = add a module that calls `register(...)`.
@@ -18,7 +80,13 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
   - `recommend/` — `catalog.py` (known-good recipes: user > remote `FRAMEPORT_CATALOG_URL` > bundled), `engine.py`.
   - `tools/` — portable toolchain (Temurin JRE, overport jar, apksigner) downloaded dynamically into the user data dir.
   - `frame/` — SSH (paramiko), mDNS discovery, pairing server; `install/installer.py`; `validate/` (static, device, triage).
-  - `targets/` — `Target` interface; `frame_lepton.py` now, `revive.py` placeholder (PC VR later).
+  - `targets/` — `Target` interface; `frame_lepton.py` (Quest via Lepton + Rift via Proton), `pc_revive.py` (Rift games
+    on this Windows/WSL PC via Revive + local Steam shortcut; `core/winhost.py` = Windows/WSL helpers).
+  - Oculus Rift (PC VR): `sources/rift_dump.py`, `analysis/rift.py` (own PE reader), `patches/pcvr.py` (category
+    `pcvr`, shown as patches; `base.for_game` separates Quest/PC VR patches), `tools/revive.py` (Revive: FRAMEPORT_REVIVE_DIR >
+    the user's installed Revive (C:\Program Files\Revive, else registry HKLM/HKCU\Software\Revive; version = GitHub
+    release matching the DLL build date, since Revive's version resources are stale) > portable copy unpacked from
+    ReviveInstaller.exe in pure Python; never replaces the user's install). Library ids `rift.<slug>`, entries have `kind: rift`.
   - `parity.py` — rebuild catalog games from dumps and classify every APK entry difference vs known-good builds.
 - `agent/frameport_agent.py` — runs **on the Frame** (python3 stdlib only), JSON over SSH. Owns the install layout,
   launch.sh template, Steam shortcuts (binary VDF), launch tests. Bump `AGENT_VERSION` when changing it.
@@ -26,7 +94,7 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
 - `catalog/games/<package>.yaml` — 34 recipes verified 2026-09-28; `catalog/triage.yaml` — log signatures → fixes.
 - `native/` — sources of the prebuilt binaries in `artifacts/` (adapter, VrApi bridge patches, GL shim, stubs).
   `native/build.py` rebuilds them with NDK r27c (downloaded on demand into `native/.cache`, git-ignored; uses
-  `-ffile-prefix-map` so no local paths get embedded). Users never need the NDK.
+  `-ffile-prefix-map` so no local paths get embedded; zip symlinks are restored as copies). Users never need the NDK.
 - `scripts/` — `package.py` (flet build/pack), `eval_heuristics.py` (score heuristics), `ui_smoke.py` (GUI screenshots).
 - `docs/` — PLAYBOOK, FRAME_RUNTIME, ARCHITECTURE, INSTALL (end users), parity reports (offline + device).
 
@@ -38,7 +106,8 @@ uv run pytest                # unit tests (no device, no game files)
 uv run frameport --help      # CLI;  uv run frameport-gui  for the GUI
 uv run frameport parity --known-good <PATCHED/_known-good-*> --sources "<VR CyberDeck downloads>"
 ```
-Games/device tests: `pytest -m games` (FRAMEPORT_GAMES=<downloads dir>), `pytest -m device` (FRAMEPORT_FRAME=steamos@host).
+Games/device tests: `pytest -m games` (FRAMEPORT_GAMES=<downloads dir>), `pytest -m device` (FRAMEPORT_FRAME=steamos@host);
+native layer test: `FRAMEPORT_NATIVE_TESTS=1 pytest -m native` (compiles with the NDK, ~2 min on NTFS).
 Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattributes`).
 - `FRAMEPORT_HOME=<dir>` isolates all app data (tests use it); `FRAMEPORT_JAVA/_OVERPORT_JAR/_APKSIGNER_JAR` override
   managed tools. Real app data (WSL): `~/.local/share/frameport` (tools, overport workspace + game keystores, library,
@@ -76,6 +145,56 @@ Containers are podman `lepton-steamlaunch-<appid>`. Some Unreal games create sav
 since boot every game fails with `crun: create keyring …: Disk quota exceeded` / `is not a running context`. Fix:
 `keyring = false` in `~/.config/containers/containers.conf` (agent `ensure_host_fixes`, bootstrap); leaked keys only
 go away with a reboot. Check usage: `grep "^ *1000:" /proc/key-users` (agent `info` → kernel_keys).
+
+**Proton on the Frame (2026-09-29):** Steam registers ARM64 tools from app "Steam Frame ARM64 Compat List"
+(`proton_11-arm64` 4628740 needs SLR4-arm64 4185400; `proton-experimental-arm64` 4427310; `fex` 3127680) — not installed
+by default; `steam://install/<id>` only opens a dialog in the headset (agent `install_proton` mode `unattended` =
+appmanifest stubs + Steam restart; untested on device). Proton only sets up VR/wineopenxr when `SteamGameId` is set.
+Host OpenXR = SteamVR (`~/.config/openxr/1/active_runtime.json`). Steam VR games on the Frame (Pistol Whip etc.) are
+APKs via Lepton. Verified on the device: the app installs Proton itself (`installer.ensure_proton`: appmanifest stubs +
+Steam restart, ~90 s); Proton runs x86 code; wineopenxr gets registered; headless launches need DISPLAY/
+GAMESCOPE_WAYLAND_DISPLAY from Steam's environment (launch.sh imports them). The **Linux** SteamVR runtime supports
+XR_KHR_convert_timespec_time (only the Android runtime lacks it). **But it only accepts OpenXR 1.0 apps**: apiVersion
+1.1 → XR_ERROR_API_VERSION_UNSUPPORTED, and Proton 11's vrhelper asks for 1.1 → no VR at all (flat window; Revive:
+"Unable to load LibOVRRT DLL"). FramePort's layer (`native/xrlayer`, `artifacts/linux-arm64`, patch `pcvr.xr_timefix`,
+default on + one-time library migration in `core/library._migrate`) retries as 1.0. Proton's container (pressure-vessel)
+**drops `XR_API_LAYER_PATH`**, so the agent registers the layer as an explicit layer in
+`~/.local/share/openxr/1/api_layers/explicit.d/` (library: shared copy in `~/.local/share/frameport/xrlayer/`); it
+only loads when `XR_ENABLE_API_LAYERS` names it. Unreal PC VR games get
+`pcvr.no_crash_reporter` by default (`-nocrashreports` + CrashReportClient.exe renamed `.disabled` in the Frame copy)
+and `pcvr.oculus_unreal` (PC VR counterpart of overport's `patch_oculus_unreal`: UE's OculusHMD needs the Windows event
+`OculusHMDConnected`; launch.sh wraps the injector in `helpers/fp_oculushmd.exe` = `native/oculushmd`,
+`artifacts/win-x64`, which provides it until the game's job is empty; untested on the device yet).
+Rift games tried on the Frame: Rick and Morty (SteamVR build, no Revive: "OpenVR initialized!" with the layer; flat
+before — confirm in the headset), Lies Beneath (Oculus Store UE 4.23 build: delay-loads `LibOVRPlatform64_1.dll` =
+Platform SDK → crash 0xc06d007e; needs the Oculus app, FramePort doesn't replace it; also OVRPlugin's LibOVR shim
+reports "Unable to load LibOVRRT DLL" before any OpenXR call — likely needs a real Oculus runtime install, unverified).
+Launch tests ignore log files older than the launch (stale Proton/game logs used to be triaged). Revive injector CLI: `ReviveInjector.exe [/openxr] <exe path>`
+(joins args; logs to `%LOCALAPPDATA%\Revive\ReviveInjector.txt`). On WSL, run Windows programs from Windows paths
+(`\\wsl$` is unreliable), so PC mode copies Revive to `%LOCALAPPDATA%\FramePort`.
+FramePort never bypasses Oculus entitlement checks (Platform SDK games: flagged, PC mode with the Oculus app only).
+
+**Upload speed (measured 2026-09-29):** via the home router (PC Wi-Fi → router → Frame wlan0) only 15-18 MB/s, the
+same for paramiko, OpenSSH and 4 parallel streams, so the network path is the limit, not the SSH code. Direct to the
+Frame's hotspot (`wlanap` 10.35.78.1; the owner's PC has Valve's USB Wi-Fi dongle on it) 83 MB/s OpenSSH / 97 MB/s
+paramiko; reading dumps from D: via WSL drvfs is then the cap (~82 MB/s). `Frame.fast_link()` (installer
+`transfer_link`, uploads ≥64 MiB) uses usb0 > wlanap when reachable **and** the host key matches the paired Frame.
+**Platform SDK detection** must include delay imports (`PEInfo.delay_imports`), modular Unreal's
+`*-OnlineSubsystemOculus-*.dll` and Ready At Dawn's `pnsovr.dll`: Robo Recall, Lies Beneath and Lone Echo I/II all use
+it; without the Oculus app they crash with 0xc06d007e (triage `delayload-missing`) — not fixable legitimately.
+GUI: Frame → Installed → folder icon = file browser (agent `list_files`, flags files missing vs the install
+manifest); Settings → About shows the bundled agent version and the Frame's.
+
+**Revive under Proton arm64 (Lone Echo, 2026-09-29):** Revive's Detours hooks (LoadLibraryW/ExW, OpenEventW, the
+signature check) don't take effect: Wine's kernelbase is ARM64EC. The LibOVR shim in the game then does a plain
+`LoadLibrary("LibOVRRT64_1.dll")` search (exe dir, cwd, system32, windows, PATH — no registry, `OculusBase` or
+`LIBOVR_DLL_DIR` used by this build) → `Failed to initialize Oculus API (-3001)` (= Lies Beneath's "Unable to load
+LibOVRRT DLL"). A symlink `pfx/drive_c/windows/system32/LibOVRRT64_1.dll -> <base>/revive/LibReviveXR64.dll` (Wine
+maps a symlink to the already-loaded module) gets past it to **-3021 = ovrError_LibSignCheck**: the shim only accepts
+an Oculus-signed runtime. Next step (not done): make the runtime check pass without Detours, e.g. an injected helper
+that patches the game's import table (IAT) for LoadLibrary*/WinVerifyTrust, or a prefix-level override. This is
+runtime interop (what Revive does), not the Platform SDK licence check (which FramePort never touches).
+Uninstall (Quest, saves kept) used to leave `deployment.json` → still "installed"; fixed (agent v16).
 
 **Discovery/network:** Developer-Mode SteamOS devices announce `_steamos-devkit._tcp` (TXT `login=steamos`) — use it;
 they don't publish `_ssh._tcp`. The Frame has several links: `wlan0` (home Wi-Fi), `wlanap` = its own hotspot at
@@ -153,7 +272,8 @@ Parity: all 34 rebuilt from the dumps match the known-good builds (`docs/parity-
 launch-tested with 0 regressions (`docs/parity-device-report.md`). `PATCHED/` holds exactly the installed builds.
 Owner preferences: manual installs (no FrameDrop, no Quest2Frame app), Python + Flet, dynamic data over hardcoding,
 free tooling only, public repo scrubbed of personal data, keep the known-good backups.
-Open ideas: Revive/PC-VR target (`targets/revive.py`), macOS x86_64 bundle, USB-cable connection (Frame `usb0`, untested),
+Rift/PC VR support (2026-09-29): implemented + unit-tested, not yet tried with a real Rift game on the PC or Frame
+(needs a Rift dump, and Proton installed on the Frame). Open ideas: exe-icon artwork for Rift games, macOS x86_64 bundle, USB-cable connection (Frame `usb0`, untested),
 the unresolved eye distortion, and testing the release bundles on real Windows/macOS machines (never launched yet).
 
 ## Conventions

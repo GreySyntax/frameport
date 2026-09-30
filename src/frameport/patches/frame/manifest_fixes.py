@@ -35,7 +35,8 @@ class NoDebuggable(Patch):
     id = "frame.nodebug"
     title = "Clear android:debuggable"
     description = ("overport marks apps debuggable; that turns on CheckJNI, which aborts some Unreal games on sloppy "
-                   "JNI calls (NOPE Challenge, Time Stall: 'GetStringUTFChars ... NULL'). Clear it for those.")
+                   "JNI calls ('JNI DETECTED ERROR', e.g. 'GetStringUTFChars ... NULL' in Time Stall). Clear it for "
+                   "those.")
     order = 21
 
     def detect(self, a):
@@ -46,10 +47,10 @@ class NoDebuggable(Patch):
         v = unreal_version(a)
         if v and v < (4, 22):
             return Suggestion(True, f"Unreal Engine {v[0]}.{v[1]}: older UE4 makes JNI calls CheckJNI rejects "
-                                    "(Time Stall aborted on GetStringUTFChars(NULL)).")
+                                    "(e.g. Time Stall aborted on GetStringUTFChars(NULL)).")
         if any(l.startswith("libmetaxraudio") for l in a.libs):
             return Suggestion(True, "Unreal build of Meta XR Audio: its telemetry lookup leaves a pending JNI exception "
-                                    "that CheckJNI turns into an abort (NOPE Challenge).")
+                                    "that CheckJNI turns into an abort (e.g. NOPE Challenge).")
         return Suggestion(False, "Enable if the game aborts with 'JNI DETECTED ERROR' (CheckJNI).")
 
     def applies(self, a):
@@ -66,7 +67,7 @@ class MetaPermissions(Patch):
     id = "frame.meta_permissions"
     title = "Declare Meta-only permissions"
     description = ("Declares com.oculus.permission.* / horizonos.permission.* that the app uses, so Android grants "
-                   "them at install (e.g. Demeter's 'use spatial data' check).")
+                   "them at install (e.g. the 'use spatial data' permission of mixed-reality games like Demeter).")
     order = 22
 
     def detect(self, a):
@@ -74,7 +75,7 @@ class MetaPermissions(Patch):
 
         if needs_scene(a):
             return Suggestion(True, "Mixed-reality game that needs the room model: its 'use spatial data' permission must "
-                                    "be granted (Demeter).")
+                                    "be granted (e.g. Demeter).")
         scene = [p for p in a.meta_permissions if any(k in p for k in ("SCENE", "ANCHOR", "SPATIAL", "BOUNDARY"))]
         if scene:
             return Suggestion(False, "Uses Meta scene/anchor permissions (" + ", ".join(p.rsplit(".", 1)[-1] for p in scene[:3])

@@ -1,6 +1,7 @@
 """The Frame-side agent (stdlib only) — pieces that don't need a Frame."""
 import importlib.util
 import json
+from types import SimpleNamespace
 import subprocess
 import sys
 from pathlib import Path
@@ -78,3 +79,319 @@ def test_cleanup_refuses_outside_paths(monkeypatch, tmp_path):
     for bad in ("/etc", "~/Applications/quest-frame", "~/.."):
         with pytest.raises(a.AgentError):
             a.cmd_cleanup({"paths": [bad]})
+
+
+# ------------------------------------------------------------------------------------------ PC VR under Proton
+def fake_steam_tools(a, tmp_path):
+    """A Steam library with an ARM64 Proton (needing a runtime) installed, like the Frame's."""
+    apps = tmp_path / ".local/share/Steam/steamapps"
+    (apps / "common/Proton 11.0 (ARM64)").mkdir(parents=True)
+    (apps / "common/SteamLinuxRuntime_4-arm64").mkdir(parents=True)
+    (apps / "common/Proton 11.0 (ARM64)/toolmanifest.vdf").write_text(
+        '"manifest"\n{\n  "version" "2"\n  "commandline" "/proton %verb%"\n  "require_tool_appid" "4185400"\n}\n')
+    (apps / "common/SteamLinuxRuntime_4-arm64/toolmanifest.vdf").write_text(
+        '"manifest"\n{\n  "commandline" "/_v2-entry-point --verb=%verb% --"\n}\n')
+    for appid, name, d in ((4628740, "Proton 11.0 (ARM64)", "Proton 11.0 (ARM64)"),
+                           (4185400, "Steam Linux Runtime 4.0 - Arm64", "SteamLinuxRuntime_4-arm64")):
+        (apps / f"appmanifest_{appid}.acf").write_text(
+            f'"AppState"\n{{\n\t"appid"\t\t"{appid}"\n\t"name"\t\t"{name}"\n\t"StateFlags"\t\t"4"\n'
+            f'\t"installdir"\t\t"{d}"\n}}\n')
+    a.arm64_compat_tools = lambda: {
+        "proton_11-arm64": {"appid": 4628740, "display_name": "Proton 11.0-2 (ARM64)", "from_oslist": "windows",
+                            "require_tool_appid": 4185400, "aliases": "proton-stable-arm64"},
+        "proton-experimental-arm64": {"appid": 4427310, "display_name": "Proton Experimental (ARM64)",
+                                      "from_oslist": "windows", "aliases": "proton-experimental"},
+        "steamlinuxruntime_steamrt4-arm64": {"appid": 4185400, "from_oslist": "linux"},
+    }
+    return apps
+
+
+def test_proton_status_and_command(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    apps = fake_steam_tools(a, tmp_path)
+    st = a.cmd_proton_status({})
+    assert st["ready"]["name"] == "proton_11-arm64"
+    assert [t["name"] for t in st["tools"]] == ["proton_11-arm64", "proton-experimental-arm64"]  # stable first
+    cmd = a.compat_command(st["ready"]["dir"])
+    assert cmd == [str(apps / "common/SteamLinuxRuntime_4-arm64/_v2-entry-point"), "--verb=waitforexitandrun", "--",
+                   str(apps / "common/Proton 11.0 (ARM64)/proton"), "waitforexitandrun"]
+    assert a.pick_proton(st["tools"], "proton-experimental")["installed"] is False
+
+
+def test_install_proton_request_mode(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    fake_steam_tools(a, tmp_path)
+    calls = []
+    monkeypatch.setattr(a.subprocess, "Popen", lambda args, **k: calls.append(args))
+    r = a.cmd_install_proton({"tool": "proton-experimental-arm64"})
+    assert r["requested"] == [4427310] and calls == [["steam", "-ifrunning", "steam://install/4427310"]]
+    assert a.cmd_install_proton({})["installed"] is True
+
+
+def test_stub_manifest(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    assert a.write_stub_manifest(4427310, "Proton Experimental (ARM64)", "Proton Experimental (ARM64)", str(lib))
+    text = (lib / "appmanifest_4427310.acf").read_text()
+    assert '"StateFlags"\t\t"1026"' in text and '"installdir"\t\t"Proton Experimental (ARM64)"' in text
+    assert not a.write_stub_manifest(4427310, "x", "x", str(lib))  # never overwrites a real manifest
+
+
+def test_pcvr_install_flow(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    fake_steam_tools(a, tmp_path)
+    monkeypatch.setattr(a, "pcvr_pids", lambda base: [])
+    prep = a.cmd_prepare_pcvr({"package": "rift.space_game", "title": "Space Game"})
+    inc = Path(prep["incoming"])
+    (inc / "game/Space Game_Data").mkdir(parents=True)
+    (inc / "game/Space Game.exe").write_bytes(b"MZexe")
+    (inc / "game/Space Game_Data/level0").write_bytes(b"1234")
+    (inc / "revive").mkdir(exist_ok=True)
+    (inc / "revive/ReviveInjector.exe").write_bytes(b"MZ")
+    (inc / "xrlayer").mkdir(exist_ok=True)
+    layer_json = '{"api_layer": {"name": "XR_APILAYER_FRAMEPORT_timefix", "library_path": "./libxr_frameport_timefix.so"}}'
+    (inc / "xrlayer/XR_APILAYER_FRAMEPORT_timefix.json").write_text(layer_json)
+    (inc / "xrlayer/libxr_frameport_timefix.so").write_bytes(b"ELF")
+    manifests = {"game": {"Space Game.exe": 5, "Space Game_Data/level0": 4}, "revive": {"ReviveInjector.exe": 2},
+                 "xrlayer": {"XR_APILAYER_FRAMEPORT_timefix.json": len(layer_json), "libxr_frameport_timefix.so": 3}}
+    r = a.cmd_finalize_pcvr({"package": "rift.space_game", "title": "Space Game", "exe": "Space Game.exe",
+                             "manifests": manifests, "env": {"PROTON_LOG": "1", "bad key": "x"}, "xr_layer": True})
+    assert r["ok"] and r["proton"] == "proton_11-arm64"
+    launch = Path(prep["anchor"]) / "launch.sh"
+    text = launch.read_text()
+    assert subprocess.run(["bash", "-n", str(launch)]).returncode == 0
+    assert "SteamGameId=" in text and "export PROTON_LOG=1" in text and "bad key" not in text
+    assert "ReviveInjector.exe /openxr 'Z:" in text and "Space Game.exe'" in text
+    assert 'XR_ENABLE_API_LAYERS="XR_APILAYER_FRAMEPORT_timefix' in text and 'XR_API_LAYER_PATH="$base/xrlayer' in text
+    env = subprocess.run(["bash", "-c", text.split("export XDG_RUNTIME_DIR")[0].replace("set -euo pipefail", "set -eu")
+                          .split("[[ -d")[0] + 'base=/b\n' + text.split("export PROTON_LOG_DIR=\"$base\"\n")[1]
+                          .split("export XDG_RUNTIME_DIR")[0] + 'echo "$XR_API_LAYER_PATH|$XR_ENABLE_API_LAYERS"'],
+                         capture_output=True, text=True)
+    assert env.stdout.strip() == "/b/xrlayer|XR_APILAYER_FRAMEPORT_timefix", env.stderr
+    # the layer is registered as an explicit layer in the user's XDG data dir (Proton's container drops
+    # XR_API_LAYER_PATH), pointing at a shared absolute copy
+    reg = json.loads((tmp_path / ".local/share/openxr/1/api_layers/explicit.d/XR_APILAYER_FRAMEPORT_timefix.json")
+                     .read_text())
+    lib = Path(reg["api_layer"]["library_path"])
+    assert lib.is_absolute() and lib.read_bytes() == b"ELF"
+    dep = a.deployment("rift.space_game")
+    assert dep["kind"] == "pcvr" and dep["files"]["game"] == manifests["game"]
+    listed = a.cmd_list_installed({})["games"]
+    assert listed[0]["kind"] == "pcvr" and listed[0]["apk_present"] and "files" not in listed[0]
+    # an update that drops a file removes it, and a new prepare sees what's there
+    prep2 = a.cmd_prepare_pcvr({"package": "rift.space_game", "title": "Space Game"})
+    assert prep2["existing"]["game"] == manifests["game"] and prep2["appid"] == prep["appid"]
+    a.cmd_finalize_pcvr({"package": "rift.space_game", "title": "Space Game", "exe": "Space Game.exe",
+                         "manifests": {"game": {"Space Game.exe": 5}, "revive": manifests["revive"]}})
+    assert not (Path(prep["base"]) / "game/Space Game_Data/level0").exists()
+    # uninstall keeps the Proton prefix (saves)
+    (Path(prep["base"]) / "compatdata/pfx").mkdir(parents=True)
+    assert a.cmd_uninstall({"package": "rift.space_game", "keep_data": True})["removed"]
+    assert (Path(prep["base"]) / "compatdata/pfx").is_dir() and not (Path(prep["base"]) / "game").exists()
+
+
+def test_pcvr_finalize_rejects_bad_exe(monkeypatch, tmp_path):
+    import pytest
+
+    a = load_agent(monkeypatch, tmp_path)
+    fake_steam_tools(a, tmp_path)
+    monkeypatch.setattr(a, "pcvr_pids", lambda base: [])
+    with pytest.raises(a.AgentError):
+        a.cmd_finalize_pcvr({"package": "rift.x", "title": "X", "exe": "../../etc/passwd", "manifests": {}})
+
+
+def test_shortcut_tag_and_launch_options(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    vdf = tmp_path / "shortcuts.vdf"
+    a.upsert_shortcut(str(vdf), '"C:\\Revive\\ReviveInjector.exe"', "Game", '"D:\\G\\"', "", "Rift via Revive",
+                      '/openxr "D:\\G\\Game.exe"')
+    e = a.vdf_decode(vdf.read_bytes())["shortcuts"]["0"]
+    assert e["tags"] == {"0": "Rift via Revive"} and e["LaunchOptions"] == '/openxr "D:\\G\\Game.exe"'
+
+
+def test_appinfo_parser(monkeypatch, tmp_path):
+    """appinfo.vdf v29: header, one app (binary KV with string-table keys), string table."""
+    import struct
+
+    a = load_agent(monkeypatch, tmp_path)
+    keys = ["appinfo", "appid", "common", "name", "extended", "compat_tools", "proton-x-arm64", "from_oslist"]
+    k = {n: i for i, n in enumerate(keys)}
+
+    def s(key, val):
+        return b"\x01" + struct.pack("<I", k[key]) + val.encode() + b"\0"
+
+    def m(key, body):
+        return b"\x00" + struct.pack("<I", k[key]) + body + b"\x08"
+    kv = m("appinfo", b"\x02" + struct.pack("<Ii", k["appid"], 7) + m("common", s("name", "Compat List")) +
+           m("extended", m("compat_tools", m("proton-x-arm64", s("from_oslist", "windows") +
+                                                         b"\x02" + struct.pack("<Ii", k["appid"], 99))))) + b"\x08"
+    app = struct.pack("<I", 7) + struct.pack("<I", 60 + len(kv)) + b"\0" * 60 + kv
+    body = app + struct.pack("<I", 0)
+    str_off = 16 + len(body)
+    table = struct.pack("<I", len(keys)) + b"".join(n.encode() + b"\0" for n in keys)
+    data = struct.pack("<II", 0x07564429, 1) + struct.pack("<q", str_off) + body + table
+    f = tmp_path / "appinfo.vdf"
+    f.write_bytes(data)
+    out = a.appinfo_entries(path=str(f))
+    assert out[7]["common"]["name"] == "Compat List"
+    assert out[7]["extended"]["compat_tools"]["proton-x-arm64"] == {"from_oslist": "windows", "appid": 99}
+
+
+def test_run_tree_kills_the_whole_group(monkeypatch, tmp_path):
+    """Wine leaves children holding the output open; a timeout must still return and kill them."""
+    import time
+
+    a = load_agent(monkeypatch, tmp_path)
+    start = time.time()
+    out, code = a.run_tree(["bash", "-c", "echo started; (sleep 60 &) ; sleep 60"], dict(a.os.environ), str(tmp_path),
+                           str(tmp_path / "log"), 2)
+    assert code is None and "started" in out and time.time() - start < 20
+    out, code = a.run_tree(["bash", "-c", "echo ok; exit 3"], dict(a.os.environ), str(tmp_path), str(tmp_path / "l2"), 10)
+    assert (out.strip(), code) == ("ok", 3)
+
+
+def test_purge_removes_frameport_and_keeps_saves(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    fake_steam_tools(a, tmp_path)
+    monkeypatch.setattr(a, "pcvr_pids", lambda base: [])
+    monkeypatch.setattr(a, "stop_steam", lambda: True)
+    monkeypatch.setattr(a, "start_steam", lambda s: None)
+    users = tmp_path / ".local/share/Steam/userdata/42/config"
+    (users / "grid").mkdir(parents=True)
+    # a Quest-style install (base = anchor, saves in lepton-data) and a PC VR one (saves in compatdata)
+    q = Path(a.ANCHORS) / "com.x.y"
+    (q / "lepton-app").mkdir(parents=True)
+    (q / "lepton-data" / "external").mkdir(parents=True)
+    (q / "launch.sh").write_text("#!/bin/sh")
+    (q / "deployment.json").write_text(json.dumps({"package": "com.x.y", "appid": 7, "base": str(q), "title": "Q"}))
+    a.upsert_shortcut(str(users / "shortcuts.vdf"), f'"{q}/launch.sh"', "Q", str(q))
+    (users / "grid" / "7p.png").write_bytes(b"x")
+    agent_home = Path(a.AGENT_HOME)
+    (agent_home / "agent").mkdir(parents=True)
+    a.purge_worker(json.dumps({"keep_saves": True, "status": str(tmp_path / "st.json")}))
+    st = json.loads((tmp_path / "st.json").read_text())
+    assert st["state"] == "done", st
+    assert (q / "lepton-data").is_dir() and not (q / "lepton-app").exists() and not (q / "launch.sh").exists()
+    assert a.vdf_decode((users / "shortcuts.vdf").read_bytes())["shortcuts"] == {}
+    assert not (users / "grid" / "7p.png").exists() and not agent_home.exists()
+    # without keeping saves everything goes
+    a.purge_worker(json.dumps({"keep_saves": False, "status": str(tmp_path / "st.json")}))
+    assert not Path(a.ANCHORS).exists()
+
+
+def test_shortcut_tags_merge(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    vdf = tmp_path / "shortcuts.vdf"
+    exe = '"/x/launch.sh"'
+    a.upsert_shortcut(str(vdf), exe, "G", "/x", tags=["Meta Quest", "Action"])
+    root = a.vdf_decode(vdf.read_bytes())
+    root["shortcuts"]["0"]["tags"]["9"] = "My collection"  # a tag the user set in Steam
+    vdf.write_bytes(a.vdf_encode(root))
+    a.upsert_shortcut(str(vdf), exe, "G", "/x", tags=["Meta Quest", "Action", "Indie"])
+    tags = list(a.vdf_decode(vdf.read_bytes())["shortcuts"]["0"]["tags"].values())
+    assert tags == ["Quest on Frame", "Meta Quest", "Action", "My collection", "Indie"]
+
+
+def test_pcvr_launcher_oculus_hmd_helper(monkeypatch, tmp_path):
+    """pcvr.oculus_unreal: launch.sh runs Revive's injector (or the game) through fp_oculushmd.exe."""
+    import pytest
+
+    a = load_agent(monkeypatch, tmp_path)
+    fake_steam_tools(a, tmp_path)
+    monkeypatch.setattr(a, "pcvr_pids", lambda base: [])
+
+    def install(pkg, helper=True, revive=True, oculus_hmd=True):
+        prep = a.cmd_prepare_pcvr({"package": pkg, "title": "UE Game"})
+        inc = Path(prep["incoming"])
+        (inc / "game").mkdir(parents=True, exist_ok=True)
+        (inc / "game/UEGame.exe").write_bytes(b"MZexe")
+        manifests = {"game": {"UEGame.exe": 5}}
+        if revive:
+            (inc / "revive").mkdir(exist_ok=True)
+            (inc / "revive/ReviveInjector.exe").write_bytes(b"MZ")
+            manifests["revive"] = {"ReviveInjector.exe": 2}
+        if helper:
+            (inc / "helpers").mkdir(exist_ok=True)
+            (inc / "helpers/fp_oculushmd.exe").write_bytes(b"MZhelp")
+            manifests["helpers"] = {"fp_oculushmd.exe": 6}
+        a.cmd_finalize_pcvr({"package": pkg, "title": "UE Game", "exe": "UEGame.exe", "manifests": manifests,
+                             "revive": revive, "oculus_hmd": oculus_hmd, "game_args": ["-nocrashreports"]})
+        launch = Path(prep["anchor"]) / "launch.sh"
+        assert subprocess.run(["bash", "-n", str(launch)]).returncode == 0
+        return launch.read_text().splitlines()[-1], prep["base"]
+
+    cmd, base = install("rift.ue_game")
+    helper = f"{base}/helpers/fp_oculushmd.exe"
+    assert helper in cmd and cmd.index(helper) < cmd.index("ReviveInjector.exe")
+    # everything after the helper is a Windows command line: the injector by its Z: path, then the game + args
+    assert f"'Z:{base}/revive/ReviveInjector.exe'".replace("/", "\\") in cmd
+    assert cmd.index("ReviveInjector.exe") < cmd.index("/openxr") < cmd.index("UEGame.exe") < cmd.index("-nocrashreports")
+    assert a.deployment("rift.ue_game")["oculus_hmd"] is True
+    cmd, base = install("rift.ue_direct", revive=False)
+    assert f"{base}/helpers/fp_oculushmd.exe" in cmd and "ReviveInjector" not in cmd and "'Z:" in cmd
+    cmd, base = install("rift.ue_plain", helper=False, oculus_hmd=False)
+    assert "fp_oculushmd" not in cmd and f"{base}/revive/ReviveInjector.exe /openxr" in cmd
+    with pytest.raises(a.AgentError, match="fp_oculushmd.exe missing"):
+        install("rift.ue_nohelper", helper=False)
+
+
+def test_list_files(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    base = tmp_path / "Applications/quest-frame/rift.g"
+    (base / "game/Bin").mkdir(parents=True)
+    (base / "game/Bin/Game.exe").write_bytes(b"MZ12")
+    (base / "game/Bin/CrashReportClient.exe.disabled").write_bytes(b"MZ")
+    (base / "launch.sh").write_text("#!/bin/sh\n")
+    (base / "deployment.json").write_text(json.dumps({
+        "package": "rift.g", "kind": "pcvr", "base": str(base),
+        "files": {"game": {"Bin/Game.exe": 4, "Bin/Data.pak": 10, "Bin/CrashReportClient.exe": 2}}}))
+    r = a.cmd_list_files({"package": "rift.g"})
+    assert len(r["roots"]) == 1 and r["roots"][0]["name"] == "Install folder"  # the anchor is the same folder
+    files = dict(map(tuple, r["roots"][0]["files"]))
+    assert files["game/Bin/Game.exe"] == 4 and "launch.sh" in files
+    assert r["missing"] == [["game/Bin/Data.pak", 10, None]]  # the renamed crash reporter isn't "missing"
+    assert not r["truncated"]
+
+
+def test_launch_uses_steam_shortcut(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "Applications/quest-frame/com.x.y"
+    anchor.mkdir(parents=True)
+    (anchor / "deployment.json").write_text(json.dumps({"package": "com.x.y", "appid": 2546384938, "base": str(anchor)}))
+    calls = []
+    monkeypatch.setattr(a, "run", lambda cmd, **k: (calls.append(cmd), SimpleNamespace(returncode=0, stdout=""))[1])
+    r = a.cmd_launch({"package": "com.x.y"})
+    assert r["gameid"] == (2546384938 << 32) | 0x02000000
+    assert calls[-1][-1] == f"steam://rungameid/{r['gameid']}" and calls[-1][0] == "systemd-run"
+
+
+def test_uninstall_quest_keeping_saves_drops_the_install_record(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "Applications/quest-frame/com.x.y"
+    (anchor / "lepton-app").mkdir(parents=True)
+    (anchor / "lepton-app/game.apk").write_bytes(b"PK")
+    (anchor / "lepton-data/saves").mkdir(parents=True)
+    (anchor / "lepton-data/saves/slot1").write_text("progress")
+    (anchor / "launch.sh").write_text("#!/bin/sh\n")
+    (anchor / "deployment.json").write_text(json.dumps({"package": "com.x.y", "base": str(anchor), "appid": 1}))
+    monkeypatch.setattr(a, "container_running", lambda appid: False)
+    assert a.cmd_uninstall({"package": "com.x.y"})["removed"]
+    assert not a.cmd_list_installed({})["games"]  # no longer reported as installed
+    assert (anchor / "lepton-data/saves/slot1").read_text() == "progress"  # saves kept
+
+
+def test_prune_shortcuts_on_relaunch_change(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    vdf = str(tmp_path / "shortcuts.vdf")
+    old = a.upsert_shortcut(vdf, '"C:\\Revive\\ReviveInjector.exe"', "Vader", "/d", tag="Rift via Revive",
+                            tags=["Rift via Revive"])
+    a.upsert_shortcut(vdf, '"C:\\Other.exe"', "Other game", "/d", tag="Rift via Revive", tags=["Rift via Revive"])
+    removed = a.prune_shortcuts(vdf, "Vader", '"C:\\game\\WKND.exe"', "Rift via Revive")  # new direct launch
+    assert removed == [old]
+    root = a.vdf_decode(open(vdf, "rb").read())
+    names = {v.get("appname") for v in root["shortcuts"].values() if isinstance(v, dict)}
+    assert names == {"Other game"}  # the stale Vader entry is gone, the unrelated one stays
+    # re-adding Vader directly, then pruning again, is a no-op for the kept entry
+    a.upsert_shortcut(vdf, '"C:\\game\\WKND.exe"', "Vader", "/d", tag="Rift via Revive", tags=["Rift via Revive"])
+    assert a.prune_shortcuts(vdf, "Vader", '"C:\\game\\WKND.exe"', "Rift via Revive") == []
