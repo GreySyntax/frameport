@@ -64,6 +64,19 @@ signatures:
     severity: error
     diagnosis: The game needs Meta passthrough; the adapter emulates it.
     suggest: [adapter.passthrough_emul, patch_force_passthrough]
+  - id: render-model-requested
+    pattern: 'dropped unsupported extension XR_FB_render_model'
+    severity: info
+    diagnosis: The game asks the headset for its controller models (XR_FB_render_model), which the Frame lacks, so it
+      shows its own (Quest) controllers or none. The adapter can serve the Steam Frame controllers instead.
+    suggest: [adapter.controller_models]
+  - id: controller-models-missing
+    pattern: 'FrameBridge: controller models not found'
+    severity: warning
+    diagnosis: Steam Frame controller models are on, but the converted models aren't in the game's files dir (the
+      agent found no Frame controller render models in SteamVR at install time; see the install log, or run the
+      agent's controller_models command).
+    suggest: []
   - id: scene-missing
     pattern: 'XR_FB_scene|XR_FB_spatial_entity.*(not supported|UNSUPPORTED)|xrQuerySpacesFB'
     severity: warning

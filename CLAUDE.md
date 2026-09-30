@@ -238,6 +238,23 @@ Output is deterministic (same input + runtime → same bytes), which is what mak
 - VrApi-direct engines (CryEngine Climb 2, POTW) need the VrApi bridge; the bridge drops whole frames on unknown layer
   types (→ black screen with audio).
 
+**Steam Frame controller models (2026-09-30, not yet seen in a game):** adapter setting `controller_models`
+(`native/adapter/render_model.c`) emulates XR_FB_render_model and serves `files/framebridge/controller_{left,right}.glb`;
+agent v20 (`install_controller_models`, command `controller_models`) converts the Frame's SteamVR render models
+(folder name matching "frame" + left/right, OBJ+PNG, `openxr_grip` component → grip space) at finalize/set_settings.
+Valve's models are never committed or copied off the Frame. Only games that use Meta's runtime controller models
+benefit (manifest `RENDER_MODEL` permission/feature → suggested); **none of the 34 catalog games do** (they ship their
+own meshes: that would need per-game asset replacement). Model discovery and conversion
+checked on the device 2026-09-30: `/opt/steamvr/drivers/frame_controller/resources/rendermodels/frame_controller_{left,right}`
+(component OBJs in model space = the whole `<name>.obj`, one `_color.png` 2048² near-black, `openxr_grip` rotates about
+X only; hidden-by-default components like `status` are skipped) → ~2 MB glb each, ~1 s. Not yet seen in a game (none
+of the installed builds has the new adapter, and none requests runtime models), so whether Meta's SDK attaches runtime models at the grip pose is unverified.
+**overport's dispatcher (`libopenxr_loader.so`) only forwards functions in its own table** (`overportOXR: Unknown
+proc addr: …`), so adapter emulations of functions it doesn't know are unreachable. For XR_FB_render_model,
+`native/xrshim` fills the gap: OVRPlugin's `dlopen("libopenxr_loader.so")` string is rewritten to the shim (see
+native/README). Verified on the device with Toy Master (2026-09-30): `extension shim: xrLoadRenderModelFB -> FrameBridge`.
+Toy Master doesn't request a model after that (it uses its own), so the glb loading path is only unit-tested.
+
 **Unresolved (as of 2026-09-28):** Arcsmith (right-eye distortion) and Time Stall (both eyes) — swap, tracking, Valve
 layers, depth, pacing ruled out. Sniper Elite VR (DEVICE LOST), Espire 1 (Mesa GL upload crash), HITMAN 3 (freedreno
 crash): use PC versions.

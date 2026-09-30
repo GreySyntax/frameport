@@ -422,3 +422,90 @@ def test_libovr_redirect_symlink(monkeypatch, tmp_path):
     real.write_bytes(b"REAL")
     a.set_libovr_redirect(str(base), exe_rel, enabled=True)
     assert not real.is_symlink() and real.read_bytes() == b"REAL"
+
+
+PNG_1PX = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c63f8"
+                        "cfc0f01f0005000201a5d6f1c80000000049454e44ae426082")
+
+
+def _fake_render_model(root, name, grip_origin=(0.0, 0.0, 0.0), grip_rot=(0, 0, 0)):
+    d = root / "resources/rendermodels" / name
+    d.mkdir(parents=True)
+    (d / "diffuse.png").write_bytes(PNG_1PX)
+    (d / "body.mtl").write_text("newmtl skin\nmap_Kd diffuse.png\n")
+    # a quad (fan-triangulated) with v/vt/vn corners, plus a negative-index face
+    (d / "body.obj").write_text("mtllib body.mtl\nusemtl skin\n"
+                                "v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nvt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nvn 0 0 1\n"
+                                "f 1/1/1 2/2/1 3/3/1 4/4/1\nf -4/-4/-1 -3/-3/-1 -1/-1/-1\n")
+    (d / "status.obj").write_text("v 5 5 5\nv 6 5 5\nv 5 6 5\nf 1 2 3\n")
+    (d / f"{name}.json").write_text(json.dumps({"components": {
+        "body": {"filename": "body.obj"}, "status": {"filename": "status.obj"},
+        "openxr_grip": {"component_local": {"origin": list(grip_origin), "rotate_xyz": list(grip_rot)}}}}))
+    return d
+
+
+def _read_glb(data):
+    import struct as st
+    magic, version, total = st.unpack_from("<III", data)
+    assert magic == 0x46546C67 and version == 2 and total == len(data)
+    jlen, jtype = st.unpack_from("<I4s", data, 12)
+    assert jtype == b"JSON" and jlen % 4 == 0
+    gltf = json.loads(data[20:20 + jlen])
+    blen, btype = st.unpack_from("<I4s", data, 20 + jlen)
+    assert btype == b"BIN\x00" and blen == gltf["buffers"][0]["byteLength"]
+    return gltf, data[28 + jlen:28 + jlen + blen]
+
+
+def test_controller_models_pick_and_convert(monkeypatch, tmp_path):
+    import struct as st
+    a = load_agent(monkeypatch, tmp_path)
+    root = tmp_path / "steamvr"
+    _fake_render_model(root, "valve_frame_controller_left", grip_origin=(1.0, 0.0, 0.0))
+    _fake_render_model(root, "valve_frame_controller_right", grip_rot=(0, 0, 90))
+    _fake_render_model(root, "vr_controller_vive_1_5")
+    dirs = a.render_model_dirs([str(root)])
+    assert set(dirs) == {"valve_frame_controller_left", "valve_frame_controller_right", "vr_controller_vive_1_5"}
+    picked = a.pick_controller_models(dirs)
+    assert picked == {"left": dirs["valve_frame_controller_left"], "right": dirs["valve_frame_controller_right"]}
+    assert a.pick_controller_models({"frame_left": "/x"}) == {}  # needs both sides
+    assert a.model_side("controller_r") == "right" and a.model_side("hmd") is None
+
+    gltf, blob = _read_glb(a.controller_glb(picked["left"]))
+    prim = gltf["meshes"][0]["primitives"]
+    assert len(prim) == 1  # status component skipped, one texture
+    acc = gltf["accessors"]
+    pos = acc[prim[0]["attributes"]["POSITION"]]
+    assert pos["count"] == 4 and acc[prim[0]["indices"]]["count"] == 9  # 4 unique corners, 3 triangles
+    # grip origin (1, 0, 0) -> vertices shifted by -1 on x
+    assert pos["min"] == [-1.0, 0.0, 0.0] and pos["max"] == [0.0, 1.0, 0.0]
+    assert gltf["images"][0]["mimeType"] == "image/png"
+    view = gltf["bufferViews"][gltf["images"][0]["bufferView"]]
+    assert blob[view["byteOffset"]:view["byteOffset"] + view["byteLength"]] == PNG_1PX
+    uv_view = gltf["bufferViews"][acc[prim[0]["attributes"]["TEXCOORD_0"]]["bufferView"]]
+    uvs = st.unpack_from("<8f", blob, uv_view["byteOffset"])
+    assert uvs[:2] == (0.0, 1.0)  # OBJ (0, 0) -> glTF (0, 1)
+
+    # 90° about z: raw +x becomes grip -y (R^T applied)
+    gltf, blob = _read_glb(a.controller_glb(picked["right"]))
+    pos = gltf["accessors"][gltf["meshes"][0]["primitives"][0]["attributes"]["POSITION"]]
+    x = st.unpack_from("<6f", blob, gltf["bufferViews"][pos["bufferView"]]["byteOffset"])
+    assert abs(x[3]) < 1e-6 and abs(x[4] + 1.0) < 1e-6  # vertex (1, 0, 0)
+
+
+def test_controller_models_install(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    root = tmp_path / "steamvr"
+    _fake_render_model(root, "frame_controller_left")
+    _fake_render_model(root, "frame_controller_right")
+    monkeypatch.setattr(a, "steamvr_roots", lambda: [str(root)])
+    files = tmp_path / "files"
+    result = a.install_controller_models(str(files), True)
+    assert result["ok"] and set(result["sources"]) == {"left", "right"}
+    left = files / "framebridge/controller_left.glb"
+    assert left.read_bytes()[:4] == b"glTF" and (files / "framebridge/controller_right.glb").exists()
+    assert len(list((tmp_path / ".local/share/frameport/controller-models").glob("*.glb"))) == 2  # cached
+    assert a.install_controller_models(str(files), False) is None and not left.exists()
+    monkeypatch.setattr(a, "steamvr_roots", lambda: [])
+    missing = a.install_controller_models(str(files), True)
+    assert missing["ok"] is False and "no Steam Frame controller render models" in missing["error"]
+    assert a.cmd_controller_models({})["picked"] == {}

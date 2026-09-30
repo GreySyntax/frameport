@@ -22,7 +22,8 @@
   FB_swapchain_update_state, FB_space_warp, EXT_frame_synthesis, … (full list in any launch.log, tag overportOXR).
 - Missing (emulated by the adapter): XR_FB_passthrough, XR_FB_scene / spatial_entity(_query/_storage/_container) /
   scene_capture, XR_FB_composition_layer_image_layout (flip), XR_KHR_convert_timespec_time (returns
-  FUNCTION_UNSUPPORTED). Missing (dropped): XR_KHR_composition_layer_equirect2, XR_KHR_composition_layer_cylinder
+  FUNCTION_UNSUPPORTED). XR_FB_render_model is presumably missing too (not checked on the device yet); the adapter
+  emulates it only with `controller_models=1` and uses a native one if the runtime ever has it. Missing (dropped): XR_KHR_composition_layer_equirect2, XR_KHR_composition_layer_cylinder
   (the VrApi bridge converts cylinders to quads).
 - Swapchain formats: GLES `GL_SRGB8_ALPHA8` (35907) / `GL_SRGB8` (35905) only, samples = 1. Vulkan: 43 (R8G8B8A8_SRGB)
   and 50, not 37/44 (UNORM).

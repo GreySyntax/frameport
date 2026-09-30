@@ -87,6 +87,25 @@ def text_instructions(data: bytes):
                 yield ins[0], ins[2], ins[3]
 
 
+def replace_rodata_string(data: bytes, old: str, new: str) -> tuple[bytes, int]:
+    """Replace NUL-terminated `old` with `new` (not longer; NUL-padded) inside .rodata only, in place (nothing moves;
+    .dynstr, e.g. DT_NEEDED names, is untouched). Returns (data, number of replacements)."""
+    if len(new) > len(old):
+        raise ValueError("replacement must not be longer")
+    sec = _elf(data).get_section_by_name(".rodata")
+    if sec is None:
+        return data, 0
+    start, end = sec["sh_offset"], sec["sh_offset"] + sec["sh_size"]
+    needle, repl = old.encode() + b"\0", new.encode().ljust(len(old) + 1, b"\0")
+    buf, count, i = bytearray(data), 0, start
+    while (i := buf.find(needle, i, end)) != -1:
+        if i == start or buf[i - 1] == 0:  # a whole string, not the tail of a longer one
+            buf[i:i + len(needle)] = repl
+            count += 1
+        i += len(needle)
+    return bytes(buf), count
+
+
 def add_needed(data: bytes, library: str) -> bytes:
     """Add a DT_NEEDED entry in front of the existing ones (same effect as `patchelf --add-needed`; being first matters
     for symbol interposition, e.g. the GL shim must precede libEGL).

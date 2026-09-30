@@ -23,7 +23,9 @@
 //    (passthrough_emul);
 //  * optionally tells the app its reference spaces changed once the session is focused, so apps that
 //    created them before tracking started recreate them (respace_kick);
-//  * optionally flips quad layers vertically for apps whose UI panels show upside down (flip_quads).
+//  * optionally flips quad layers vertically for apps whose UI panels show upside down (flip_quads);
+//  * optionally serves Steam Frame controller models through XR_FB_render_model (controller_models,
+//    render_model.c).
 //
 // Settings (key=value lines), later sources override earlier ones:
 //   <libdir>/libframe_settings.so
@@ -68,6 +70,8 @@ static int runtime_has_image_layout;  // runtime supports XR_FB_composition_laye
 // Layer types whose extension the runtime lacks (dropped at xrCreateInstance) are removed from frames.
 static int no_equirect, no_equirect2, no_cylinder, no_cube;
 static int runtime_has_fb_passthrough, emulate_passthrough, alpha_blend_failed;
+static int controller_models;  // serve Frame controller models via XR_FB_render_model (render_model.c)
+static void render_model_init(const char *package);
 
 static void read_settings(const char *path) {
     FILE *f = fopen(path, "r");
@@ -91,6 +95,7 @@ static void read_settings(const char *path) {
         if (sscanf(line, "scene_height=%f", &value) == 1 && value > 1.5f && value < 5.0f) scene_height = value;
         if (sscanf(line, "scene_width=%f", &value) == 1 && value > 0.5f && value < 20.0f) scene_width = value;
         if (sscanf(line, "scene_depth=%f", &value) == 1 && value > 0.5f && value < 20.0f) scene_depth = value;
+        if (sscanf(line, "controller_models=%f", &value) == 1) controller_models = value != 0;
     }
     fclose(f);
     LOG("settings read from %s", path);
@@ -127,10 +132,11 @@ static void initialize(void) {
     }
     const char *env = getenv("FRAMEBRIDGE_CONFIG");
     if (env && *env) read_settings(env);
+    if (controller_models && *process && !strchr(process, '/')) render_model_init(process);
 
-    LOG("scale=%.2f foveation_fix=%d controller_fix=%d swapchain_fix=%d layer_fix=%d mutable_fix=%d swap_eyes=%d passthrough_emul=%d respace_kick=%d flip_quads=%d loader=%s",
+    LOG("scale=%.2f foveation_fix=%d controller_fix=%d swapchain_fix=%d layer_fix=%d mutable_fix=%d swap_eyes=%d passthrough_emul=%d respace_kick=%d flip_quads=%d controller_models=%d loader=%s",
         scale, foveation_fix, controller_fix, swapchain_fix, layer_fix, mutable_fix, swap_eyes, passthrough_emul,
-        respace_kick, flip_quads, next_gipa ? "OK" : (dlerror() ?: "FAILED"));
+        respace_kick, flip_quads, controller_models, next_gipa ? "OK" : (dlerror() ?: "FAILED"));
 }
 
 static PFN_xrVoidFunction lookup(XrInstance instance, const char *name) {
@@ -142,6 +148,7 @@ static PFN_xrVoidFunction lookup(XrInstance instance, const char *name) {
 }
 
 #include "scene_emu.c"
+#include "render_model.c"
 
 XRAPI_ATTR XrResult XRAPI_CALL xrCreateInstance(const XrInstanceCreateInfo *info, XrInstance *instance) {
     PFN_xrCreateInstance fn = (PFN_xrCreateInstance)lookup(XR_NULL_HANDLE, "xrCreateInstance");
@@ -184,6 +191,9 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateInstance(const XrInstanceCreateInfo *info
         else if (scene_emul && is_scene_extension(ext)) {
             if (!emulate_scene) LOG("emulating Meta scene/spatial-entity extensions from the guardian bounds");
             emulate_scene = 1;
+        } else if (controller_models && render_models_available && !strcmp(ext, XR_FB_RENDER_MODEL_EXTENSION_NAME)) {
+            emulate_render_model = 1;
+            LOG("emulating XR_FB_render_model with Steam Frame controller models");
         } else if (passthrough_emul && !strcmp(ext, "XR_FB_passthrough")) {
             emulate_passthrough = 1;
             LOG("emulating XR_FB_passthrough with alpha-blended environment");
@@ -450,7 +460,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetSystemProperties(XrInstance instance, XrSyst
     PFN_xrGetSystemProperties fn = (PFN_xrGetSystemProperties)lookup(instance, "xrGetSystemProperties");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
     XrResult result = fn(instance, system, properties);
-    if (XR_SUCCEEDED(result) && (emulate_passthrough || emulate_scene) && properties)
+    if (XR_SUCCEEDED(result) && (emulate_passthrough || emulate_scene || emulate_render_model) && properties)
         for (XrBaseOutStructure *p = (XrBaseOutStructure *)properties->next; p; p = p->next) {
             if (p->type == XR_TYPE_SYSTEM_PASSTHROUGH_PROPERTIES_FB)
                 ((XrSystemPassthroughPropertiesFB *)p)->supportsPassthrough = XR_TRUE;
@@ -458,6 +468,8 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetSystemProperties(XrInstance instance, XrSyst
                 ((XrSystemSpatialEntityPropertiesFB *)p)->supportsSpatialEntity = XR_TRUE;
             if (p->type == XR_TYPE_SYSTEM_PASSTHROUGH_PROPERTIES2_FB)
                 ((XrSystemPassthroughProperties2FB *)p)->capabilities = XR_PASSTHROUGH_CAPABILITY_BIT_FB;
+            if (p->type == XR_TYPE_SYSTEM_RENDER_MODEL_PROPERTIES_FB && emulate_render_model)
+                ((XrSystemRenderModelPropertiesFB *)p)->supportsRenderModelLoading = XR_TRUE;
         }
     return result;
 }
@@ -882,12 +894,13 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateInstanceExtensionProperties(const char
         XR_NULL_HANDLE, "xrEnumerateInstanceExtensionProperties");
     if (!fn) return XR_ERROR_INITIALIZATION_FAILED;
     if (!count) return XR_ERROR_VALIDATION_FAILURE;
-    if ((!foveation_fix && !passthrough_emul && !scene_emul) || layer) return fn(layer, capacity, count, properties);
+    if ((!foveation_fix && !passthrough_emul && !scene_emul && !controller_models) || layer)
+        return fn(layer, capacity, count, properties);
 
     uint32_t total = 0;
     XrResult result = fn(layer, 0, &total, NULL);
     if (XR_FAILED(result)) return result;
-    XrExtensionProperties *all = calloc(total + 1 + SCENE_EXTENSION_COUNT, sizeof(*all));
+    XrExtensionProperties *all = calloc(total + 2 + SCENE_EXTENSION_COUNT, sizeof(*all));
     if (!all) return XR_ERROR_OUT_OF_MEMORY;
     for (uint32_t i = 0; i < total; ++i) all[i].type = XR_TYPE_EXTENSION_PROPERTIES;
     result = fn(layer, total, &total, all);
@@ -896,6 +909,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateInstanceExtensionProperties(const char
     uint32_t kept = 0;
     for (uint32_t i = 0; i < total; ++i) {
         if (!strcmp(all[i].extensionName, "XR_FB_passthrough")) runtime_has_fb_passthrough = 1;
+        if (!strcmp(all[i].extensionName, XR_FB_RENDER_MODEL_EXTENSION_NAME)) runtime_has_render_model = 1;
         if (foveation_fix && strstr(all[i].extensionName, "foveation")) continue;
         if (properties && kept < capacity) properties[kept] = all[i];
         ++kept;
@@ -916,6 +930,12 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateInstanceExtensionProperties(const char
         if (properties && kept < capacity) properties[kept] = fake;
         ++kept;
     }
+    if (controller_models && render_models_available && !runtime_has_render_model) {
+        XrExtensionProperties fake = {XR_TYPE_EXTENSION_PROPERTIES, NULL, XR_FB_RENDER_MODEL_EXTENSION_NAME,
+                                      XR_FB_render_model_SPEC_VERSION};
+        if (properties && kept < capacity) properties[kept] = fake;
+        ++kept;
+    }
     free(all);
     *count = kept;
     return (capacity && capacity < kept) ? XR_ERROR_SIZE_INSUFFICIENT : XR_SUCCESS;
@@ -926,6 +946,12 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateApiLayerProperties(uint32_t capacity, 
     PFN_xrEnumerateApiLayerProperties fn =
         (PFN_xrEnumerateApiLayerProperties)lookup(XR_NULL_HANDLE, "xrEnumerateApiLayerProperties");
     return fn ? fn(capacity, count, properties) : XR_ERROR_INITIALIZATION_FAILED;
+}
+
+// For native/xrshim: emulated functions that overport's dispatcher doesn't know (it never asks us for them).
+__attribute__((visibility("default"))) PFN_xrVoidFunction framebridge_extension_proc(const char *name) {
+    pthread_once(&init_once, initialize);
+    return name ? render_model_emulation(name) : NULL;
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const char *name,
@@ -948,6 +974,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const 
     }
     PFN_xrVoidFunction emulated = passthrough_emulation(name);
     if (!emulated) emulated = scene_emulation(name);
+    if (!emulated) emulated = render_model_emulation(name);
     if (!emulated && emulate_scene && !strcmp(name, "xrLocateSpacesKHR")) emulated = (PFN_xrVoidFunction)emu_locate_spaces_khr;
     if (emulated) { *function = emulated; return XR_SUCCESS; }
     HOOK(xrGetSystemProperties)

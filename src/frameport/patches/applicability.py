@@ -50,3 +50,14 @@ def unreal_version(a: Analysis) -> tuple[int, int] | None:
         return int(major), int(minor)
     except (AttributeError, ValueError):
         return None
+
+
+def uses_render_models(a: Analysis) -> bool:
+    """The game declares Meta's runtime controller models (XR_FB_render_model): permission or feature RENDER_MODEL."""
+    perms = a.extra.get("meta_permissions_used") or a.meta_permissions
+    return any(p.endswith("RENDER_MODEL") for p in perms) or "com.oculus.feature.RENDER_MODEL" in (a.extra.get("features") or {})
+
+
+def may_use_render_models(a: Analysis) -> bool:
+    """Could ask for runtime controller models at all: declares them, or ships Meta's OVRPlugin (Unity/Unreal)."""
+    return uses_render_models(a) or "libOVRPlugin.so" in a.libs

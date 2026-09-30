@@ -48,6 +48,8 @@ version is `catalog/triage.yaml` (used by `frameport test` / the Job screen); ke
 | Upside-down image in a GL bridge game | GL images start at the bottom row | fixed in the bridge (swap angleUp/Down for GL chains) |
 | UI panels upside down (AC Nexus) | XrCompositionLayerImageLayoutFB VERTICAL_FLIP unsupported | adapter `flip_emul=1` (default); rotating quads makes them vanish |
 | Passthrough black (BAM) | XR_FB_passthrough missing | adapter `passthrough_emul=1` (default) + `patch_force_passthrough` for MR-only games |
+| Quest Touch controllers (or none) shown in a game that uses Meta's runtime controller models | XR_FB_render_model missing on the Frame | adapter `controller_models=1`: the agent converts the Frame's SteamVR controller models to glb at install, the adapter serves them. Games with their own controller meshes aren't affected (none of the 34 catalog games use runtime models) |
+| `overportOXR: Unknown proc addr: xr…` for a function the adapter emulates | overport's dispatcher only forwards functions in its own table | route the plugin's lookups through `native/xrshim` (done for XR_FB_render_model when `controller_models=1`) |
 | MR game stuck waiting for room data (Demeter) | no Meta scene API | adapter `scene_emul=1` (+ `frame.meta_permissions`) |
 | Hand-tracking game janky (Silhouette) | Frame synthesizes hands from controllers | `controller_fix=0` passes hands through; not really fixable |
 | Eye distortion while moving (Arcsmith, Time Stall) | unknown (not eye swap, tracking, Valve layers, depth or pacing) | unresolved |

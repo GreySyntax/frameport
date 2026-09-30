@@ -315,6 +315,13 @@ def frame_info(frame: Optional[str] = None):
     typer.echo(json.dumps(_target(frame).describe(), indent=1, default=str))
 
 
+@frame_app.command("controller-models")
+def frame_controller_models(frame: Optional[str] = None,
+                            convert: bool = typer.Option(False, help="also convert them (cached on the Frame)")):
+    """SteamVR render models on the Frame and which ones serve as Steam Frame controller models (controller_models)."""
+    typer.echo(json.dumps(_target(frame).frame.agent("controller_models", convert=convert), indent=1))
+
+
 @frame_app.command("proton")
 def frame_proton(frame: Optional[str] = None,
                  install_: bool = typer.Option(False, "--install", help="install it (Steam on the Frame restarts once "

@@ -53,10 +53,62 @@ def test_adapter_and_launcher(tmp_path, quest_manifest):
         assert names.count("lib/arm64-v8a/libopenxr_loader_generic.so") == 1
 
 
+def test_controller_models_adds_xrshim(tmp_path, quest_manifest):
+    from pathlib import Path
+
+    from frameport.analysis import elf
+
+    # like Meta's OVRPlugin: DT_NEEDED libopenxr_loader.so + dlopen("libopenxr_loader.so") / dlsym(xrGetInstanceProcAddr)
+    plugin = (Path(__file__).with_name("fixtures") / "libfakeovrplugin_arm64.so").read_bytes()
+    for enabled in (True, False):
+        apk = _apk(tmp_path, quest_manifest)
+        with zipfile.ZipFile(apk, "a") as z:
+            z.writestr("lib/arm64-v8a/libOVRPlugin.so", plugin)
+        recipe = {"frame.adapter": {}, **({"adapter.controller_models": {"value": 1}} if enabled else {})}
+        with ApkWorkspace(apk) as ws:
+            assert base.get("frame.adapter").apply(base.ApkContext(ws, _analysis(), {}, Reporter(), recipe))
+            out = ws.write(tmp_path / f"out{enabled}.apk")
+        with zipfile.ZipFile(out) as z:
+            names = z.namelist()
+            patched = z.read("lib/arm64-v8a/libOVRPlugin.so")
+        if enabled:
+            assert "lib/arm64-v8a/libframe_xrshim.so" in names
+            assert len(patched) == len(plugin) and b"libframe_xrshim.so\0\0" in patched
+            assert patched.count(b"libopenxr_loader.so\0") == 1  # only the DT_NEEDED name (.dynstr) is left
+            assert elf.needed(patched) == elf.needed(plugin)
+        else:  # off: builds stay byte-identical to before
+            assert "lib/arm64-v8a/libframe_xrshim.so" not in names and patched == plugin
+
+
+def test_replace_rodata_string_whole_strings_only():
+    from pathlib import Path
+
+    from frameport.analysis import elf
+
+    plugin = (Path(__file__).with_name("fixtures") / "libfakeovrplugin_arm64.so").read_bytes()
+    out, n = elf.replace_rodata_string(plugin, "libopenxr_loader.so", "libframe_xrshim.so")
+    assert n == 1 and elf.replace_rodata_string(out, "libopenxr_loader.so", "x")[1] == 0
+    assert elf.replace_rodata_string(plugin, "openxr_loader.so", "y")[1] == 0  # a tail of a longer string
+
+
 def test_settings_order_and_types():
     s = adapter_settings({"adapter.controller_fix": {"value": 0}, "adapter.scene_height": {"value": "3"}})
     assert list(s) == ["scale", "foveation_fix", "controller_fix", "scene_height"]
     assert s["controller_fix"] == 0 and s["scene_height"] == 3.0
+
+
+def test_controller_models_setting():
+    patch = base.get("adapter.controller_models")
+    plain = _analysis()
+    assert patch.detect(plain) is None and not patch.applies(plain)
+    meta_sdk = _analysis(libs=["libOVRPlugin.so"])
+    assert patch.applies(meta_sdk) and patch.detect(meta_sdk) is None  # SDK present, runtime models not declared
+    for a in (_analysis(meta_permissions=["com.oculus.permission.RENDER_MODEL"]),
+              _analysis(extra={"features": {"com.oculus.feature.RENDER_MODEL": False}})):
+        s = patch.detect(a)
+        assert s.recommended and s.params == {"value": 1} and patch.applies(a)
+    assert adapter_settings({"adapter.controller_models": {"value": 1}})["controller_models"] == 1
+    assert "controller_models" not in adapter_settings({})  # off unless selected: existing builds are unchanged
 
 
 def test_detect_direct_vrapi_suggests_bridge_and_shim():

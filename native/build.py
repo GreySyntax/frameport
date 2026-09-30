@@ -10,7 +10,7 @@ timefix OpenXR layer for Proton games (linux-arm64, glibc; the NDK's clang build
 OculusHMDConnected helper for Rift games under Proton (win-x64 PE; the NDK's clang + lld-link, no Windows SDK), and
 rewrites artifacts/SHA256SUMS. Run `frameport parity` afterwards to see which games change.
 
-    python native/build.py [--only adapter,bridge,compat,glshim,dex,xrlayer,oculushmd] [--ndk PATH]
+    python native/build.py [--only adapter,bridge,compat,glshim,dex,xrlayer,oculushmd,xrshim] [--ndk PATH]
 """
 from __future__ import annotations
 
@@ -210,6 +210,14 @@ def build_glshim(tc: Path):
          "-Wl,-z,max-page-size=16384", "glshim.c", "-ldl", "-llog", "-o", ART / "arm64-v8a/libglshim.so"], cwd=src)
 
 
+def build_xrshim(tc: Path):
+    """FrameBridge extension shim (see xrshim/xrshim.c): DT_NEEDED-injected in front of overport's libopenxr_loader.so."""
+    src = HERE / "xrshim"
+    run([exe(tc, "aarch64-linux-android29-clang"), "-shared", "-fPIC", "-O2", "-Wall", "-Wextra", "-Werror",
+         "-fvisibility=hidden", "-I", openxr_include("adapter"), "-Wl,-soname,libframe_xrshim.so",
+         "-Wl,-z,max-page-size=16384", "xrshim.c", "-ldl", "-llog", "-o", ART / "arm64-v8a/libframe_xrshim.so"], cwd=src)
+
+
 def build_dex():
     javac = shutil.which("javac")
     if not javac:
@@ -254,7 +262,7 @@ def write_sums():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", default="adapter,bridge,compat,glshim,dex,xrlayer,oculushmd")
+    ap.add_argument("--only", default="adapter,bridge,compat,glshim,dex,xrlayer,oculushmd,xrshim")
     ap.add_argument("--ndk")
     args = ap.parse_args()
     parts = set(args.only.split(","))
@@ -262,9 +270,9 @@ def main():
         (ART / d).mkdir(parents=True, exist_ok=True)
     tc = clang_dir(ndk(args.ndk)) if parts - {"dex"} else None
     steps = {"adapter": lambda: build_adapter(tc), "bridge": lambda: build_bridge(tc), "compat": lambda: build_compat(tc),
-             "glshim": lambda: build_glshim(tc), "dex": build_dex, "xrlayer": lambda: build_xrlayer(tc),
+             "glshim": lambda: build_glshim(tc), "xrshim": lambda: build_xrshim(tc), "dex": build_dex, "xrlayer": lambda: build_xrlayer(tc),
              "oculushmd": lambda: build_oculushmd(tc)}
-    for name in ("adapter", "bridge", "compat", "glshim", "dex", "xrlayer", "oculushmd"):
+    for name in ("adapter", "bridge", "compat", "glshim", "xrshim", "dex", "xrlayer", "oculushmd"):
         if name in parts:
             log(f"build {name}")
             steps[name]()

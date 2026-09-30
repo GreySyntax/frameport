@@ -28,6 +28,11 @@ SETTINGS = [
     ("scene_emul", "int", 0, "Emulate Meta scene (room)",
      "Fake XR_FB_scene/spatial entities: a guardian-sized room with floor, ceiling and four walls, for mixed-reality "
      "games that build their level from the room (e.g. Demeter)."),
+    ("controller_models", "int", 0, "Steam Frame controller models",
+     "Games that ask the headset for its controller models (Meta's runtime controller models, XR_FB_render_model) get "
+     "the Steam Frame controllers instead of Quest Touch controllers. The models come from the Frame's own SteamVR and "
+     "are converted on the Frame at install time. Games that ship their own controller meshes aren't affected. Turning "
+     "it on needs a rebuild (it adds a small library in front of overport's loader)."),
     ("scene_height", "float", 2.5, "Emulated room height (m)", "Ceiling height for scene_emul."),
     ("scene_width", "float", 0.0, "Emulated room width (m)", "Override the guardian width (0 = use guardian, min 1.5 m)."),
     ("scene_depth", "float", 0.0, "Emulated room depth (m)", "Override the guardian depth (0 = use guardian, min 1.5 m)."),
@@ -56,11 +61,14 @@ class AdapterSetting(Patch):
         self.default = default
 
     def detect(self, a):
-        from .applicability import needs_scene
+        from .applicability import needs_scene, uses_render_models
 
         if self.key == "controller_fix" and a.extra.get("hand_tracking_only"):
             return Suggestion(True, "Hand tracking is required by the game: pass hands through instead of reporting "
                                     "Touch controllers (e.g. Silhouette).", {"value": 0})
+        if self.key == "controller_models" and uses_render_models(a):
+            return Suggestion(True, "The game asks the headset for its controller models: show Steam Frame controllers "
+                                    "instead of Quest Touch controllers.", {"value": 1})
         if self.key == "scene_emul" and needs_scene(a):
             return Suggestion(True, "Mixed-reality game that builds its level from the room model: emulate a "
                                     "guardian-sized room (e.g. Demeter).", {"value": 1})
@@ -80,6 +88,7 @@ class AdapterSetting(Patch):
             "mutable_fix": ap.is_vulkan,
             "swapchain_fix": ap.is_gles,
             "gl_hide_multiview": lambda a: a.direct_vrapi and ap.is_gles(a),
+            "controller_models": ap.may_use_render_models,
         }
         rule = rules.get(self.key)
         return bool(rule(a)) if rule else True

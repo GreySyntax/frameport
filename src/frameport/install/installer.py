@@ -91,7 +91,17 @@ def install(frame: Frame, plan: InstallPlan, reporter: Reporter) -> dict:
         recipe={"patches": sorted(plan.recipe.patches), "source": plan.recipe.source, "alt": plan.recipe.use_alt},
     )
     reporter.log(f"installed at {result['base']} (Steam shortcut id {result['appid']})")
+    log_controller_models(result.get("controller_models"), reporter)
     return result
+
+
+def log_controller_models(models: dict | None, reporter: Reporter) -> None:
+    """Outcome of the agent's Steam Frame controller model conversion (adapter setting controller_models)."""
+    if not models:
+        return
+    names = ", ".join(posixpath.basename(v) for v in (models.get("sources") or {}).values())
+    reporter.check("Steam Frame controller models", bool(models.get("ok")),
+                   f"from SteamVR: {names}" if models.get("ok") else str(models.get("error")))
 
 
 @dataclass

@@ -5,7 +5,8 @@ The PC app uploads this file to ~/.local/share/frameport/agent/ and calls:
     python3 frameport_agent.py <command>        (JSON arguments on stdin, one JSON object on stdout)
 
 Commands: info, prepare, finalize, shortcuts, shortcut_status, launch_test, stop, set_settings, uninstall,
-          install_lepton, list_installed, proton_status, install_proton, prepare_pcvr, finalize_pcvr.
+          install_lepton, list_installed, proton_status, install_proton, prepare_pcvr, finalize_pcvr,
+          controller_models.
 
 Install layout (one Lepton container per game; same as the manual installs from 2026-09):
     ~/Applications/quest-frame/<pkg>/            anchor: launch.sh, deployment.json, artwork/ (always internal storage)
@@ -32,7 +33,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 19
+AGENT_VERSION = 20
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1069,6 +1070,7 @@ def cmd_finalize(args):
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "w") as f:
             f.write(content)
+    models = install_controller_models(files_dir, str(settings.get("controller_models", 0)) not in ("0", "0.0"))
     write_launcher(anchor, base, pkg, title, appid, lepton, args.get("env"))
     art_in = os.path.join(base, "incoming-artwork")
     if os.path.isdir(art_in):
@@ -1080,7 +1082,306 @@ def cmd_finalize(args):
            "agent_version": AGENT_VERSION, "time": time.time()}
     with open(os.path.join(anchor, "deployment.json"), "w") as f:
         json.dump(dep, f, indent=2)
-    return {"ok": True, "base": base, "appid": appid, "moved_data_files": moved}
+    return {"ok": True, "base": base, "appid": appid, "moved_data_files": moved, "controller_models": models}
+
+
+# ------------------------------------------------------------------ Steam Frame controller models (XR_FB_render_model)
+# The FrameBridge adapter (setting controller_models=1) serves these to games that ask the runtime for controller models.
+# They are converted here, on the Frame, from the SteamVR render models the Frame already has (OBJ + PNG) into glTF
+# binaries, so Valve's models never leave the device.
+MODELS_CACHE = os.path.join(HOME, ".local/share/frameport/controller-models")
+FRAME_MODEL_RE = re.compile(r"frame", re.I)
+SKIP_COMPONENTS = ("status", "led", "scroll_wheel_touch")
+
+
+def steamvr_roots():
+    roots = []
+    rt = openxr_runtime()
+    if rt and rt.get("path"):
+        roots.append(os.path.dirname(rt["path"]))
+    roots += [os.path.join(lib, "steamapps/common/SteamVR") for lib in steam_libraries()]
+    roots += ["/opt/steamvr", os.path.join(STEAM, "steamapps/common/SteamVR")]
+    out = []
+    for r in roots:
+        r = os.path.realpath(r)
+        if os.path.isdir(r) and r not in out:
+            out.append(r)
+    return out
+
+
+def render_model_dirs(roots=None):
+    """name -> directory of every SteamVR render model (a folder with .obj files)."""
+    found = {}
+    for root in roots if roots is not None else steamvr_roots():
+        for pattern in ("resources/rendermodels/*", "drivers/*/resources/rendermodels/*"):
+            for d in sorted(glob.glob(os.path.join(root, pattern))):
+                if os.path.isdir(d) and glob.glob(os.path.join(d, "*.obj")):
+                    found.setdefault(os.path.basename(d), d)
+    return found
+
+
+def model_side(name):
+    n = name.lower()
+    for side in ("left", "right"):
+        if side in n:
+            return side
+    for side in ("left", "right"):  # e.g. controller_l / controller-r
+        if re.search(rf"(^|[_\-. ]){side[0]}([_\-. ]|$)", n):
+            return side
+    return None
+
+
+def pick_controller_models(dirs, pattern=FRAME_MODEL_RE):
+    """{'left': dir, 'right': dir} for the Steam Frame controllers (names matching `pattern`), or {}."""
+    best = {}
+    for name, d in dirs.items():
+        side = model_side(name)
+        if not side or not pattern.search(name):
+            continue
+        score = ("controller" in name.lower()) * 10 - len(name)
+        if side not in best or score > best[side][0]:
+            best[side] = (score, d)
+    return {s: d for s, (_, d) in best.items()} if len(best) == 2 else {}
+
+
+def _rotation_xyz(deg):
+    """3x3 rotation for SteamVR's rotate_xyz (degrees; applied about X, then Y, then Z)."""
+    import math
+    rx, ry, rz = (math.radians(float(v)) for v in (list(deg) + [0, 0, 0])[:3])
+    cx, sx, cy, sy, cz, sz = math.cos(rx), math.sin(rx), math.cos(ry), math.sin(ry), math.cos(rz), math.sin(rz)
+    X = [[1, 0, 0], [0, cx, -sx], [0, sx, cx]]
+    Y = [[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]]
+    Z = [[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]]
+    mul = lambda a, b: [[sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+    return mul(Z, mul(Y, X))
+
+
+def model_description(model_dir):
+    """(obj files, grip transform or None) from the model's JSON (components) or the folder's .obj files."""
+    name = os.path.basename(model_dir)
+    desc = {}
+    for cand in (os.path.join(model_dir, name + ".json"), *sorted(glob.glob(os.path.join(model_dir, "*.json")))):
+        try:
+            desc = json.load(open(cand))
+            if isinstance(desc, dict) and "components" in desc:
+                break
+        except (OSError, ValueError):
+            desc = {}
+    objs, grip = [], None
+    for cname, comp in (desc.get("components") or {}).items():
+        if not isinstance(comp, dict):
+            continue
+        if cname == "openxr_grip" and isinstance(comp.get("component_local"), dict):
+            local = comp["component_local"]
+            grip = (list(local.get("origin") or [0, 0, 0]), _rotation_xyz(local.get("rotate_xyz") or [0, 0, 0]))
+        fn = comp.get("filename")
+        hidden = (comp.get("visibility") or {}).get("default") is False  # e.g. status LEDs
+        if fn and not hidden and not any(s in cname.lower() for s in SKIP_COMPONENTS):
+            p = os.path.join(model_dir, fn)
+            if os.path.exists(p):
+                objs.append(p)
+    if not objs:
+        whole = os.path.join(model_dir, name + ".obj")
+        objs = [whole] if os.path.exists(whole) else sorted(glob.glob(os.path.join(model_dir, "*.obj")))
+    return objs, grip
+
+
+def parse_mtl(path):
+    """material name -> texture file (map_Kd)."""
+    out, cur = {}, None
+    try:
+        for line in open(path, errors="replace"):
+            parts = line.strip().split(None, 1)
+            if not parts:
+                continue
+            if parts[0] == "newmtl" and len(parts) > 1:
+                cur = parts[1].strip()
+            elif parts[0] == "map_Kd" and cur and len(parts) > 1:
+                out[cur] = os.path.join(os.path.dirname(path), parts[1].strip().split()[-1])
+    except OSError:
+        pass
+    return out
+
+
+def parse_obj(path):
+    """-> list of (texture path or None, positions, normals, uvs, triangles as (v, vt, vn) index triples)."""
+    pos, nrm, uv = [], [], []
+    groups = {}  # texture -> list of corner triples
+    mats, tex = {}, None
+    for line in open(path, errors="replace"):
+        parts = line.split()
+        if not parts:
+            continue
+        tag = parts[0]
+        if tag == "v":
+            pos.append(tuple(float(x) for x in parts[1:4]))
+        elif tag == "vn":
+            nrm.append(tuple(float(x) for x in parts[1:4]))
+        elif tag == "vt":
+            uv.append((float(parts[1]), float(parts[2]) if len(parts) > 2 else 0.0))
+        elif tag == "mtllib":
+            mats.update(parse_mtl(os.path.join(os.path.dirname(path), " ".join(parts[1:]))))
+        elif tag == "usemtl":
+            tex = mats.get(" ".join(parts[1:]))
+        elif tag == "f":
+            corners = []
+            for c in parts[1:]:
+                idx = (c.split("/") + ["", ""])[:3]
+                ref = []
+                for i, n in zip(idx, (len(pos), len(uv), len(nrm))):
+                    ref.append(None if not i else (int(i) - 1 if int(i) > 0 else n + int(i)))
+                corners.append(tuple(ref))
+            for i in range(1, len(corners) - 1):  # fan triangulation
+                groups.setdefault(tex, []).extend((corners[0], corners[i], corners[i + 1]))
+    return pos, nrm, uv, groups
+
+
+def controller_glb(model_dir):
+    """glTF binary (one mesh, one primitive per texture, PNG/JPEG textures, in the controller's OpenXR grip space
+    when the model defines openxr_grip) for a SteamVR render model folder."""
+    objs, grip = model_description(model_dir)
+    if not objs:
+        raise AgentError(f"no .obj files in {model_dir}")
+    # texture -> (positions, normals, uvs, indices), vertices de-duplicated per corner triple
+    prims = {}
+    for obj in objs:
+        pos, nrm, uv, groups = parse_obj(obj)
+        for tex, corners in groups.items():
+            if tex and os.path.splitext(tex)[1].lower() not in (".png", ".jpg", ".jpeg"):
+                tex = None
+            p = prims.setdefault(tex, {"pos": [], "nrm": [], "uv": [], "idx": [], "map": {}})
+            for c in corners:
+                key = (obj, c)
+                if key not in p["map"]:
+                    p["map"][key] = len(p["pos"])
+                    v = pos[c[0]]
+                    n = nrm[c[2]] if c[2] is not None and c[2] < len(nrm) else (0.0, 0.0, 1.0)
+                    t = uv[c[1]] if c[1] is not None and c[1] < len(uv) else (0.0, 0.0)
+                    if grip:  # raw device space -> grip space: R^T (v - origin)
+                        o, r = grip
+                        d = [v[k] - float(o[k]) for k in range(3)]
+                        v = tuple(sum(r[k][j] * d[k] for k in range(3)) for j in range(3))
+                        n = tuple(sum(r[k][j] * n[k] for k in range(3)) for j in range(3))
+                    p["pos"].append(v)
+                    p["nrm"].append(n)
+                    p["uv"].append((t[0], 1.0 - t[1]))  # OBJ origin bottom-left, glTF top-left
+                p["idx"].append(p["map"][key])
+    blob = bytearray()
+    views, accessors, images, textures, materials, primitives = [], [], [], [], [], []
+
+    def add_view(data, target=None):
+        while len(blob) % 4:
+            blob.append(0)
+        view = {"buffer": 0, "byteOffset": len(blob), "byteLength": len(data)}
+        if target:
+            view["target"] = target
+        blob.extend(data)
+        views.append(view)
+        return len(views) - 1
+
+    def add_accessor(values, width, ctype, kind, target, minmax=False):
+        fmt = {5126: "f", 5125: "I"}[ctype]
+        flat = [x for v in values for x in (v if width > 1 else (v,))]
+        acc = {"bufferView": add_view(struct.pack(f"<{len(flat)}{fmt}", *flat), target), "componentType": ctype,
+               "count": len(values), "type": kind}
+        if minmax:
+            acc["min"] = [min(v[k] for v in values) for k in range(width)]
+            acc["max"] = [max(v[k] for v in values) for k in range(width)]
+        accessors.append(acc)
+        return len(accessors) - 1
+
+    for tex, p in prims.items():
+        if not p["idx"]:
+            continue
+        attrs = {"POSITION": add_accessor(p["pos"], 3, 5126, "VEC3", 34962, minmax=True),
+                 "NORMAL": add_accessor(p["nrm"], 3, 5126, "VEC3", 34962),
+                 "TEXCOORD_0": add_accessor(p["uv"], 2, 5126, "VEC2", 34962)}
+        indices = add_accessor(p["idx"], 1, 5125, "SCALAR", 34963)
+        mat = {"pbrMetallicRoughness": {"metallicFactor": 0.0, "roughnessFactor": 0.8}}
+        if tex and os.path.exists(tex):
+            mime = "image/png" if tex.lower().endswith(".png") else "image/jpeg"
+            images.append({"bufferView": add_view(open(tex, "rb").read()), "mimeType": mime})
+            textures.append({"source": len(images) - 1})
+            mat["pbrMetallicRoughness"]["baseColorTexture"] = {"index": len(textures) - 1}
+        else:
+            mat["pbrMetallicRoughness"]["baseColorFactor"] = [0.1, 0.1, 0.1, 1.0]
+        materials.append(mat)
+        primitives.append({"attributes": attrs, "indices": indices, "material": len(materials) - 1})
+    if not primitives:
+        raise AgentError(f"no triangles in {model_dir}")
+    while len(blob) % 4:
+        blob.append(0)
+    gltf = {"asset": {"version": "2.0", "generator": "FramePort agent"}, "scene": 0, "scenes": [{"nodes": [0]}],
+            "nodes": [{"name": os.path.basename(model_dir), "mesh": 0}],
+            "meshes": [{"primitives": primitives}], "materials": materials, "accessors": accessors,
+            "bufferViews": views, "buffers": [{"byteLength": len(blob)}]}
+    if images:
+        gltf.update(images=images, textures=textures, samplers=[{}])
+        for t in textures:
+            t["sampler"] = 0
+    js = json.dumps(gltf, separators=(",", ":")).encode()
+    js += b" " * (-len(js) % 4)
+    total = 12 + 8 + len(js) + 8 + len(blob)
+    return (struct.pack("<III", 0x46546C67, 2, total) + struct.pack("<I4s", len(js), b"JSON") + js
+            + struct.pack("<I4s", len(blob), b"BIN\x00") + bytes(blob))
+
+
+def _tree_stamp(d):
+    h = hashlib.sha256()
+    for p in sorted(glob.glob(os.path.join(d, "*"))):
+        st = os.stat(p)
+        h.update(f"{os.path.basename(p)}:{st.st_size}:{int(st.st_mtime)}\n".encode())
+    return h.hexdigest()[:16]
+
+
+def frame_controller_models():
+    """Converted (cached) glb paths for the Frame controllers: {'left': path, 'right': path, 'sources': {...}}."""
+    picked = pick_controller_models(render_model_dirs())
+    if not picked:
+        raise AgentError("no Steam Frame controller render models found in SteamVR (looked in: "
+                         + ", ".join(steamvr_roots() or ["no SteamVR install"]) + ")")
+    os.makedirs(MODELS_CACHE, exist_ok=True)
+    out = {"sources": picked}
+    for side, d in picked.items():
+        cached = os.path.join(MODELS_CACHE, f"{os.path.basename(d)}-{_tree_stamp(d)}.glb")
+        if not os.path.exists(cached):
+            data = controller_glb(d)
+            with open(cached + ".tmp", "wb") as f:
+                f.write(data)
+            os.replace(cached + ".tmp", cached)
+        out[side] = cached
+    return out
+
+
+def install_controller_models(files_dir, enabled):
+    """Put (or remove) framebridge/controller_{left,right}.glb in a game's files dir. Never fails the install."""
+    target = os.path.join(files_dir, "framebridge")
+    if not enabled:
+        for side in ("left", "right"):
+            p = os.path.join(target, f"controller_{side}.glb")
+            if os.path.exists(p):
+                os.remove(p)
+        return None
+    try:
+        models = frame_controller_models()
+    except (AgentError, OSError, ValueError, IndexError) as e:
+        return {"ok": False, "error": str(e)}
+    os.makedirs(target, exist_ok=True)
+    for side in ("left", "right"):
+        shutil.copyfile(models[side], os.path.join(target, f"controller_{side}.glb"))
+    return {"ok": True, "sources": models["sources"]}
+
+
+def cmd_controller_models(args):
+    """Diagnostics: SteamVR roots, every render model found, and which ones are used as the Frame controllers."""
+    dirs = render_model_dirs()
+    result = {"roots": steamvr_roots(), "render_models": dirs, "picked": pick_controller_models(dirs)}
+    if args.get("convert"):
+        try:
+            result["converted"] = frame_controller_models()
+        except (AgentError, OSError, ValueError, IndexError) as e:
+            result["error"] = str(e)
+    return result
 
 
 # ------------------------------------------------------------------------------------------ PC VR (Rift) under Proton
@@ -1371,7 +1672,8 @@ def cmd_set_settings(args):
     os.makedirs(files_dir, exist_ok=True)
     with open(os.path.join(files_dir, "framebridge.conf"), "w") as f:
         f.write(text)
-    return {"settings": current}
+    models = install_controller_models(files_dir, current.get("controller_models", "0") not in ("0", "0.0"))
+    return {"settings": current, "controller_models": models}
 
 
 def cmd_uninstall(args):
