@@ -16,9 +16,7 @@ from pathlib import Path
 import flet as ft
 
 from .. import pipeline
-from ..artwork import fetch as artwork
-from ..core import library
-from ..patches import base
+from ..core import applog, library
 from ..recommend import catalog
 from . import components as C
 from . import theme as T
@@ -253,6 +251,7 @@ class FramePortApp:
                 fn(*args)
             except Exception as exc:  # noqa: BLE001
                 traceback.print_exc()
+                applog.log.exception("background task failed")
                 self.toast(f"{exc}", error=True)
         self.page.run_thread(wrapper)
 
@@ -468,6 +467,9 @@ class FramePortApp:
         out += [("Reset to suggested recipe", ft.Icons.RESTART_ALT_ROUNDED,
                  lambda e: (pipeline.reset_recipe(pkg), self.toast("Recipe reset"), self.refresh_view())),
                 ("Save as known-good recipe", ft.Icons.VERIFIED_ROUNDED, lambda e: self.save_known_good(pkg)),
+                ("Share working config…", ft.Icons.SHARE_ROUNDED, lambda e: self.share_config_dialog(pkg)),
+                ("Collect logs", ft.Icons.FOLDER_ZIP_OUTLINED, lambda e: self.collect_logs(pkg)),
+                ("Report a problem…", ft.Icons.BUG_REPORT_OUTLINED, lambda e: self.report_problem_dialog(pkg)),
                 None,
                 ("Remove from library", ft.Icons.DELETE_OUTLINE_ROUNDED, lambda e: self.remove_from_library(pkg))]
         return out
@@ -593,6 +595,8 @@ class FramePortApp:
             if job.log_path:
                 buttons.append(C.ghost("Launch log", ft.Icons.DESCRIPTION_ROUNDED,
                                        lambda e, j=job: self.show_log_file(j.log_path, j.title)))
+            buttons.append(C.ghost("Report problem", ft.Icons.BUG_REPORT_OUTLINED,
+                                   lambda e, p=pkg: (self.page.pop_dialog(), self.report_problem_dialog(p))))
             rows.append(C.card(ft.Column([
                 C.body(self._title(pkg) if pkg else job.title, T.TEXT, weight=ft.FontWeight.W_600),
                 C.body(why, T.TEXT_2, selectable=True),
@@ -748,34 +752,101 @@ class FramePortApp:
         return self.target
 
     def save_known_good(self, package: str) -> None:
-        g = library.game(package)
-        r = library.recipe_from_dict(g["recipe"])
-        from ..patches.overport import DEFAULT_OVERPORT
-
-        common = dict(package=package, title=g.get("title") or package, status="works", notes=r.notes,
-                      tested_version=g["analysis"]["version"], engine=g["analysis"]["engine"], xr=g["analysis"]["xr"],
-                      verified={"date": time.strftime("%Y-%m-%d"),
-                                "known_good_sha256": g.get("build", {}).get("sha256")},
-                      source_hint=g.get("name", ""))
-        if g.get("kind") == "rift":
-            env = r.params("pcvr.proton_env").get("env") or ""
-            e = catalog.CatalogEntry(
-                **common, kind="rift", quest_package=g.get("quest_package"),
-                pcvr=[p for p in r.patches if p not in ("pcvr.proton_env", "pcvr.proton_tool")],
-                pcvr_remove=[p for p in ("pcvr.revive",) if p not in r.patches],
-                proton_env=dict(line.split("=", 1) for line in env.splitlines() if "=" in line),
-                proton_tool=r.params("pcvr.proton_tool").get("tool") or "")
-        else:
-            e = catalog.CatalogEntry(
-                **common,
-                overport_extra=[p for p in r.patches if base.get(p).category == "overport" and p not in DEFAULT_OVERPORT],
-                overport_remove=[p for p in DEFAULT_OVERPORT if p not in r.patches],
-                alt_overport=r.alt_patches, use_alt=r.use_alt,
-                frame=[p for p in r.patches if base.get(p).category == "frame" and not base.get(p).default_on],
-                adapter={p.split(".", 1)[1]: v.get("value") for p, v in r.patches.items() if p.startswith("adapter.")},
-                device_files=r.params("device.files").get("files", {}))
-        catalog.save_user_entry(e)
+        catalog.save_user_entry(catalog.entry_from_library(library.game(package)))
         self.toast("Saved as a known-good recipe")
+
+    # ================================================================== sharing / diagnostics
+    def open_url(self, url: str) -> None:
+        from ..core import winhost
+
+        if winhost.is_wsl() and winhost.open_url(url):  # the desktop client would open a Linux browser in WSL
+            return
+        try:
+            self.page.run_task(ft.UrlLauncher().launch_url, url)
+        except Exception:  # noqa: BLE001
+            winhost.open_url(url)
+
+    def _diag_target(self, pkg: str | None):
+        g = library.game(pkg) if pkg else None
+        if g and g.get("kind") == "rift" and pkg in self.pc_installs() and \
+                C.install_state(g, self.frame_info) not in ("installed", "outdated"):
+            return self._target_for("pc")
+        return self.target if self.frame_state == "connected" else None
+
+    def collect_logs(self, pkg: str | None = None, report: str | None = None) -> None:
+        """Diagnostics zip (redacted) → shown in the file manager; report (a description, may be "") also opens a
+        prefilled GitHub problem report to attach it to."""
+        from ..core import winhost
+
+        target, info = self._diag_target(pkg), self.frame_info
+
+        def run(job: Job):
+            path = pipeline.collect_diagnostics([pkg] if pkg else None, target, job.reporter)
+            winhost.open_folder(path, select=True)
+            if report is not None:
+                self.open_url(pipeline.problem_report(pkg, report, path, info if target is self.target else None))
+                return f"Saved {path.name}: drag it into the GitHub issue that just opened"
+            return f"Saved {path.name} (in {path.parent})"
+        self.submit(f"Collect logs: {self._title(pkg)}" if pkg else "Collect app logs", run, pkg, "diag")
+
+    def report_problem_dialog(self, pkg: str | None = None) -> None:
+        text = ft.TextField(label="What happens? (optional: you can also write it on GitHub)", multiline=True,
+                            min_lines=3, max_lines=8, width=560, border_color=T.BORDER)
+
+        def go(e):
+            self.page.pop_dialog()
+            self.collect_logs(pkg, text.value or "")
+        self.page.show_dialog(ft.AlertDialog(
+            title=ft.Text(f"Report a problem · {self._title(pkg)}" if pkg else "Report a problem"),
+            bgcolor=T.SURFACE_2,
+            content=ft.Column([
+                C.body("FramePort saves a diagnostics zip (logs, recipe, device info; no game files, personal data "
+                       "removed) and opens a prefilled GitHub issue. Drag the zip into it, check the text, submit.",
+                       T.TEXT_2),
+                ft.Row([text, C.help_icon("diag_bundle")]),
+            ], tight=True, spacing=T.S3, width=600),
+            actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()),
+                     C.primary("Collect & open GitHub", ft.Icons.OPEN_IN_NEW_ROUNDED, on_click=go)]))
+
+    def share_config_dialog(self, pkg: str) -> None:
+        g = library.game(pkg) or {}
+        last = g.get("last_test") or {}
+        status = ft.RadioGroup(ft.Row([ft.Radio(value="works", label="Works"),
+                                       ft.Radio(value="issues", label="Works with issues")]), value="works")
+        notes = ft.TextField(label="Notes (what you checked, known issues)", multiline=True, min_lines=2,
+                             max_lines=6, width=560, border_color=T.BORDER)
+        played = ft.Checkbox(label="I played it in the headset with this recipe", value=False)
+        send = C.primary("Open GitHub issue", ft.Icons.OPEN_IN_NEW_ROUNDED, on_click=None)
+
+        def sync(e=None):
+            send.disabled = not played.value
+            C.update(send)
+        played.on_change = sync
+        sync()
+
+        def go(e):
+            self.page.pop_dialog()
+            info = self.frame_info if self.frame_state == "connected" else None
+
+            def work():
+                url = pipeline.share_working_config(pkg, status.value or "works", notes.value or "", info)
+                self.open_url(url)
+                self.toast("Saved as known-good. Check the issue on GitHub and submit it")
+            self.run_bg(work)
+        send.on_click = go
+        self.page.show_dialog(ft.AlertDialog(
+            title=ft.Text(f"Share working config · {self._title(pkg)}"), bgcolor=T.SURFACE_2,
+            content=ft.Column([
+                C.body("Opens a prefilled GitHub issue with this game's recipe, so it can join the built-in catalog "
+                       "(no account token needed; you review and submit it on GitHub). No game files or personal "
+                       "data are sent.", T.TEXT_2),
+                *([C.body(f"Last launch test: {last.get('verdict')} · furthest: {last.get('milestone') or '—'}",
+                          T.TEXT_3)] if last else []),
+                ft.Row([status, C.help_icon("share_config")]), notes, played,
+                C.body("Launch tests run without the headset worn, so only you can confirm the picture and controls.",
+                       T.TEXT_3),
+            ], tight=True, spacing=T.S3, width=600),
+            actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()), send]))
 
     def settings_dialog(self, package: str) -> None:
         from ..patches.settings import SETTINGS
@@ -1161,6 +1232,7 @@ def assets_dir() -> str:
 
 
 def main(argv=None):
+    applog.setup("gui")
     ft.run(lambda page: FramePortApp(page), assets_dir=assets_dir())
 
 

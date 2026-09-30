@@ -83,3 +83,11 @@ def test_play_is_the_quick_action_when_installed(monkeypatch):
     assert app.quick_action(g) != _app(monkeypatch, g, {"installed": []}).quick_action(g)
     r = {"package": "rift.r", "kind": "rift", "title": "R", "recipe": {}}
     assert [o[0] for o in _app(monkeypatch, r, {"installed": []}, pc=("rift.r",)).play_options(r)] == ["Play on this PC"]
+
+
+def test_menus_offer_sharing_and_diagnostics(monkeypatch):
+    g = {"package": "com.q", "title": "Q", "recipe": {"status": "works"}, "build": {"sha256": "x"}}
+    for quick in (True, False):
+        labels = _labels(_app(monkeypatch, g, {"installed": []}).game_actions("com.q", quick=quick))
+        assert {"Share working config…", "Collect logs", "Report a problem…"} <= set(labels)
+        assert labels[-1] == "Remove from library"

@@ -122,6 +122,20 @@ class PcReviveTarget(Target):
         except (OSError, ValueError):
             raise RuntimeError(f"{package} is not installed on this PC") from None
 
+    def collect_diag(self, package=None):
+        files = {}
+        log_path = (winhost.env_path("LOCALAPPDATA") or Path("/nonexistent")) / REVIVE_LOG
+        if log_path.exists():
+            files["ReviveInjector.txt"] = log_path.read_text(encoding="utf-8", errors="replace")[-(2 << 20):]
+        out = {"host": {"steamvr_running": winhost.steamvr_running()}, "files": files}
+        if package:
+            try:
+                files["deployment.json"] = json.dumps(self._dep(package), indent=1)
+                out["installed"] = True
+            except RuntimeError:
+                out["installed"] = False
+        return out
+
     # ------------------------------------------------------------------ install
     def install(self, package, title, apk, data_dir, recipe, reporter, apk_only=False):
         raise NotImplementedError("Quest (APK) games install on the Steam Frame, not on the PC")

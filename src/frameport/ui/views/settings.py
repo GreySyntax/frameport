@@ -112,6 +112,13 @@ class SettingsView:
                                                        lambda e: app.copy(data))]), "data_folder"),
                 C.kv("Catalog", f"{len(catalog.load())} known-good recipes (bundled, remote and yours)", "catalog"),
             ], spacing=T.S2))),
+            C.section("Problems & feedback", C.card(ft.Row([
+                C.body("Something not working? Collect a diagnostics zip (logs, settings, device info; personal "
+                       "data removed) and attach it to a GitHub issue. For one game, use its menu instead.",
+                       expand=True),
+                C.ghost("Collect app logs", ft.Icons.FOLDER_ZIP_OUTLINED, lambda e: app.collect_logs()),
+                C.secondary("Report a problem…", ft.Icons.BUG_REPORT_OUTLINED, lambda e: app.report_problem_dialog()),
+            ], spacing=T.S3, wrap=True)), help="diag_bundle"),
             C.section("Remove FramePort", C.card(ft.Row([
                 C.body("Removes everything FramePort created: its data and tools on this PC, the Steam entries it "
                        "added, and (optionally) its games and files on the Frame. Your game dumps aren't touched.",
@@ -124,7 +131,8 @@ class SettingsView:
             C.section("About", C.card(ft.Column([
                 C.kv("Version", ver),
                 C.kv("Frame agent", self.agent_text(), "frame_agent"),
-                C.kv("Source", "github.com/spoopyghosty0/frameport"),
+                C.kv("Source", ft.TextButton("github.com/spoopyghosty0/frameport", icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
+                                             url="https://github.com/spoopyghosty0/frameport")),
                 C.meta("Uses overport, Revive (LibreVR), Valve's Lepton and Proton. Not affiliated with Valve or Meta."),
             ], spacing=T.S2))),
         ], spacing=T.S5, scroll=ft.ScrollMode.AUTO, expand=True)

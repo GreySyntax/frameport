@@ -33,7 +33,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 20
+AGENT_VERSION = 21
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1847,6 +1847,90 @@ def launch_test_pcvr(dep, anchor, log, seconds):
         f.write("\n".join(parts))
     return {"state": state, "elapsed": elapsed, "log": combined, "log_size": os.path.getsize(combined),
             "kind": "pcvr", "game_process": bool(game_seen)}
+
+
+def _tail(path, max_bytes):
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            if size > max_bytes:
+                f.seek(size - max_bytes)
+            data = f.read()
+        text = data.decode("utf-8", "replace")
+        return (f"[... first {size - max_bytes} bytes cut ...]\n" if size > max_bytes else "") + text
+    except OSError:
+        return None
+
+
+def cmd_collect_diag(args):
+    """Everything useful for debugging without the game or the PC app: host runtime facts and, with a package, the
+    game's launcher, settings, deployment, logs (launch, Lepton logcat, Proton/Revive/Unreal) and its file listing.
+    Returns {"host": {...}, "files": {name: text}, "listing": ...}; the PC redacts and zips it."""
+    max_bytes = int(args.get("max_bytes", 2 << 20))
+    files, host = {}, {}
+    host["openxr_runtime"] = openxr_runtime()
+    layers = os.path.join(HOME, ".local/share/openxr/1/api_layers/explicit.d")
+    host["openxr_layers"] = sorted(os.listdir(layers)) if os.path.isdir(layers) else []
+    host["kernel_keys"] = key_usage()
+    host["containers_conf"] = _tail(CONTAINERS_CONF, 20000)
+    host["podman"] = run(["podman", "ps", "-a", "--filter", "name=lepton", "--format",
+                          "{{.Names}} {{.Status}}"]).stdout[-20000:]
+    host["steam_running"] = run(["pgrep", "-x", "steam"]).returncode == 0
+    host["uptime"] = _tail("/proc/uptime", 200)
+    host["installed"] = [{k: g.get(k) for k in ("package", "title", "kind", "appid", "version", "agent_version")}
+                         for g in cmd_list_installed({})["games"]]
+    out = {"agent_version": AGENT_VERSION, "host": host, "files": files}
+    pkg = args.get("package")
+    if not pkg:
+        # the OpenXR runtime's own log (XRService-<date>_<time>.log): the newest one
+        xr = [p for p in glob.glob(os.path.join(STEAM, "logs/XRService-*.log")) +
+              glob.glob(os.path.join(STEAM, "logs/XRService-*/XRService-*.log")) if os.path.isfile(p)]
+        for p in sorted(xr, key=os.path.getmtime, reverse=True)[:1]:
+            files[os.path.basename(p)] = _tail(p, max_bytes)
+        return out
+    pkg = check_pkg(pkg)
+    dep = deployment(pkg)
+    anchor = os.path.join(ANCHORS, pkg)
+    if not dep:
+        out["installed"] = False
+        return out
+    out["installed"] = True
+    base, appid = dep["base"], dep.get("appid")
+    dep = dict(dep)
+    dep.pop("files", None)  # the install manifest is large; `listing` below has the real files
+    files["deployment.json"] = json.dumps(dep, indent=1)
+    for name, path in (("launch.sh", os.path.join(anchor, "launch.sh")),
+                       ("settings.conf", os.path.join(base, "settings.conf")),
+                       ("launch.log", os.path.join(base, "launch.log")),
+                       ("launch-test.log", os.path.join(base, "launch-test.log"))):
+        text = _tail(path, max_bytes)
+        if text is not None:
+            files[name] = text
+    for rel in PCVR_LOGS + (f"steam-{appid}.log",):
+        text = _tail(os.path.join(base, rel), max_bytes)
+        if text is not None:
+            files[os.path.basename(rel)] = text
+    if dep.get("kind") == "pcvr":
+        for i, part in enumerate(game_logs(base)):
+            files[f"game-log-{i}.txt"] = part[-max_bytes:]
+    logs = os.path.join(STEAM, "logs")
+    text = _tail(os.path.join(logs, f"lepton-steamlaunch-{appid}.log"), max_bytes)  # Lepton's launcher log
+    if text is not None:
+        files[f"lepton-steamlaunch-{appid}.log"] = text
+    logcats = os.path.join(logs, "lepton-logcats")
+    # the container's logcat buffers: lepton-logcats/steamlaunch-<appid>/logcat-{main,crash,system,kernel,radio}.log
+    order = ("main", "crash", "system", "kernel", "radio")
+    cands = [p for p in glob.glob(os.path.join(logcats, f"steamlaunch-{appid}", "*")) if os.path.isfile(p)]
+    for p in sorted(cands, key=lambda p: next((i for i, k in enumerate(order) if k in os.path.basename(p)), 9)):
+        name = os.path.basename(p)
+        files[name if name.startswith("logcat") else "logcat-" + name] = _tail(p, max_bytes)
+    try:
+        listing = cmd_list_files({"package": pkg, "limit": 20000})
+        out["listing"] = {"missing": listing["missing"], "truncated": listing["truncated"],
+                          "roots": [{"name": r["name"], "files": r["files"]} for r in listing["roots"]]}
+    except AgentError:
+        pass
+    return out
 
 
 AGENT_HOME = os.path.join(HOME, ".local/share/frameport")

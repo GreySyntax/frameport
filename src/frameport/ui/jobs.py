@@ -10,6 +10,7 @@ import traceback
 from dataclasses import dataclass, field
 from typing import Callable
 
+from ..core import applog
 from ..core.events import Cancelled, Event, Reporter
 
 _ids = itertools.count(1)
@@ -47,6 +48,14 @@ class Job:
     def cancel(self) -> None:
         self.reporter.cancelled.set()
 
+    def text(self) -> str:
+        """Checks + log as plain text (Copy log, saved job logs, diagnostics bundles)."""
+        checks = [("PASS" if c["ok"] else "FAIL" if c["ok"] is False else "WARN") + f"  {c['name']}"
+                  + (f": {c['detail']}" if c.get("detail") else "") for c in self.checks]
+        return "\n".join([f"{self.title} — {self.state}" + (f": {self.error}" if self.error else ""), "", "Checks:",
+                          *checks, "", "Log:", *self.log]
+                         + (["", f"Full launch log: {self.log_path}"] if self.log_path else []))
+
     def _on_event(self, ev: Event) -> None:
         self.version += 1
         if ev.kind == "stage":
@@ -66,7 +75,9 @@ class Job:
 
 
 class JobManager:
-    def __init__(self, on_change: Callable[[Job | None], None] | None = None, throttle: float = 0.2):
+    def __init__(self, on_change: Callable[[Job | None], None] | None = None, throttle: float = 0.2,
+                 save_logs: bool = True):
+        self.save_logs = save_logs  # finished jobs' logs go to <data>/logs/jobs (diagnostics bundles)
         self.jobs: list[Job] = []
         self._queue: list[Job] = []
         self._cv = threading.Condition()
@@ -155,7 +166,11 @@ class JobManager:
                 job.state = "cancelled"
             except Exception as exc:  # noqa: BLE001
                 traceback.print_exc()
+                applog.log.exception("job %r failed", job.title)
                 job.state, job.error = "failed", f"{exc}" or type(exc).__name__
             job.finished = time.time()
             job.version += 1
+            applog.log.info("job %r (%s, %s): %s", job.title, job.kind, job.package or "-", job.state)
+            if self.save_logs:
+                applog.save_job_log(job.kind, job.package, job.state, job.text())
             self._notify(job, force=True)

@@ -1,8 +1,6 @@
 """Artwork for Rift games (mocked network), thumbnails, Quest/Rift twin titles, uninstall."""
 import io
-import json
 import zipfile
-from pathlib import Path
 
 import pytest
 

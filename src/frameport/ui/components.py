@@ -1,7 +1,6 @@
 """Reusable GUI building blocks (all styling comes from ui.theme)."""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Callable
 
 import flet as ft

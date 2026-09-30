@@ -1,0 +1,49 @@
+name: Working configuration
+description: Submit a recipe that works on the Steam Frame (FramePort → game menu → "Share working config…" fills this in).
+title: "[Working config] "
+labels: ["working-config"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! A maintainer reviews the recipe; once it's labelled `catalog-accepted`, a pull request adding it to
+        `catalog/games/` is opened automatically. Please don't paste game files or links to them.
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      description: Title — package id (platform, version, engine / XR API)
+    validations:
+      required: true
+  - type: input
+    id: result
+    attributes:
+      label: Result
+      description: works or issues (+ the last headless launch test)
+    validations:
+      required: true
+  - type: textarea
+    id: recipe
+    attributes:
+      label: Recipe
+      description: The catalog entry (catalog/games/<package>.yaml). Don't edit the package line.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: FramePort, tool and SteamOS versions
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: What you checked in the headset, known issues, anything unusual
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I played the game in the headset with this recipe (headless launch tests can't check the picture).
+          required: true

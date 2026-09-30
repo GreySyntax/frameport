@@ -12,6 +12,10 @@
     frameport install rift.<game> --to pc|frame  # Rift games: this PC (Revive + Steam) or the Frame (Proton)
     frameport pc info                            # Windows Steam / SteamVR / Revive on this PC
     frameport parity --known-good <PATCHED dir>  # rebuild everything and diff against known-good APKs
+    frameport diag collect <pkg>|--all [--no-frame]  # redacted diagnostics zip (attach it to a GitHub issue)
+    frameport diag inspect <zip>                 # re-triage a diagnostics zip (no game files or Frame needed)
+    frameport diag report <pkg>                  # zip + prefilled GitHub problem report
+    frameport share-recipe <pkg> --status works  # prefilled GitHub issue submitting a working recipe
 """
 from __future__ import annotations
 
@@ -31,9 +35,18 @@ app = typer.Typer(add_completion=False, no_args_is_help=True, help="Port Meta Qu
 tools_app = typer.Typer(help="Manage the portable toolchain.")
 frame_app = typer.Typer(help="Find and connect to a Steam Frame.")
 pc_app = typer.Typer(help="This PC as a target for Oculus Rift (PC VR) games via Revive.")
+diag_app = typer.Typer(help="Diagnostics bundles and problem reports.")
 app.add_typer(tools_app, name="tools")
 app.add_typer(frame_app, name="frame")
 app.add_typer(pc_app, name="pc")
+app.add_typer(diag_app, name="diag")
+
+
+@app.callback()
+def _setup():
+    from .core import applog
+
+    applog.setup("cli")
 
 
 def _target(frame: Optional[str], password: Optional[str] = None, to: str = "frame"):
@@ -426,6 +439,104 @@ def uninstall_app(frame: bool = typer.Option(False, help="also remove FramePort'
     out = un.run(printing_reporter(False), target.frame if target else None, keep_frame_saves, dest, frame)
     typer.echo("Done." + (f" Keys backup: {out['backup']}" if out.get("backup") else "") +
                " Delete the FramePort program folder to finish (or `uv tool uninstall frameport`).")
+
+
+# ------------------------------------------------------------------------------------------ diagnostics / sharing
+def _diag_target(no_frame: bool, frame: Optional[str], to: str):
+    if no_frame:
+        return None
+    try:
+        return _target(frame, to=to)
+    except Exception as exc:  # noqa: BLE001  (offline Frame: PC-side data only)
+        typer.echo(f"({to} not reachable: {exc}; collecting the PC side only)")
+        return None
+
+
+def _open(url: str, browser: bool) -> None:
+    from .core import winhost
+
+    typer.echo(url)
+    if browser and not winhost.open_url(url):
+        typer.echo("(couldn't open a browser: open the link above)")
+
+
+@diag_app.command("collect")
+def diag_collect(package: Optional[str] = typer.Argument(None, help="a game (omit for app-wide logs only)"),
+                 all_: bool = typer.Option(False, "--all"), frame: Optional[str] = None,
+                 no_frame: bool = typer.Option(False, "--no-frame", help="don't contact the Frame"),
+                 to: str = typer.Option("frame", help="where the game is installed: frame or pc"),
+                 out: Optional[Path] = typer.Option(None, help="folder or .zip path (default: Documents)")):
+    """Write a redacted diagnostics zip: logs, recipe, analysis, device info (no game files, no personal data)."""
+    pkgs = _pkgs(package, all_) if (package or all_) else []
+    path = pipeline.collect_diagnostics(pkgs, _diag_target(no_frame, frame, to), printing_reporter(False), out)
+    typer.echo(f"wrote {path}")
+
+
+@diag_app.command("inspect")
+def diag_inspect(bundle: Path, as_json: bool = typer.Option(False, "--json")):
+    """Summarize a diagnostics zip and re-triage its launch logs with this version's signatures."""
+    from .diag import bundle as b
+
+    res = b.read(bundle)
+    if as_json:
+        typer.echo(json.dumps(res, indent=1, default=str))
+        return
+    m = res["manifest"]
+    env = m.get("env", {})
+    typer.echo(f"created {m.get('created')} by FramePort {env.get('app')}; {env.get('os')}; "
+               f"Frame: {(env.get('frame') or {}).get('build_id') or '-'}")
+    for w in m.get("warnings", []):
+        typer.echo(f"  warning: {w}")
+    for pkg, g in res["games"].items():
+        typer.echo(f"\n{pkg} — {g.get('title')} [{g.get('status')}]")
+        last = g.get("last_test") or {}
+        if last:
+            typer.echo(f"  last test: {last.get('state')} ({last.get('verdict')}) furthest: {last.get('milestone')}")
+        t = g.get("triage")
+        if t:
+            typer.echo(f"  re-triage of {g['log']}: {t['verdict']}, furthest: {t['milestone']}")
+            for f in t["findings"]:
+                typer.echo(f"    {f['severity']:7} {f['id']}: {f['diagnosis']}\n            {f['evidence'][:200]}")
+            if t["suggestions"]:
+                typer.echo(f"  suggested patches: {', '.join(t['suggestions'])}")
+
+
+@diag_app.command("report")
+def diag_report(package: Optional[str] = typer.Argument(None), description: str = typer.Option("", "--text"),
+                frame: Optional[str] = None, no_frame: bool = typer.Option(False, "--no-frame"),
+                to: str = typer.Option("frame"), out: Optional[Path] = None,
+                browser: bool = typer.Option(True, "--browser/--no-browser")):
+    """Collect a diagnostics zip and open a prefilled GitHub problem report (attach the zip there)."""
+    from .core import winhost
+
+    pkgs = _pkgs(package, False) if package else []
+    target = _diag_target(no_frame, frame, to)
+    info = None
+    if target is not None:
+        try:
+            info = target.describe()
+        except Exception:  # noqa: BLE001
+            target = None
+    path = pipeline.collect_diagnostics(pkgs, target, printing_reporter(False), out)
+    typer.echo(f"wrote {path} — attach it to the issue")
+    if browser:
+        winhost.open_folder(path, select=True)
+    _open(pipeline.problem_report(pkgs[0] if pkgs else None, description, path, info), browser)
+
+
+@app.command("share-recipe")
+def share_recipe(package: str, status: str = typer.Option("works", help="works or issues"),
+                 notes: str = typer.Option("", help="what you checked in the headset, known issues"),
+                 frame: Optional[str] = typer.Option(None, help="include the Frame's SteamOS build"),
+                 browser: bool = typer.Option(True, "--browser/--no-browser")):
+    """Submit a working configuration: saves it as a known-good recipe and opens a prefilled GitHub issue."""
+    if status not in ("works", "issues"):
+        raise typer.BadParameter("--status must be works or issues")
+    pkg = _pkgs(package, False)[0]
+    info = None
+    if frame:
+        info = _target(frame).describe()
+    _open(pipeline.share_working_config(pkg, status, notes, info), browser)
 
 
 def main():  # pragma: no cover

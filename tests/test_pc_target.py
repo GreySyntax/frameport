@@ -227,7 +227,6 @@ def test_migration_respects_catalog_openxr_native(tmp_path, monkeypatch):
 
 
 def test_pc_defaults_to_openvr_backend():
-    from frameport.core.models import Recipe
     from frameport.patches import base
     from frameport.targets.pc_revive import shortcut_fields
 

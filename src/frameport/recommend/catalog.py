@@ -118,9 +118,56 @@ def lookup(package: str) -> CatalogEntry | None:
 
 def save_user_entry(entry: CatalogEntry) -> Path:
     path = user_catalog_dir() / f"{entry.package}.yaml"
-    path.write_text(yaml.safe_dump(entry.to_dict(), sort_keys=False, allow_unicode=True, width=110), encoding="utf-8")
+    path.write_text(to_yaml(entry), encoding="utf-8")
     load(refresh=True)
     return path
+
+
+def entry_from_library(g: dict, status: str = "works", notes: str | None = None,
+                       verified: dict | None = None) -> CatalogEntry:
+    """A catalog recipe from a library entry (what "Save as known-good" and "Share working config" publish)."""
+    import time
+
+    from ..core import library
+    from ..patches import base
+    from ..patches.overport import DEFAULT_OVERPORT
+
+    package = g["package"]
+    r = library.recipe_from_dict(g["recipe"])
+    a = g.get("analysis") or {}
+    common = dict(package=package, title=g.get("title") or package, status=status,
+                  notes=r.notes if notes is None else notes,
+                  tested_version=a.get("version") or "", engine=a.get("engine") or "", xr=a.get("xr") or "",
+                  verified={k: v for k, v in {"date": time.strftime("%Y-%m-%d"),
+                                              "known_good_sha256": (g.get("build") or {}).get("sha256"),
+                                              **(verified or {})}.items() if v},
+                  source_hint=g.get("name", ""))
+    if g.get("kind") == "rift":
+        env = r.params("pcvr.proton_env").get("env") or ""
+        return CatalogEntry(
+            **common, kind="rift", quest_package=g.get("quest_package"), as_is=r.as_is,
+            pcvr=[p for p in r.patches if p not in ("pcvr.proton_env", "pcvr.proton_tool")],
+            pcvr_remove=[p for p in ("pcvr.revive",) if p not in r.patches],
+            proton_env=dict(line.split("=", 1) for line in env.splitlines() if "=" in line),
+            proton_tool=r.params("pcvr.proton_tool").get("tool") or "")
+
+    def cat(p):
+        try:
+            return base.get(p)
+        except KeyError:
+            return None
+    return CatalogEntry(
+        **common, as_is=r.as_is,
+        overport_extra=[p for p in r.patches if (c := cat(p)) and c.category == "overport" and p not in DEFAULT_OVERPORT],
+        overport_remove=[p for p in DEFAULT_OVERPORT if p not in r.patches],
+        alt_overport=r.alt_patches, use_alt=r.use_alt,
+        frame=[p for p in r.patches if (c := cat(p)) and c.category == "frame" and not c.default_on],
+        adapter={p.split(".", 1)[1]: v.get("value") for p, v in r.patches.items() if p.startswith("adapter.")},
+        device_files=r.params("device.files").get("files", {}))
+
+
+def to_yaml(entry: CatalogEntry) -> str:
+    return yaml.safe_dump(entry.to_dict(), sort_keys=False, allow_unicode=True, width=110)
 
 
 def write_index(folder: Path) -> Path:

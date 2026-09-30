@@ -49,8 +49,11 @@ def main() -> int:
     if game:
         steps.insert(1, ("game", lambda a: a.open_game(game)))
         steps.insert(2, ("game-customize", lambda a: a.open_game(game, advanced=True)))
+        steps += [("share-dialog", lambda a: a.share_config_dialog(game)),
+                  ("report-dialog", lambda a: (a.page.pop_dialog(), a.report_problem_dialog(game)))]
         # last: the right-click menu stays open over whatever comes next
-        steps.append(("library-menu", lambda a: (a.navigate(0), time.sleep(3), a.library_view.open_menu(game))))
+        steps.append(("library-menu", lambda a: (a.page.pop_dialog(), a.navigate(0), time.sleep(3),
+                                                 a.library_view.open_menu(game))))
     if args.frame:
         from frameport.frame.connection import parse_target
 

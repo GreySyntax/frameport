@@ -446,3 +446,48 @@ def apply_suggestions(package: str, suggestions: list[str]) -> Recipe:
             recipe.patches.pop(pid, None)
     set_recipe(package, recipe)
     return recipe
+
+
+# ------------------------------------------------------------------------------------------ sharing / diagnostics
+def collect_diagnostics(packages: list[str] | None, target: Target | None, reporter: Reporter,
+                        dest: Path | None = None, extra: dict[str, str] | None = None) -> Path:
+    """Redacted diagnostics zip (docs/DIAGNOSTICS.md) for some games (None = app-wide only)."""
+    from .diag import bundle
+
+    return bundle.collect(packages, target, reporter, dest, extra)
+
+
+def share_working_config(package: str, status: str = "works", notes: str = "",
+                         frame_info: dict | None = None) -> str:
+    """Save the game's recipe as a known-good user recipe and return a prefilled GitHub issue link that submits it
+    to the catalog (a maintainer turns accepted ones into a PR)."""
+    from .diag import bundle, issue, redact
+    from .recommend import catalog
+
+    g = library.game(package)
+    if not g or not g.get("recipe"):
+        raise ValueError(f"{package} has no recipe")
+    env = bundle.env_info(frame_info)
+    verified = {"app": env.get("app"), "overport_cli": (env.get("tools") or {}).get("overport"),
+                "frame_build": (env.get("frame") or {}).get("build_id"),
+                "agent": (env.get("frame") or {}).get("agent_version")}
+    entry = catalog.entry_from_library(g, status=status, notes=notes or None, verified=verified)
+    catalog.save_user_entry(entry)
+    return issue.working_config_url(g, catalog.to_yaml(entry), status, notes, env, redact.default(frame_info))
+
+
+def problem_report(package: str | None, description: str, bundle_path: Path | None,
+                   frame_info: dict | None = None) -> str:
+    """A prefilled GitHub bug-report link (the user attaches the diagnostics zip)."""
+    from .diag import bundle, issue, redact
+    from .recommend import catalog
+
+    g = library.game(package) if package else None
+    recipe = ""
+    if g and g.get("recipe"):
+        try:
+            recipe = catalog.to_yaml(catalog.entry_from_library(g, status=g.get("status") or "unknown"))
+        except Exception:  # noqa: BLE001
+            recipe = ""
+    return issue.problem_url(g, description, bundle.env_info(frame_info),
+                             bundle_path.name if bundle_path else None, recipe, redact.default(frame_info))

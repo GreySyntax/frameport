@@ -223,3 +223,36 @@ def start_steamvr(root: Path, wait: float = 25) -> bool:
             time.sleep(2)  # let vrserver finish coming up before the game connects
             return True
     return False
+
+
+def open_url(url: str) -> bool:
+    """Open a link in the user's browser (the Windows browser under WSL)."""
+    try:
+        if is_wsl():
+            # rundll32 passes the URL through untouched (cmd.exe /c start would split it at every '&')
+            run_win([system32("rundll32.exe"), "url.dll,FileProtocolHandler", url], timeout=15)
+            return True
+        import webbrowser
+
+        return webbrowser.open(url)
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def open_folder(path: Path | str, select: bool = False) -> bool:
+    """Show a folder (or, with select, a file inside its folder) in the file manager."""
+    path = Path(path)
+    try:
+        if is_windows() or is_wsl():
+            target = to_windows(path)
+            exe = next((p for p in ("/mnt/c/Windows/explorer.exe",) if is_wsl() and Path(p).exists()), "explorer.exe")
+            args = [exe] + ([f"/select,{target}"] if select else [target])
+            subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **_no_window())
+            return True
+        folder = path.parent if select or path.is_file() else path
+        cmd = ["open", "-R", str(path)] if sys.platform == "darwin" and select else \
+            ["open" if sys.platform == "darwin" else "xdg-open", str(folder)]
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False

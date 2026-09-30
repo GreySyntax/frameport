@@ -41,6 +41,16 @@ nothing is installed system-wide).
 - Games that use the Oculus Platform SDK (FramePort shows a note) check your Oculus license: they need the Oculus app
   installed on the PC with a license you own, so they can't run on the headset.
 
+## Sharing a working game, reporting a problem
+- **A game works?** Game menu (right-click in the Library, or "…" on its page) → **Share working config…**. FramePort
+  opens a prefilled GitHub issue with the game's recipe (patches and settings); check it and submit. Once accepted it
+  becomes a built-in recipe for everyone. No GitHub token and no game files are involved.
+- **Something doesn't work?** Game menu → **Report a problem…** (or Settings → Problems & feedback for app issues).
+  FramePort saves a diagnostics zip to your Documents folder (logs, recipe, device details; IP addresses, user and
+  host names, home folders and Steam ids replaced by placeholders; no game files), shows it in a folder window and
+  opens a prefilled GitHub issue: drag the zip into the "Diagnostics" box and submit. **Collect logs** only saves the
+  zip. Command line: `frameport diag report <game>`, `frameport diag collect <game>`, `frameport share-recipe <game>`.
+
 ## Uninstalling
 Settings → **Uninstall FramePort…** (or `frameport uninstall-app`) removes everything FramePort created: its data
 folder (tools, library, artwork, cache, builds), the Steam shortcuts it added on this PC and, optionally, its games and

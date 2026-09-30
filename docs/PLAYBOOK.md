@@ -55,6 +55,8 @@ version is `catalog/triage.yaml` (used by `frameport test` / the Job screen); ke
 | Eye distortion while moving (Arcsmith, Time Stall) | unknown (not eye swap, tracking, Valve layers, depth or pacing) | unresolved |
 
 ## Debugging techniques that worked
+- A user's problem report: `frameport diag inspect <FramePort-diag-*.zip>` re-triages its launch log with the current
+  signatures; the zip has the recipe, analysis, ELF/PE imports, Frame logs and versions (docs/DIAGNOSTICS.md).
 - Read `<base>/launch.log` (logcat mirror). Filter the game's pid: `Start proc <pid>:<package>`.
 - The adapter logs as `FrameBridge` (settings, xrCreateInstance result, swapchain retries, pacing fps).
 - For GLES/GLAD engines, wrap `eglGetProcAddress` to see shader compile errors (build the shim with `-DGLSHIM_TRACE`

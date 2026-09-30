@@ -94,6 +94,13 @@ HELP: dict[str, str] = {
     "transfer_link": "Uploads use the fastest link to the Frame: a USB cable, or the Frame's own Wi-Fi hotspot when "
                      "this PC is connected to it, else your home network (several times slower: both go through "
                      "the router).",
+    # ---- sharing / diagnostics
+    "share_config": "Sends this game's recipe (the patches and settings it uses) to FramePort's GitHub as a prefilled "
+                    "issue, so it can become a built-in recipe for everyone. You review and submit it in the browser; "
+                    "no GitHub token and no game files are involved.",
+    "diag_bundle": "A zip with FramePort's logs, the game's recipe and analysis, launch-test logs and the Frame's "
+                   "runtime details — enough to debug without the game files. IP addresses, host and user names, "
+                   "home folders and Steam ids are replaced by placeholders. Attach it to a GitHub issue.",
 }
 
 

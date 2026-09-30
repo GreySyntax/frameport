@@ -146,10 +146,7 @@ class ActivityPanel:
 
     @staticmethod
     def job_text(job: Job) -> str:
-        checks = [("PASS" if c["ok"] else "FAIL" if c["ok"] is False else "WARN") + f"  {c['name']}"
-                  + (f": {c['detail']}" if c.get("detail") else "") for c in job.checks]
-        return "\n".join([f"{job.title} — {job.state}" + (f": {job.error}" if job.error else ""), "", "Checks:", *checks,
-                          "", "Log:", *job.log] + ([f"", f"Full launch log: {job.log_path}"] if job.log_path else []))
+        return job.text()
 
     def _toggle(self, s: set[int], jid: int):
         s.symmetric_difference_update({jid})

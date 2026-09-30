@@ -44,6 +44,9 @@ class FrameLeptonTarget(Target):
     def launch_test(self, package, reporter, seconds=45):
         return device.launch_test(self.connect().frame, package, reporter, seconds)
 
+    def collect_diag(self, package=None):
+        return self.connect().frame.agent("collect_diag", timeout=180, package=package)
+
     def launch(self, package):
         return self.connect().frame.agent("launch", package=package, timeout=60)
 

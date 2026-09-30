@@ -1,0 +1,52 @@
+name: catalog-from-issue
+# A maintainer adds the label `catalog-accepted` to a "Working configuration" issue → this opens a PR adding the
+# recipe to catalog/games/. Never runs for unlabelled issues; the issue text is only read by the validating script
+# (never interpolated into shell commands). Needs Settings → Actions → "Allow GitHub Actions to create pull requests".
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  recipe-pr:
+    if: github.event.label.name == 'catalog-accepted' && contains(github.event.issue.labels.*.name, 'working-config')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv sync
+      - name: Write the recipe
+        id: recipe
+        run: |
+          gh issue view "$ISSUE" --json body -q .body > "$RUNNER_TEMP/body.md"
+          uv run python scripts/catalog_from_issue.py "$RUNNER_TEMP/body.md" --issue "$ISSUE" | tee "$RUNNER_TEMP/out.txt"
+          grep '^package=' "$RUNNER_TEMP/out.txt" >> "$GITHUB_OUTPUT"
+      - name: Check it loads
+        env:
+          PKG: ${{ steps.recipe.outputs.package }}
+        run: uv run python -c "import os, sys; from frameport.recommend import catalog; sys.exit(os.environ['PKG'] not in catalog.load(refresh=True))"
+      - name: Open the pull request
+        env:
+          PKG: ${{ steps.recipe.outputs.package }}
+        run: |
+          branch="catalog/issue-$ISSUE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add "catalog/games/$PKG.yaml"
+          git commit -m "catalog: $PKG (from #$ISSUE)"
+          git push --force origin "$branch"
+          if ! gh pr view "$branch" >/dev/null 2>&1; then
+            gh pr create --head "$branch" --title "catalog: $PKG" \
+              --body "Recipe submitted in #$ISSUE (working configuration). Closes #$ISSUE."
+          fi
+      - name: Report a failure on the issue
+        if: failure()
+        run: gh issue comment "$ISSUE" --body "Couldn't turn this into a catalog recipe — see the workflow run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}."

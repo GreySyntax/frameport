@@ -105,6 +105,12 @@ Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
     release matching the DLL build date, since Revive's version resources are stale) > portable copy unpacked from
     ReviveInstaller.exe in pure Python; never replaces the user's install). Library ids `rift.<slug>`, entries have `kind: rift`.
   - `parity.py` — rebuild catalog games from dumps and classify every APK entry difference vs known-good builds.
+  - `diag/` — user feedback without tokens (docs/DIAGNOSTICS.md): `redact.py` (every file/issue text: IPs, hosts,
+    home dirs, Steam ids, dump folders → placeholders), `bundle.py` (redacted diagnostics zip; agent v21
+    `collect_diag`; `frameport diag collect|inspect|report`), `issue.py` (prefilled GitHub issue-form links, ≤7.5k
+    chars). "Share working config" → `working-config.yml` issue → maintainer label `catalog-accepted` →
+    `catalog-from-issue.yml` workflow (`scripts/catalog_from_issue.py` validates) opens a catalog PR. App log:
+    `core/applog.py` (`<data>/logs/app.log`, finished GUI jobs in `<data>/logs/jobs/`).
 - `agent/frameport_agent.py` — runs **on the Frame** (python3 stdlib only), JSON over SSH. Owns the install layout,
   launch.sh template, Steam shortcuts (binary VDF), launch tests. Bump `AGENT_VERSION` when changing it.
 - `bootstrap/bootstrap.sh` — one-time Frame setup served by the pairing server (sshd, app key, avahi service, Lepton).

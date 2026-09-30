@@ -33,6 +33,10 @@ class Target(ABC):
         """Start an installed game for playing, through the target's Steam (Steam library shortcut)."""
         raise NotImplementedError(f"{self.label} can't launch games")
 
+    def collect_diag(self, package: str | None = None) -> dict:
+        """Debug data from the target for a diagnostics bundle: {"host": {...}, "files": {name: text}, ...}."""
+        return {}
+
     @abstractmethod
     def set_settings(self, package: str, settings: dict) -> dict: ...
 
