@@ -114,6 +114,58 @@ def _migrate(data: dict) -> bool:
                     "pcvr.libovr_redirect", "Lets the game find Revive's runtime on the Frame.")
         done.append("rift_libovr_redirect")
         changed = True
+    if "rift_launch_modes" not in done:
+        # Rift games get a launch mode from their files (repack with bundled Revive → run directly; SteamVR/OpenXR-
+        # capable → run directly with arguments; Oculus-only → FramePort's Revive). Re-analyze (keeping the chosen
+        # exe) and re-derive the recipe; a repack launched through a second Revive failed (e.g. its entitlement check).
+        from ..analysis import rift
+        from ..recommend import engine
+
+        for pkg, g in (data.get("games") or {}).items():
+            a = g.get("analysis") or {}
+            if not (isinstance(g.get("recipe"), dict) and (a.get("extra") or {}).get("kind") == "rift"):
+                continue
+            gd = g.get("game_dir") or (a.get("extra") or {}).get("folder")
+            try:
+                if not (gd and Path(gd).is_dir()):
+                    continue
+                an = rift.analyze(Path(gd), exe=g.get("exe") or (a.get("extra") or {}).get("exe"))
+                g["analysis"] = asdict(an)
+                g["recipe"] = recipe_to_dict(engine.suggest(an))
+            except Exception:  # noqa: BLE001
+                continue
+        done.append("rift_launch_modes")
+        changed = True
+    if "quest_binary_fixes_v2" not in done:
+        # Quest recipes gain the default-on binary fixes: the swapchain size guard (every overport build) and the
+        # Vulkan shim (Unreal)
+        from ..patches import base
+
+        for g in (data.get("games") or {}).values():
+            a, r = g.get("analysis") or {}, g.get("recipe")
+            if not isinstance(r, dict) or (a.get("extra") or {}).get("kind") == "rift" or r.get("as_is"):
+                continue
+            try:
+                an = analysis_from_dict(a)
+            except Exception:  # noqa: BLE001
+                continue
+            for pid in ("frame.swapchain_limit", "frame.vk_sanitize"):
+                s = base.get(pid).detect(an)
+                if s and s.recommended:
+                    r.setdefault("patches", {}).setdefault(pid, {})
+                    r.setdefault("reasons", {}).setdefault(pid, s.reason)
+        done.append("quest_binary_fixes_v2")
+        changed = True
+    if "rift_steamvr_tuning" not in done:
+        # PC VR recipes gain automatic SteamVR performance settings (refresh rate / motion smoothing on frame drops)
+        for g in (data.get("games") or {}).values():
+            a, r = g.get("analysis") or {}, g.get("recipe")
+            if isinstance(r, dict) and (a.get("extra") or {}).get("kind") == "rift":
+                r.setdefault("patches", {}).setdefault("pcvr.steamvr_tuning", {})
+                r.setdefault("reasons", {}).setdefault(
+                    "pcvr.steamvr_tuning", "Adjusts the refresh rate / motion smoothing when the game can't keep up.")
+        done.append("rift_steamvr_tuning")
+        changed = True
     return changed
 
 

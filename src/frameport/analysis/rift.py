@@ -40,6 +40,9 @@ PLATFORM_DLLS = ("libovrplatform64_1.dll", "libovrplatform32_1.dll")
 PLATFORM_WRAPPERS = ("pnsovr.dll",)
 GRAPHICS = (("d3d12.dll", "D3D12"), ("d3d11.dll", "D3D11"), ("vulkan-1.dll", "Vulkan"), ("opengl32.dll", "OpenGL"))
 AMBIGUITY = 15  # a runner-up within this many points means "ask the user"
+# repacks start their bundled Revive through a proxy DLL next to the exe (Windows loads DLLs from the exe's folder first)
+LOADER_DLLS = ("xinput1_3.dll", "xinput1_4.dll", "xinput9_1_0.dll", "dinput8.dll", "version.dll", "winmm.dll")
+REVIVE_DLLS = ("librevive64.dll", "librevive32.dll", "librevivexr64.dll", "librevivexr32.dll")
 
 
 class PEError(Exception):
@@ -330,6 +333,13 @@ def rank_exes(folder: Path, cands: list[Path], manifest: dict | None = None,
         if machine == "x86_64":
             score += 5
             reasons.append("64-bit")
+        try:
+            sib = {x.name.lower() for x in p.parent.iterdir()}
+        except OSError:
+            sib = set()
+        if sib & set(REVIVE_DLLS) and sib & set(LOADER_DLLS):
+            score += 40
+            reasons.append("set up for SteamVR by the repack (bundled Revive + loader)")
         parts = [x.lower() for x in p.relative_to(folder).parts[:-1]]
         if any("steam" in x for x in parts):
             score -= 10
@@ -424,6 +434,13 @@ def analyze(folder: Path, exe: str | None = None, tree: Tree | None = None) -> A
                 pass
     platform_sdk = any(n in names for n in PLATFORM_DLLS + PLATFORM_WRAPPERS) or bool(platform_imports & set(PLATFORM_DLLS)) or \
         b"ovr_PlatformInitializeWindows" in blob or b"ovr_Entitlement_GetIsViewerEntitled" in blob
+    # how to start it with VR on SteamVR / the Frame (see launch_mode())
+    try:
+        exe_dir = {p.name.lower() for p in exe_path.parent.iterdir()}
+    except OSError:
+        exe_dir = set()
+    loader = sorted(n for n in exe_dir if n in LOADER_DLLS) if exe_dir & set(REVIVE_DLLS) else []
+    mode, args, args_from = launch_mode(folder, chosen, engine, libovr, openxr, openvr, loader)
     canonical_hint = next((part for part in exe_path.relative_to(folder).parts[:-1]
                            if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+){2,}", part)), None)  # Oculus Software dir name
     title = (manifest or {}).get("displayName") or clean_title(folder.name)
@@ -440,16 +457,60 @@ def analyze(folder: Path, exe: str | None = None, tree: Tree | None = None) -> A
                # is NO Oculus/LibOVR code (pure OpenXR or pure OpenVR). A LibOVR game is treated as Oculus (needs
                # Revive, PC only) unless a known-good catalog recipe overrides it (e.g. Rick and Morty, verified on
                # the Frame) — static analysis can't tell which runtime a dual-API Unreal build picks at runtime.
-               "frame_native": (openxr or openvr) and not libovr,
-               "needs_revive": libovr,
+               # launch: "repack" (bundled Revive, started by its loader DLL: run the exe directly), "native"
+               # (SteamVR/OpenXR: run the exe directly, with launch_args) or "revive" (inject FramePort's Revive)
+               "launch": mode, "loader_dlls": loader, "launch_args": args, "launch_args_from": args_from,
+               "frame_native": mode == "native",
+               "needs_revive": mode == "revive",
                "vr_found": xr != "?", "data_bytes": tree.size, "files": tree.files,
-               # repacks ship a LibRevive64.dll for their own (Virtual Desktop) setup; nothing loads it on its own, so
-               # this is informational only — the game still needs FramePort's Revive for LibOVR → OpenXR
+               # a LibRevive*.dll anywhere in the folder (see "launch" for whether the game actually starts it)
                "revive_bundled": any(n in names for n in ("librevive64.dll", "librevive32.dll", "librevivexr64.dll",
                                                           "librevivexr32.dll")),
                "oculus_app_id": (manifest or {}).get("appId"),
                "canonical_name": (manifest or {}).get("canonicalName") or canonical_hint},
     )
+
+
+def _vd_to_steamvr(args: str) -> str:
+    """Virtual Desktop launcher arguments → the SteamVR/OpenXR equivalent (Unreal's Oculus HMD module → OpenXR)."""
+    return re.sub(r"(?i)(-hmd=)Oculus(XR)?HMD\b", r"\1OpenXR", args).strip()
+
+
+def vd_args(folder: Path, exe_rel: str) -> str | None:
+    """Arguments the repack's Virtual Desktop launcher (VD.bat next to the exe) passes to the game."""
+    try:
+        text = ((folder / exe_rel).parent / "VD.bat").read_text(errors="replace")
+    except OSError:
+        return None
+    m = re.search(r'"?' + re.escape(Path(exe_rel).name) + r'"?[ \t]*([^\r\n]*)', text, re.I)
+    return m.group(1).strip() if m else None
+
+
+def launch_mode(folder: Path, exe_rel: str, engine: str, libovr: bool, openxr: bool, openvr: bool,
+                loader: list[str]) -> tuple[str, str, str]:
+    """(mode, game arguments, where the arguments come from), from the game files alone.
+
+    repack: the exe's folder has a bundled Revive and a proxy DLL (xinput*.dll) that starts it — the repack is
+            already set up for SteamVR; launching it through another Revive breaks it (two Revives; e.g. the Oculus
+            Platform entitlement check then fails). Run the exe directly.
+    native: no Oculus code, or a dual-API build that also ships SteamVR/OpenXR support (Unreal's OpenVR/OpenXR
+            plugin under Engine/Binaries/ThirdParty, Unity's openvr_api plugin): run the exe directly with the
+            SteamVR/OpenXR runtime selected by arguments — the repack's VD.bat arguments with the Oculus module
+            swapped for OpenXR, else Unreal's -hmd= / Unity's -vrmode.
+    revive: Oculus-only (LibOVR/OVRPlugin): FramePort's Revive injector translates it."""
+    if loader:
+        return "repack", "", "the repack's own launcher (bundled Revive)"
+    if not libovr and (openxr or openvr):
+        return "native", "", ""
+    if engine in ("Unreal", "Unity") and (openxr or openvr):
+        vd = vd_args(folder, exe_rel)
+        if vd:
+            return "native", _vd_to_steamvr(vd), "VD.bat (Oculus HMD module → OpenXR)"
+        if engine == "Unity":
+            return "native", "-vrmode OpenVR", "Unity build with SteamVR support"
+        return ("native", "-hmd=OpenXR", "Unreal build with the OpenXR plugin") if openxr else \
+            ("native", "-hmd=SteamVR", "Unreal build with the SteamVR plugin")
+    return "revive", "", ""
 
 
 def is_rift(analysis: Analysis | dict) -> bool:

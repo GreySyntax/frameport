@@ -87,6 +87,18 @@ signatures:
     severity: warning
     diagnosis: Runtime lacks timespec time conversion (emulated by the current adapter build).
     suggest: [frame.adapter]
+  - id: fossilize-renderpass
+    pattern: '#0\d pc [^\n]*libVkLayer_fossilize\.so[\s\S]{0,4000}?FVulkanRenderPass::FVulkanRenderPass'
+    severity: fatal
+    diagnosis: Lepton's Fossilize layer crashed while recording a render pass (the engine leaves an attachment reference's pNext uninitialized).
+    suggest: [frame.vk_sanitize]
+    supersedes: [native-crash]
+  - id: swapchain-size-abort
+    pattern: '#01 pc [^\n]*libopenxr_loader\.so \(xrCreateSwapchain\+|Wrong createInfo size'
+    severity: fatal
+    diagnosis: overport's OpenXR dispatcher aborted on a swapchain larger than 4096 px (video players, big textures).
+    suggest: [frame.swapchain_limit]
+    supersedes: [native-crash]
   - id: native-crash
     pattern: 'Fatal signal (\d+) \(SIG[A-Z]+\)'
     severity: fatal
@@ -169,6 +181,7 @@ signatures:
     severity: fatal
     diagnosis: A DLL the game loads on demand is missing (Windows delay-load error). For Oculus Store games this is usually LibOVRPlatform64_1.dll, the Oculus Platform SDK that the Oculus app installs for the licence check; FramePort doesn't replace it, so such games need the Oculus app (PC mode).
     suggest: []
+    supersedes: [unreal-crash, wine-crash]  # the crash is this missing DLL; don't send the user after other fixes
   - id: oculus-entitlement
     kind: pcvr
     pattern: '(?i)entitlement (check )?fail|ovr_PlatformInitialize.*(fail|error)|ovrPlatformInitialize_(NotEntitled|Uninitialized|PreLoaded|FileInvalid|SignatureInvalid|UnableToVerify)'

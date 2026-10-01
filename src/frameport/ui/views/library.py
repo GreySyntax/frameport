@@ -149,14 +149,14 @@ class LibraryView:
         self._lock = threading.Lock()
         self._search_timer: threading.Timer | None = None
         self._gen = 0
-        self.grid = ft.GridView(expand=True, max_extent=196, child_aspect_ratio=0.62, spacing=T.S4,
+        self.grid = ft.GridView(expand=True, max_extent=T.px(196), child_aspect_ratio=0.62, spacing=T.S4,
                                 run_spacing=T.S4, padding=ft.Padding(0, T.S2, T.S2, T.S5))
         self.count = C.meta("")
         self.subtitle = C.body("", max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         self.search = ft.TextField(
             value=self.f["q"], hint_text="Search games and tags", prefix_icon=ft.Icons.SEARCH_ROUNDED, dense=True,
-            width=260, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT,
-            focused_border_color=T.ACCENT, content_padding=ft.Padding(12, 8, 12, 8), text_size=T.T_BODY,
+            width=T.px(260), border_radius=T.RADIUS_SM, bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT,
+            focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)), text_size=T.T_BODY,
             on_change=self._on_search)
         app.search_field = self.search
         self.filters = ft.Container()
@@ -165,10 +165,10 @@ class LibraryView:
         self.menu = ft.ContextMenu(content=self.grid, secondary_trigger=None, tertiary_trigger=None, expand=True)
         self.body = ft.Container(self.menu, expand=True)
         add = ft.PopupMenuButton(
-            content=ft.Container(ft.Row([ft.Icon(ft.Icons.ADD_ROUNDED, color=T.ON_ACCENT, size=18),
-                                         ft.Text("Add games", color=T.ON_ACCENT, weight=ft.FontWeight.W_600, size=13)],
-                                        spacing=6, tight=True),
-                                 bgcolor=T.ACCENT, border_radius=T.RADIUS_SM, padding=ft.Padding(14, 9, 16, 9)),
+            content=ft.Container(ft.Row([ft.Icon(ft.Icons.ADD_ROUNDED, color=T.ON_ACCENT, size=T.px(18)),
+                                         ft.Text("Add games", color=T.ON_ACCENT, weight=ft.FontWeight.W_600, size=T.px(13))],
+                                        spacing=T.px(6), tight=True),
+                                 bgcolor=T.ACCENT, border_radius=T.RADIUS_SM, padding=ft.Padding(T.px(14), T.px(9), T.px(16), T.px(9))),
             items=[ft.PopupMenuItem(content=ft.Text("Scan a folder…"), icon=ft.Icons.FOLDER_OPEN_ROUNDED,
                                     on_click=app.pick_folder),
                    ft.PopupMenuItem(content=ft.Text("Add one game folder…"), icon=ft.Icons.CREATE_NEW_FOLDER_ROUNDED,
@@ -180,7 +180,7 @@ class LibraryView:
                                       tooltip=C.tip(HELP["select"]))
         self.root = ft.Column([
             ft.Row([ft.Column([ft.Text("Library", size=T.T_TITLE, weight=ft.FontWeight.W_700, color=T.TEXT,
-                                       no_wrap=True), self.subtitle], spacing=2, expand=True), self.search,
+                                       no_wrap=True), self.subtitle], spacing=T.px(2), expand=True), self.search,
                     self.select_btn, add], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3),
             self.resume_bar, self.hint, self.filters, self.body, self.sel_bar,
         ], expand=True, spacing=T.S4)
@@ -395,18 +395,18 @@ class LibraryView:
             on = self.f.get(key) == value
             items.append(ft.Container(
                 ft.Text(label, size=T.T_META, weight=ft.FontWeight.W_600, color=T.TEXT if on else T.TEXT_2),
-                padding=ft.Padding(12, 6, 12, 6), border_radius=20, bgcolor=T.SURFACE_3 if on else None,
+                padding=ft.Padding(T.px(12), T.px(6), T.px(12), T.px(6)), border_radius=T.px(20), bgcolor=T.SURFACE_3 if on else None,
                 on_click=lambda e, v=value: self._set(key, v), ink=True))
-        return ft.Container(ft.Row(items, spacing=2, tight=True), padding=3, border_radius=22,
+        return ft.Container(ft.Row(items, spacing=T.px(2), tight=True), padding=T.px(3), border_radius=T.px(22),
                             border=ft.Border.all(1, T.BORDER))
 
     def _menu_chip(self, key: str, label: str, options: list[tuple[str, str]]) -> ft.Control:
         current = dict(options).get(self.f.get(key), options[0][1])
         return ft.PopupMenuButton(
             content=ft.Container(ft.Row([C.meta(label + ":"), C.body(current, T.TEXT, size=T.T_META),
-                                         ft.Icon(ft.Icons.EXPAND_MORE_ROUNDED, size=16, color=T.TEXT_2)],
-                                        spacing=4, tight=True),
-                                 padding=ft.Padding(12, 7, 8, 7), border_radius=20, border=ft.Border.all(1, T.BORDER)),
+                                         ft.Icon(ft.Icons.EXPAND_MORE_ROUNDED, size=T.px(16), color=T.TEXT_2)],
+                                        spacing=T.px(4), tight=True),
+                                 padding=ft.Padding(T.px(12), T.px(7), T.px(8), T.px(7)), border_radius=T.px(20), border=ft.Border.all(1, T.BORDER)),
             items=[ft.PopupMenuItem(content=ft.Text(text), checked=self.f.get(key) == value,
                                     on_click=lambda e, v=value: self._set(key, v)) for value, text in options],
             bgcolor=T.SURFACE_2, tooltip="")
@@ -425,12 +425,12 @@ class LibraryView:
             items.append(ft.PopupMenuItem(content=ft.Text("Clear tags"), icon=ft.Icons.CLEAR_ROUNDED,
                                           on_click=lambda e: self._set("tags", [])))
         return ft.PopupMenuButton(
-            content=ft.Container(ft.Row([ft.Icon(ft.Icons.SELL_OUTLINED, size=14, color=T.TEXT_2), C.meta("Tags:"),
+            content=ft.Container(ft.Row([ft.Icon(ft.Icons.SELL_OUTLINED, size=T.px(14), color=T.TEXT_2), C.meta("Tags:"),
                                          C.body(label if len(label) < 28 else f"{len(chosen)} selected", T.TEXT,
                                                 size=T.T_META),
-                                         ft.Icon(ft.Icons.EXPAND_MORE_ROUNDED, size=16, color=T.TEXT_2)],
-                                        spacing=4, tight=True),
-                                 padding=ft.Padding(12, 7, 8, 7), border_radius=20,
+                                         ft.Icon(ft.Icons.EXPAND_MORE_ROUNDED, size=T.px(16), color=T.TEXT_2)],
+                                        spacing=T.px(4), tight=True),
+                                 padding=ft.Padding(T.px(12), T.px(7), T.px(8), T.px(7)), border_radius=T.px(20),
                                  border=ft.Border.all(1, T.ACCENT if chosen else T.BORDER)),
             items=items, bgcolor=T.SURFACE_2, tooltip=C.tip(HELP["tags"]))
 
@@ -467,34 +467,34 @@ class LibraryView:
                           tooltip=C.tip(HELP["platform_pcvr" if rift else "platform_quest"]))
         check = ft.Container(ft.Checkbox(value=pkg in self.selected, active_color=T.ACCENT, check_color=T.ON_ACCENT,
                                          on_change=lambda e: self.toggle_selected(pkg)),
-                             bgcolor=T.soft("#000000", 0.6), border_radius=8, left=6, top=40,
+                             bgcolor=T.soft("#000000", 0.6), border_radius=T.px(8), left=T.px(6), top=T.px(40),
                              visible=self.select_mode)
         self.checks[pkg] = check
         quick_label, quick_icon = app.quick_action(g)
         quick = ft.Container(
             ft.FilledButton(quick_label, icon=quick_icon, on_click=lambda e: app.primary_action(pkg),
-                            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=20), bgcolor=T.ACCENT,
-                                                 color=T.ON_ACCENT, padding=ft.Padding(14, 8, 14, 8),
-                                                 text_style=ft.TextStyle(size=12, weight=ft.FontWeight.W_600))),
-            left=0, right=0, bottom=64, alignment=ft.Alignment.CENTER, opacity=0,
+                            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=T.px(20)), bgcolor=T.ACCENT,
+                                                 color=T.ON_ACCENT, padding=ft.Padding(T.px(14), T.px(8), T.px(14), T.px(8)),
+                                                 text_style=ft.TextStyle(size=T.px(12), weight=ft.FontWeight.W_600))),
+            left=0, right=0, bottom=T.px(64), alignment=ft.Alignment.CENTER, opacity=0,
             animate_opacity=ft.Animation(160, ft.AnimationCurve.EASE_OUT)) if quick_label else None
         dim = state == "missing" and not on_pc
         tile = ft.Container(
             ft.Stack([
                 C.art_fill(art, left=0, right=0, top=0, bottom=0, opacity=0.5 if dim else 1.0,
                            placeholder_icon=ft.Icons.COMPUTER_ROUNDED if rift else ft.Icons.VIEW_IN_AR_ROUNDED),
-                ft.Container(C.bottom_fade(None, 0.92), left=0, right=0, bottom=0, top=90),
-                ft.Container(ft.Row([platform], spacing=4), left=10, top=10),
-                ft.Container(ft.Column(badges, spacing=4, horizontal_alignment=ft.CrossAxisAlignment.END),
-                             right=10, top=10),
+                ft.Container(C.bottom_fade(None, 0.92), left=0, right=0, bottom=0, top=T.px(90)),
+                ft.Container(ft.Row([platform], spacing=T.px(4)), left=T.px(10), top=T.px(10)),
+                ft.Container(ft.Column(badges, spacing=T.px(4), horizontal_alignment=ft.CrossAxisAlignment.END),
+                             right=T.px(10), top=T.px(10)),
                 *([quick] if quick else []),
                 check,
                 ft.Container(ft.Column([
-                    ft.Text(display_title(g, tw), size=14, weight=ft.FontWeight.W_700, color=T.TEXT, max_lines=2,
+                    ft.Text(display_title(g, tw), size=T.px(14), weight=ft.FontWeight.W_700, color=T.TEXT, max_lines=2,
                             overflow=ft.TextOverflow.ELLIPSIS),
-                    ft.Container(ft.Row([C.dot(s_color, 7), C.meta(s_label, T.TEXT_2)], spacing=6, tight=True),
+                    ft.Container(ft.Row([C.dot(s_color, 7), C.meta(s_label, T.TEXT_2)], spacing=T.px(6), tight=True),
                                  tooltip=C.tip(HELP["status"])),
-                ], spacing=4), left=12, right=12, bottom=12),
+                ], spacing=T.px(4)), left=T.px(12), right=T.px(12), bottom=T.px(12)),
             ], expand=True),
             border_radius=T.RADIUS, bgcolor=T.SURFACE, border=ft.Border.all(1, T.BORDER), expand=True,
             scale=1.0, animate_scale=ft.Animation(140, ft.AnimationCurve.EASE_OUT),

@@ -163,8 +163,11 @@ class PcReviveTarget(Target):
                "exe_local": str(exe_local), "exe_win": winhost.to_windows(exe_local),
                "revive_win": winhost.to_windows(rdir) if rdir else None,
                "revive_version": revive.installed_version() if rdir else None,
-               "backend": "openvr" if "pcvr.revive_openvr" in recipe.patches else "openxr",
+               "backend": ("openvr" if "pcvr.revive_openvr" in recipe.patches else "openxr") if rdir else None,
+               "launch": "revive" if rdir else "repack" if "pcvr.repack_launcher" in recipe.patches else "direct",
                "game_args": game_args(recipe),
+               "tuning": dict(recipe.params("pcvr.steamvr_tuning"), enabled=True)
+               if "pcvr.steamvr_tuning" in recipe.patches else None,
                "sha256": extra.get("exe_sha256"), "art_lookup": extra.get("art_lookup"),
                "recipe": {"patches": sorted(recipe.patches), "source": recipe.source}, "time": time.time()}
         exe_field, _, _ = shortcut_fields(dep)
@@ -239,8 +242,23 @@ class PcReviveTarget(Target):
         if not root or not dep.get("appid"):
             raise RuntimeError("Steam or the game's Steam shortcut wasn't found on this PC")
         vr = winhost.start_steamvr(root)  # Revive binds to SteamVR; without it the game falls back to flatscreen
+        tuning = self._tune(root, dep) if vr else None
         winhost.start_detached(root / "steam.exe", [f"steam://rungameid/{(int(dep['appid']) << 32) | 0x02000000}"])
-        return {"package": package, "title": dep.get("title"), "steamvr": vr}
+        return {"package": package, "title": dep.get("title"), "steamvr": vr, "tuning": tuning}
+
+    def _tune(self, root, dep) -> dict | None:
+        """pcvr.steamvr_tuning: SteamVR per-app refresh rate / motion smoothing from the last session's frame drops."""
+        if "tuning" in dep and dep["tuning"] is None:  # switched off in the recipe (installs before it: on)
+            return None
+        from ..core import applog, steamvr_perf
+
+        try:
+            result = steamvr_perf.tune(root, f"steam.app.{dep['appid']}", Path(dep["exe_local"]).name,
+                                       dep.get("tuning") or {})
+        except Exception as e:  # noqa: BLE001 - tuning must never block Play
+            result = {"error": str(e)}
+        applog.log.info("steamvr tuning %s: %s", dep.get("package"), result)
+        return result
 
     def launch_test(self, package, reporter, seconds=45):
         reporter.stage("Launch test (this PC)")
@@ -249,7 +267,7 @@ class PcReviveTarget(Target):
         if winhost.process_running(image):
             raise RuntimeError(f"{dep['title']} is already running")
         root = winhost.steam_root()
-        if root and dep.get("revive_win"):  # a direct injector start bypasses Steam, so bring SteamVR up ourselves
+        if root:  # a direct start bypasses Steam, so bring SteamVR up ourselves (Revive / the game bind to it)
             reporter.stage("Starting SteamVR")
             if not winhost.start_steamvr(root):
                 reporter.log("SteamVR didn't start; the game may run as a flat window (no VR).")

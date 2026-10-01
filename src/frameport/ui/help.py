@@ -75,6 +75,11 @@ HELP: dict[str, str] = {
     "kernel_keys": "Every game start on the Frame used to leak one kernel key, and after about 200 launches every game "
                    "fails to start. FramePort switches that leak off, but keys already used only come back after a "
                    "restart of the Frame.",
+    "ui_scale": "Size of text and layout. Automatic follows Windows' display scaling halfway (150 % in Windows → 125 %) "
+                "when FramePort runs under WSL, where the window doesn't get it from Windows itself.",
+    "send_files": "Copy videos, documents, mods or saves from this PC to the Frame for Quest games. Videos, "
+                  "Downloads and Documents are shared by every game (/sdcard/Movies, /sdcard/Download, "
+                  "/sdcard/Documents); a game's own storage is in its menu. Apps find the files by browsing folders.",
     "free_space": "Deletes the rollback copies kept from each game's previous install and leftover uploads. The "
                   "games and saves stay.",
     "adapter_settings": "Change FrameBridge settings of an installed game (render scale, controller mapping and so "

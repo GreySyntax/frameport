@@ -323,6 +323,31 @@ def frame_cleanup(frame: Optional[str] = None, keep_rollback: bool = typer.Optio
     typer.echo(f"removed {len(r['removed'])} item(s), freed {r['freed_bytes'] / 2**30:.1f} GiB")
 
 
+@frame_app.command("send")
+def frame_send(paths: list[Path] = typer.Argument(..., help="files or folders to send"),
+               to: str = typer.Option("videos", help="destination: videos, downloads, documents, app, app-files"),
+               game: Optional[str] = typer.Option(None, help="package of the game, for --to app / app-files"),
+               folder: str = typer.Option("", help="sub-folder inside the destination"),
+               frame: Optional[str] = None):
+    """Send files to apps on the Frame. videos/downloads/documents are shared by every Quest game (they appear as
+    /sdcard/Movies, /sdcard/Download, /sdcard/Documents); app/app-files are one game's own storage. Apps find the
+    files by browsing folders (Android's media index doesn't work in Lepton)."""
+    from .install import files
+
+    r = files.send_files(_target(frame).frame, paths, to, game, folder, printing_reporter())
+    typer.echo(f"sent {r['files']} file(s) ({r['bytes'] / 2**20:.0f} MiB, {r['skipped']} already there); "
+               f"in the app: {r['android']}")
+
+
+@frame_app.command("storage")
+def frame_storage(game: Optional[str] = None, frame: Optional[str] = None):
+    """Where files for Lepton apps go on the Frame (and where the apps see them)."""
+    from .install import files
+
+    for t in files.storage_targets(_target(frame).frame, game):
+        typer.echo(f"{t['id']:10} {t['android']:45} {t['path']}" + ("  (every app)" if t["shared"] else ""))
+
+
 @frame_app.command("info")
 def frame_info(frame: Optional[str] = None):
     typer.echo(json.dumps(_target(frame).describe(), indent=1, default=str))

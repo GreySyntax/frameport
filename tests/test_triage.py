@@ -33,3 +33,28 @@ def test_failures_map_to_patches():
 def test_launcher_signature():
     r = triage("lepton: APP_ACTIVITY is empty\n", "NEVER_STARTED")
     assert r.suggestions() == ["frame.launcher"]
+
+
+def test_missing_platform_dll_hides_generic_crash():
+    log = ("LogOnline:Display: Oculus: FOnlineSubsystemOculus::InitWithWindowsPlatform()\n"
+           "LogWindows:Warning: CreateProc failed (2) ../../../Engine/Binaries/Win64/CrashReportClient.exe\n"
+           "LogWindows:Error: Unhandled Exception: 0xc06d007e\n")
+    r = triage(log, "EXITED", "rift.robo_recall")
+    assert [f.id for f in r.findings] == ["delayload-missing"] and r.suggestions() == []
+
+
+def test_crash_logcat_signatures():
+    crash = ("F DEBUG   :       #00 pc 0000000000074cf0  /data/app/x/lib/arm64/libVkLayer_fossilize.so (BuildId: 8c)\n"
+             "F DEBUG   :       #01 pc 000000000007af58  /data/app/x/lib/arm64/libVkLayer_fossilize.so (BuildId: 8c)\n"
+             "F DEBUG   :       #04 pc 000000000adb35a0  /data/app/x/lib/arm64/libUE4.so (FVulkanRenderPass::"
+             "FVulkanRenderPass(FVulkanDevice&, FVulkanRenderTargetLayout const&)+1372)\n")
+    log = "09-30 19:31:36.149  1126  1265 F libc    : Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR)\n"
+    r = triage(log, "EXITED", "com.example.game", crash=crash)
+    assert [f.id for f in r.findings] == ["fossilize-renderpass"]  # supersedes the generic native-crash
+    assert r.findings[0].suggest == ["frame.vk_sanitize"]
+    assert [f.id for f in triage(log, "EXITED", "com.example.game").findings] == ["native-crash"]
+    abort = ("F DEBUG   :       #00 pc 00000000000898b4  /apex/com.android.runtime/lib64/bionic/libc.so (abort+168)\n"
+             "F DEBUG   :       #01 pc 0000000000018cf4  /data/app/x/lib/arm64/libopenxr_loader.so "
+             "(xrCreateSwapchain+424)\n")
+    r = triage(log.replace("11 (SIGSEGV)", "6 (SIGABRT)"), "EXITED", "com.example.game", crash=abort)
+    assert [(f.id, f.suggest) for f in r.findings] == [("swapchain-size-abort", ["frame.swapchain_limit"])]

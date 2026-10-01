@@ -86,6 +86,10 @@ def _rift_recipe(analysis: Analysis, recipe: Recipe, entry) -> None:
             recipe.reasons[pid] = why
         for pid in entry.pcvr_remove:
             recipe.patches.pop(pid, None)
+        for pid in ("pcvr.repack_launcher", "pcvr.launch_args"):  # a verified recipe decides how the game starts
+            if pid not in entry.pcvr:
+                recipe.patches.pop(pid, None)
+                recipe.reasons.pop(pid, None)
         if entry.proton_env:
             recipe.patches["pcvr.proton_env"] = {"env": "\n".join(f"{k}={v}" for k, v in entry.proton_env.items())}
             recipe.reasons["pcvr.proton_env"] = why
@@ -103,14 +107,22 @@ def _rift_recipe(analysis: Analysis, recipe: Recipe, entry) -> None:
     recipe.source = "heuristics"
     recipe.as_is = True  # the dump is installed unchanged; Revive (when on) is a launch-time wrapper, not a file edit
     notes = []
-    if extra.get("frame_native"):
-        notes.append("No Oculus code (SteamVR/OpenXR): runs on the Frame and PC directly, without Revive.")
-    elif extra.get("needs_revive"):
+    mode = extra.get("launch") or ("native" if extra.get("frame_native") else "revive" if extra.get("needs_revive")
+                                   else "")
+    if mode == "repack":
+        notes.append("The game folder is already set up for SteamVR (its own Revive, started by a loader DLL): "
+                     "FramePort runs the game directly. On the Frame this is experimental (Wine is told to load the "
+                     "loader DLL; the bundled Revive needs SteamVR's OpenVR under Proton).")
+    elif mode == "native":
+        args = extra.get("launch_args")
+        notes.append("Supports SteamVR/OpenXR itself: runs directly, without Revive"
+                     + (f" (arguments {args})." if args else "."))
+    elif mode == "revive":
         notes.append("Oculus/LibOVR game: needs Revive, which works in PC mode with SteamVR running. Not supported on "
                      "the Steam Frame (Revive can't run there).")
     if extra.get("platform_sdk"):
-        notes.append("Uses the Oculus Platform SDK (entitlement check): normally it needs the Oculus app running with a "
-                     "license you own, so it may not start.")
+        notes.append("Uses the Oculus Platform SDK (entitlement check): it needs the Oculus app (Meta Horizon) on the "
+                     "PC with a license you own, so on the Frame it may not start.")
     if analysis.abis and analysis.abis[0] not in ("x86", "x86_64"):
         recipe.status = "unsupported"
         notes.append(f"Unexpected executable type {analysis.abis[0]}.")
@@ -124,6 +136,9 @@ def warnings(recipe: Recipe) -> list[str]:
             for r in base.get(pid).requires:
                 if r not in recipe.patches:
                     out.append(f"{base.get(pid).title} needs {base.get(r).title}.")
+            for c in base.get(pid).conflicts:
+                if c in recipe.patches and pid < c:
+                    out.append(f"{base.get(pid).title} conflicts with {base.get(c).title}.")
         return out
     for pid in recipe.patches:
         p = base.get(pid)

@@ -424,6 +424,37 @@ def test_libovr_redirect_symlink(monkeypatch, tmp_path):
     assert not real.is_symlink() and real.read_bytes() == b"REAL"
 
 
+def test_libovr_redirect_to_bundled_revive(monkeypatch, tmp_path):
+    """A repack's own LibRevive64.dll (no FramePort Revive) becomes the LibOVRRT the game loads on the Frame."""
+    a = load_agent(monkeypatch, tmp_path)
+    base = tmp_path / "b"
+    (base / "game/G").mkdir(parents=True)
+    (base / "game/G/Game.exe").write_bytes(b"MZ")
+    (base / "game/G/LibRevive64.dll").write_bytes(b"BUNDLED")
+    (base / "revive").mkdir()
+    (base / "revive/LibReviveXR64.dll").write_bytes(b"REVIVE")
+    link = base / "game/G/LibOVRRT64_1.dll"
+    a.set_libovr_redirect(str(base), "G/Game.exe", enabled=True)
+    assert link.read_bytes() == b"REVIVE"
+    a.set_libovr_redirect(str(base), "G/Game.exe", enabled=True, bundled=True)  # switches target
+    assert link.is_symlink() and link.read_bytes() == b"BUNDLED"
+    a.set_libovr_redirect(str(base), "G/Game.exe", enabled=False, bundled=True)
+    assert not link.exists() and (base / "game/G/LibRevive64.dll").read_bytes() == b"BUNDLED"
+
+
+def test_proton_launcher_game_args(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    monkeypatch.setattr(a, "compat_command", lambda d: ["/proton", "waitforexitandrun"])
+    anchor = tmp_path / "anchor"
+    anchor.mkdir()
+    a.write_proton_launcher(str(anchor), "/b", "rift.x", "X", 1, {"dir": "/p", "name": "proton"}, "G/X.exe", False,
+                            {"WINEDLLOVERRIDES": "xinput1_3=n,b"}, game_args=["-vrmode", "OpenVR", "-hmd=OpenXR",
+                                                                              "$(rm -rf /)"])
+    text = (anchor / "launch.sh").read_text()
+    assert "/b/game/G/X.exe -vrmode OpenVR -hmd=OpenXR >>" in text and "rm -rf" not in text
+    assert "export WINEDLLOVERRIDES=xinput1_3=n,b" in text
+
+
 PNG_1PX = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c63f8"
                         "cfc0f01f0005000201a5d6f1c80000000049454e44ae426082")
 
@@ -509,3 +540,27 @@ def test_controller_models_install(monkeypatch, tmp_path):
     missing = a.install_controller_models(str(files), True)
     assert missing["ok"] is False and "no Steam Frame controller render models" in missing["error"]
     assert a.cmd_controller_models({})["picked"] == {}
+
+
+def test_storage_targets_follow_lepton(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    lepton = tmp_path / "Lepton"
+    (lepton / "liblepton").mkdir(parents=True)
+    (lepton / "lepton").write_text("#!/bin/sh\n")
+    (lepton / "liblepton/mounting.sh").write_text(
+        'ln -s "${HOME}/Videos" "${TARGET_PATH}/Movies"\n'
+        'ln -s "${HOME}/Downloads" "${TARGET_PATH}/Download"\n')
+    monkeypatch.setattr(a, "lepton_path", lambda: (str(lepton / "lepton"), None))
+    base = tmp_path / "Applications/quest-frame/com.x.y"
+    base.mkdir(parents=True)
+    (base / "deployment.json").write_text(json.dumps({"package": "com.x.y", "base": str(base)}))
+    t = {x["id"]: x for x in a.cmd_storage_targets({"package": "com.x.y"})["targets"]}
+    assert t["videos"]["android"] == "/sdcard/Movies" and t["videos"]["shared"]
+    assert t["downloads"]["android"] == "/sdcard/Download" and "documents" not in t  # read from Lepton, not assumed
+    assert (tmp_path / "Videos").is_dir()  # Lepton only links folders that exist
+    assert t["app"]["path"].endswith("lepton-data/external") and t["app"]["android"] == "/sdcard"
+    assert t["app-files"]["android"] == "/sdcard/Android/data/com.x.y/files"
+    # without Lepton's script: the known defaults
+    monkeypatch.setattr(a, "lepton_path", lambda: (None, None))
+    ids = {x["id"] for x in a.cmd_storage_targets({})["targets"]}
+    assert ids == {"documents", "downloads", "videos"}

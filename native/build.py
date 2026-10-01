@@ -10,7 +10,7 @@ timefix OpenXR layer for Proton games (linux-arm64, glibc; the NDK's clang build
 OculusHMDConnected helper for Rift games under Proton (win-x64 PE; the NDK's clang + lld-link, no Windows SDK), and
 rewrites artifacts/SHA256SUMS. Run `frameport parity` afterwards to see which games change.
 
-    python native/build.py [--only adapter,bridge,compat,glshim,dex,xrlayer,oculushmd,xrshim] [--ndk PATH]
+    python native/build.py [--only adapter,bridge,compat,glshim,dex,xrlayer,oculushmd,xrshim,vkshim,vrsettings] [--ndk PATH]
 """
 from __future__ import annotations
 
@@ -181,6 +181,26 @@ def build_oculushmd(tc: Path, out: Path | None = None, defines=()):
          f"/out:{out / 'fp_oculushmd.exe'}"])
 
 
+VRSETTINGS_IMPORTS = ("LoadLibraryA", "GetProcAddress", "GetCommandLineA", "GetStdHandle", "WriteFile", "ExitProcess")
+
+
+def build_vrsettings(tc: Path):
+    """fp_vrsettings.exe (Windows x64, run on the PC): SteamVR settings through OpenVR's IVRSettings (see the source)."""
+    src = HERE / "vrsettings"
+    out = ART / "win-x64"
+    out.mkdir(parents=True, exist_ok=True)
+    work = CACHE / "vrsettings"
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "kernel32.def").write_text("LIBRARY kernel32.dll\nEXPORTS\n" + "".join(f"    {n}\n" for n in VRSETTINGS_IMPORTS))
+    run([tc / "bin/llvm-dlltool", "-m", "i386:x86-64", "-d", work / "kernel32.def", "-l", work / "kernel32.lib"])
+    run([tc / "bin/clang", "--target=x86_64-pc-windows-msvc", "-ffreestanding", "-nostdlibinc", "-fno-stack-protector",
+         "-fno-builtin", "-O2", "-Wall", "-Wextra", "-Werror", f"-ffile-prefix-map={HERE}=native", "-c",
+         "fp_vrsettings.c", "-o", work / "fp_vrsettings.obj"], cwd=src)
+    run([tc / "bin/lld-link", "/nologo", "/Brepro", "/nodefaultlib", "/entry:start", "/subsystem:console",
+         "/dynamicbase", "/highentropyva", "/nxcompat", work / "fp_vrsettings.obj", work / "kernel32.lib",
+         f"/out:{out / 'fp_vrsettings.exe'}"])
+
+
 def build_bridge(tc: Path):
     src = HERE / "vrapi-bridge"
     inc = openxr_include("bridge")
@@ -216,6 +236,15 @@ def build_xrshim(tc: Path):
     run([exe(tc, "aarch64-linux-android29-clang"), "-shared", "-fPIC", "-O2", "-Wall", "-Wextra", "-Werror",
          "-fvisibility=hidden", "-I", openxr_include("adapter"), "-Wl,-soname,libframe_xrshim.so",
          "-Wl,-z,max-page-size=16384", "xrshim.c", "-ldl", "-llog", "-o", ART / "arm64-v8a/libframe_xrshim.so"], cwd=src)
+
+
+def build_vkshim(tc: Path):
+    """Vulkan shim (see vkshim/vkshim.c): the engine's dlopen("libvulkan.so") string is pointed at it."""
+    src = HERE / "vkshim"
+    run([exe(tc, "aarch64-linux-android29-clang"), "-shared", "-fPIC", "-O2", "-Wall", "-Wextra", "-Werror",
+         "-fvisibility=hidden", "-Wl,-soname,libfp_vk.so", "-Wl,-z,max-page-size=16384", "vkshim.c",
+         "-Wl,--no-as-needed", "-lvulkan", "-Wl,--as-needed", "-ldl", "-llog", "-o", ART / "arm64-v8a/libfp_vk.so"],
+        cwd=src)
 
 
 def build_dex():
@@ -262,7 +291,7 @@ def write_sums():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", default="adapter,bridge,compat,glshim,dex,xrlayer,oculushmd,xrshim")
+    ap.add_argument("--only", default="adapter,bridge,compat,glshim,dex,xrlayer,oculushmd,xrshim,vkshim,vrsettings")
     ap.add_argument("--ndk")
     args = ap.parse_args()
     parts = set(args.only.split(","))
@@ -271,8 +300,9 @@ def main():
     tc = clang_dir(ndk(args.ndk)) if parts - {"dex"} else None
     steps = {"adapter": lambda: build_adapter(tc), "bridge": lambda: build_bridge(tc), "compat": lambda: build_compat(tc),
              "glshim": lambda: build_glshim(tc), "xrshim": lambda: build_xrshim(tc), "dex": build_dex, "xrlayer": lambda: build_xrlayer(tc),
-             "oculushmd": lambda: build_oculushmd(tc)}
-    for name in ("adapter", "bridge", "compat", "glshim", "xrshim", "dex", "xrlayer", "oculushmd"):
+             "oculushmd": lambda: build_oculushmd(tc), "vkshim": lambda: build_vkshim(tc),
+             "vrsettings": lambda: build_vrsettings(tc)}
+    for name in ("adapter", "bridge", "compat", "glshim", "xrshim", "vkshim", "dex", "xrlayer", "oculushmd", "vrsettings"):
         if name in parts:
             log(f"build {name}")
             steps[name]()

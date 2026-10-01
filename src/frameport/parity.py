@@ -26,7 +26,24 @@ from .recommend import catalog, engine
 from .sources import quest_dump
 
 OWNED = {"libopenxr_loader_generic.so": "FrameBridge adapter", "libvrapi.so": "VrApi bridge", "libglshim.so": "GL shim",
-         "libovrplatformcompat.so": "platform compat"}
+         "libovrplatformcompat.so": "platform compat", "libfp_vk.so": "Vulkan shim"}
+
+
+def _default_rewrites(base: str, old: bytes) -> list[tuple[bytes, str]]:
+    """In-place rewrites that default-on Frame patches make to a game's own libraries (newer than the known-good
+    builds): the result of applying them to the known-good bytes."""
+    from .patches.frame import swapchain_limit, vk_sanitize
+
+    out = []
+    if base == swapchain_limit.DISPATCHER:
+        fixed, n = swapchain_limit.raise_swapchain_limit(old)
+        if fixed:
+            out.append((fixed, f"frame.swapchain_limit: swapchain size guard raised ({n} checks)"))
+    if base in vk_sanitize.ENGINE_LIBS:
+        fixed, n = elf.replace_rodata_string(old, vk_sanitize.VULKAN, vk_sanitize.SHIM)
+        if n:
+            out.append((fixed, f"frame.vk_sanitize: Vulkan loaded through {vk_sanitize.SHIM}"))
+    return out
 
 
 def _entries(apk: Path) -> dict[str, bytes]:
@@ -54,6 +71,9 @@ def classify(name: str, new: bytes, old: bytes) -> tuple[str, str]:
         is_current = current is not None and current.exists() and current.read_bytes() == new
         return ("expected", f"{OWNED[base]} updated to the current build") if is_current else \
                ("UNEXPLAINED", f"{OWNED[base]} differs but is not the current artifact")
+    for fixed, why in _default_rewrites(base, old):
+        if fixed == new:
+            return "expected", why
     if base == "libframe_settings.so":
         def kv(b):
             return dict(l.split("=", 1) for l in b.decode().split("\n") if "=" in l)
@@ -100,7 +120,12 @@ def compare(new_apk: Path, old_apk: Path) -> dict:
         b.pop(n)
     for n in sorted(set(a) | set(b)):
         if n not in b:
-            rows.append((n, "UNEXPLAINED", "only in the new build"))
+            base = n.rsplit("/", 1)[-1]
+            current = artifacts_dir() / n.split("/")[1] / base if n.startswith("lib/") and base in OWNED else None
+            if current is not None and current.exists() and current.read_bytes() == _read(new_apk, n):
+                rows.append((n, "expected", f"{OWNED[base]} added (current build)"))
+            else:
+                rows.append((n, "UNEXPLAINED", "only in the new build"))
         elif n not in a:
             rows.append((n, "UNEXPLAINED", "missing from the new build"))
         elif a[n] != b[n]:

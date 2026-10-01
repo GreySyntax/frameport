@@ -54,6 +54,20 @@ def install_state(game: dict, frame_info: dict | None) -> str | None:
     return "outdated" if settings_diff(game, frame_info) else "installed"
 
 
+def pc_outdated(g: dict, dep: dict) -> bool:
+    """A PC install whose launch settings (pcvr patches + their parameters) differ from the game's recipe now."""
+    installed = set((dep.get("recipe") or {}).get("patches") or [])
+    want = set((g.get("recipe") or {}).get("patches") or {})
+    from ..patches.pcvr import game_args
+    from ..core.library import recipe_from_dict
+
+    try:
+        args = game_args(recipe_from_dict(g["recipe"]))
+    except Exception:  # noqa: BLE001
+        args = dep.get("game_args") or []
+    return installed != want or list(dep.get("game_args") or []) != args
+
+
 def update(*controls: ft.Control) -> None:
     """Update controls that may not be on the page yet (Flet raises for those)."""
     for c in controls:
@@ -64,7 +78,8 @@ def update(*controls: ft.Control) -> None:
 
 
 # ------------------------------------------------------------------------------------------ text
-def title(text: str, size: int = T.T_TITLE) -> ft.Text:
+def title(text: str, size: int | None = None) -> ft.Text:
+    size = size or T.T_TITLE
     return ft.Text(text, size=size, weight=ft.FontWeight.W_700, color=T.TEXT)
 
 
@@ -72,7 +87,8 @@ def h2(text: str) -> ft.Text:
     return ft.Text(text, size=T.T_H2, weight=ft.FontWeight.W_600, color=T.TEXT)
 
 
-def body(text: str, color: str = T.TEXT_2, size: int = T.T_BODY, **kw) -> ft.Text:
+def body(text: str, color: str = T.TEXT_2, size: int | None = None, **kw) -> ft.Text:
+    size = size or T.T_BODY
     return ft.Text(text, size=size, color=color, **kw)
 
 
@@ -85,12 +101,12 @@ def pill(text: str, color: str = T.TEXT_2, icon: str | None = None, solid: bool 
          tooltip: str | ft.Tooltip | None = None, overlay: bool = False) -> ft.Container:
     """overlay: for use on top of artwork (dark translucent backing so it reads on any image)."""
     fg = T.ON_ACCENT if solid else color
-    items = ([ft.Icon(icon, size=13, color=fg)] if icon else []) + \
+    items = ([ft.Icon(icon, size=T.px(13), color=fg)] if icon else []) + \
         [ft.Text(text, size=T.T_SMALL, color=fg, weight=ft.FontWeight.W_600)]
-    return ft.Container(ft.Row(items, spacing=4, tight=True), tooltip=tooltip,
+    return ft.Container(ft.Row(items, spacing=T.px(4), tight=True), tooltip=tooltip,
                         bgcolor=color if solid else T.soft("#000000", 0.62) if overlay else T.soft(color, 0.12),
-                        border_radius=20,
-                        padding=ft.Padding(8, 3, 9, 3))
+                        border_radius=T.px(20),
+                        padding=ft.Padding(T.px(8), T.px(3), T.px(9), T.px(3)))
 
 
 def status_chip(status: str) -> ft.Container:
@@ -110,26 +126,27 @@ def dot(color: str, size: int = 8) -> ft.Container:
 # ------------------------------------------------------------------------------------------ help hints
 def tip(text: str) -> ft.Tooltip:
     """A tooltip that wraps long help text (plain string tooltips run across the whole window)."""
-    return ft.Tooltip(message=text, size_constraints=ft.BoxConstraints(max_width=340),
-                      padding=ft.Padding(12, 8, 12, 8), prefer_below=True)
+    return ft.Tooltip(message=text, size_constraints=ft.BoxConstraints(max_width=T.px(340)),
+                      padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)), prefer_below=True)
 
 
 def help_icon(key_or_text: str, size: int = 15) -> ft.Container:
     """A small "?" that explains a non-obvious term on hover: a key of ui.help.HELP, or the text itself."""
     return ft.Container(ft.Icon(ft.Icons.HELP_OUTLINE_ROUNDED, size=size, color=T.TEXT_3),
-                        tooltip=tip(HELP.get(key_or_text, key_or_text)), padding=2, border_radius=size)
+                        tooltip=tip(HELP.get(key_or_text, key_or_text)), padding=T.px(2), border_radius=size)
 
 
 def with_help(control: ft.Control, key: str | None) -> ft.Control:
     """`control` followed by a help icon (or just `control` when there's no key)."""
     if not key:
         return control
-    return ft.Row([control, help_icon(key)], spacing=4, tight=True,
+    return ft.Row([control, help_icon(key)], spacing=T.px(4), tight=True,
                   vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
 
 # ------------------------------------------------------------------------------------------ buttons
-def _shape(radius=T.RADIUS_SM):
+def _shape(radius=None):
+    radius = T.RADIUS_SM if radius is None else radius
     return ft.RoundedRectangleBorder(radius=radius)
 
 
@@ -140,8 +157,8 @@ def primary(label: str, icon: str | None = None, on_click: Callable | None = Non
                                                                         ft.ControlState.DISABLED: T.SURFACE_3},
                                                 color={ft.ControlState.DEFAULT: T.ON_ACCENT,
                                                        ft.ControlState.DISABLED: T.TEXT_3},
-                                                padding=ft.Padding(22, 18, 22, 18) if big else ft.Padding(16, 12, 16, 12),
-                                                text_style=ft.TextStyle(size=15 if big else 13,
+                                                padding=ft.Padding(T.px(22), T.px(18), T.px(22), T.px(18)) if big else ft.Padding(T.px(16), T.px(12), T.px(16), T.px(12)),
+                                                text_style=ft.TextStyle(size=T.px(15) if big else T.px(13),
                                                                         weight=ft.FontWeight.W_600)))
 
 
@@ -151,7 +168,7 @@ def secondary(label: str, icon: str | None = None, on_click: Callable | None = N
                              style=ft.ButtonStyle(shape=_shape(), side=ft.BorderSide(1, T.BORDER_STRONG),
                                                   color={ft.ControlState.DEFAULT: T.TEXT,
                                                          ft.ControlState.DISABLED: T.TEXT_3},
-                                                  padding=ft.Padding(14, 12, 14, 12)))
+                                                  padding=ft.Padding(T.px(14), T.px(12), T.px(14), T.px(12))))
 
 
 def ghost(label: str, icon: str | None = None, on_click: Callable | None = None, disabled: bool = False,
@@ -164,18 +181,19 @@ def ghost(label: str, icon: str | None = None, on_click: Callable | None = None,
 def icon_btn(icon: str, tooltip: str, on_click: Callable | None = None, disabled: bool = False,
              color: str = T.TEXT_2) -> ft.IconButton:
     return ft.IconButton(icon, tooltip=tooltip, on_click=on_click, disabled=disabled, icon_color=color,
-                         icon_size=20, style=ft.ButtonStyle(shape=_shape()))
+                         icon_size=T.px(20), style=ft.ButtonStyle(shape=_shape()))
 
 
 # ------------------------------------------------------------------------------------------ containers
-def card(content: ft.Control, padding: int = T.S4, bgcolor: str = T.SURFACE, **kw) -> ft.Container:
+def card(content: ft.Control, padding: int | None = None, bgcolor: str = T.SURFACE, **kw) -> ft.Container:
+    padding = T.S4 if padding is None else padding
     return ft.Container(content, padding=padding, bgcolor=bgcolor, border_radius=T.RADIUS,
                         border=ft.Border.all(1, T.BORDER), **kw)
 
 
 def section(heading: str, *controls: ft.Control, subtitle: str | None = None,
             action: ft.Control | None = None, help: str | None = None) -> ft.Column:
-    head = ft.Row([ft.Column([with_help(h2(heading), help)] + ([meta(subtitle)] if subtitle else []), spacing=2,
+    head = ft.Row([ft.Column([with_help(h2(heading), help)] + ([meta(subtitle)] if subtitle else []), spacing=T.px(2),
                              expand=True)]
                   + ([action] if action else []), vertical_alignment=ft.CrossAxisAlignment.CENTER)
     return ft.Column([head, *controls], spacing=T.S3)
@@ -187,19 +205,19 @@ def callout(text: str | ft.Control, kind: str = "info", icon: str | None = None)
                     "error": ft.Icons.ERROR_OUTLINE_ROUNDED, "ok": ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED,
                     "pc": ft.Icons.COMPUTER_ROUNDED}[kind]
     content = body(text, T.TEXT) if isinstance(text, str) else text
-    return ft.Container(ft.Row([ft.Icon(icon, color=color, size=18), ft.Container(content, expand=True)],
+    return ft.Container(ft.Row([ft.Icon(icon, color=color, size=T.px(18)), ft.Container(content, expand=True)],
                                spacing=T.S3, vertical_alignment=ft.CrossAxisAlignment.START),
                         bgcolor=T.soft(color, 0.08), border=ft.Border.all(1, T.soft(color, 0.35)),
-                        border_radius=T.RADIUS_SM, padding=ft.Padding(14, 12, 14, 12))
+                        border_radius=T.RADIUS_SM, padding=ft.Padding(T.px(14), T.px(12), T.px(14), T.px(12)))
 
 
 def empty_state(icon: str, heading: str, text: str, *actions: ft.Control) -> ft.Container:
     return ft.Container(ft.Column([
-        ft.Container(ft.Icon(icon, size=40, color=T.ACCENT), width=84, height=84, border_radius=42,
+        ft.Container(ft.Icon(icon, size=T.px(40), color=T.ACCENT), width=T.px(84), height=T.px(84), border_radius=T.px(42),
                      bgcolor=T.ACCENT_SOFT, alignment=ft.Alignment.CENTER),
         ft.Container(height=T.S2),
         title(heading, 22),
-        ft.Container(body(text, text_align=ft.TextAlign.CENTER), width=460),
+        ft.Container(body(text, text_align=ft.TextAlign.CENTER), width=T.px(460)),
         ft.Container(height=T.S2),
         ft.Row(list(actions), alignment=ft.MainAxisAlignment.CENTER, spacing=T.S3),
     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S2, tight=True),
@@ -207,7 +225,7 @@ def empty_state(icon: str, heading: str, text: str, *actions: ft.Control) -> ft.
 
 
 def kv(label: str, value: str | ft.Control, help: str | None = None) -> ft.Row:
-    return ft.Row([ft.Container(with_help(meta(label), help), width=130),
+    return ft.Row([ft.Container(with_help(meta(label), help), width=T.px(130)),
                    ft.Container(value if isinstance(value, ft.Control) else body(value, T.TEXT, selectable=True),
                                 expand=True)], vertical_alignment=ft.CrossAxisAlignment.START)
 
@@ -217,23 +235,24 @@ def status_row(ok: bool | None, heading: str, detail: str = "", action: ft.Contr
     icon, color = {True: (ft.Icons.CHECK_CIRCLE_ROUNDED, T.OK), False: (ft.Icons.ERROR_ROUNDED, T.ERROR),
                    None: (ft.Icons.RADIO_BUTTON_UNCHECKED_ROUNDED, T.WARN)}[ok]
     return ft.Container(ft.Row([
-        ft.Icon(icon, color=color, size=20),
+        ft.Icon(icon, color=color, size=T.px(20)),
         ft.Column([with_help(body(heading, T.TEXT, weight=ft.FontWeight.W_500), help)]
                   + ([meta(detail)] if detail else []),
                   spacing=1, expand=True),
         *([action] if action else []),
-    ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3), padding=ft.Padding(0, 6, 0, 6))
+    ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3), padding=ft.Padding(0, T.px(6), 0, T.px(6)))
 
 
-def art_fill(src: str | None, radius: int = T.RADIUS, placeholder_icon: str = ft.Icons.VIDEOGAME_ASSET_ROUNDED,
+def art_fill(src: str | None, radius: int | None = None, placeholder_icon: str = ft.Icons.VIDEOGAME_ASSET_ROUNDED,
              hero: bool = False, **kw) -> ft.Container:
     """Artwork that covers its box (cards, heroes), by asset URL (artwork.thumbs.url — never image bytes: those are
     re-sent on every update); an accent gradient with a large faint icon when there's none."""
+    radius = T.RADIUS if radius is None else radius
     if src:
         return ft.Container(image=ft.DecorationImage(src=src, fit=ft.BoxFit.COVER), border_radius=radius,
                             bgcolor=T.SURFACE_2, **kw)
-    icon = ft.Icon(placeholder_icon, size=220 if hero else 56, color=T.soft(T.ACCENT, 0.22 if hero else 0.45))
-    return ft.Container(ft.Container(icon, padding=ft.Padding(0, 0, 60, 0) if hero else 0), border_radius=radius,
+    icon = ft.Icon(placeholder_icon, size=T.px(220) if hero else T.px(56), color=T.soft(T.ACCENT, 0.22 if hero else 0.45))
+    return ft.Container(ft.Container(icon, padding=ft.Padding(0, 0, T.px(60), 0) if hero else 0), border_radius=radius,
                         alignment=ft.Alignment.CENTER_RIGHT if hero else ft.Alignment.CENTER,
                         gradient=ft.LinearGradient(begin=ft.Alignment.TOP_LEFT, end=ft.Alignment.BOTTOM_RIGHT,
                                                    colors=[T.ACCENT_SOFT, T.SURFACE, T.BG]), **kw)
@@ -251,7 +270,7 @@ def confirm(page: ft.Page, heading: str, text: str, ok_label: str, on_ok: Callab
         page.pop_dialog()
         on_ok()
     page.show_dialog(ft.AlertDialog(
-        title=ft.Text(heading, weight=ft.FontWeight.W_600), content=ft.Container(body(text), width=420),
+        title=ft.Text(heading, weight=ft.FontWeight.W_600), content=ft.Container(body(text), width=T.px(420)),
         bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
         actions=[ghost("Cancel", on_click=lambda e: page.pop_dialog()),
                  ft.FilledButton(ok_label, on_click=go, style=ft.ButtonStyle(
@@ -259,7 +278,7 @@ def confirm(page: ft.Page, heading: str, text: str, ok_label: str, on_ok: Callab
 
 
 def progress_bar(value: float | None = None, color: str = T.ACCENT) -> ft.ProgressBar:
-    return ft.ProgressBar(value=value, color=color, bgcolor=T.SURFACE_3, border_radius=4, bar_height=6)
+    return ft.ProgressBar(value=value, color=color, bgcolor=T.SURFACE_3, border_radius=T.px(4), bar_height=6)
 
 
 def menu_items(actions: list[tuple | None]) -> list[ft.PopupMenuItem]:

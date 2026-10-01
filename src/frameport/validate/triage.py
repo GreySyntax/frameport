@@ -78,10 +78,12 @@ def game_lines(log: str, package: str | None = None) -> list[str]:
     return out
 
 
-def triage(log: str, state: str = "UNKNOWN", package: str | None = None) -> TriageResult:
+def triage(log: str, state: str = "UNKNOWN", package: str | None = None, crash: str = "") -> TriageResult:
+    """`crash` = the container's crash logcat (tombstones come from crash_dump's pid, so it isn't pid-filtered)."""
     db = database()
     kind = "pcvr" if package and package.startswith("rift.") else "quest"  # Proton/Revive logs vs Lepton logcat
     lines = game_lines(log, package) if kind == "quest" else [ANSI.sub("", l) for l in log.splitlines()]
+    lines += [ANSI.sub("", l) for l in crash.splitlines()]
     text = "\n".join(lines)
     res = TriageResult(state, None)
     for m in db["milestones"]:
@@ -98,6 +100,10 @@ def triage(log: str, state: str = "UNKNOWN", package: str | None = None) -> Tria
             line = next((l for l in lines if re.search(sig["pattern"], l)), hit.group(0))
             res.findings.append(Finding(sig["id"], sig["severity"], sig["diagnosis"], list(sig.get("suggest") or []),
                                         line.strip()[:300], bool(sig.get("use_alt"))))
+    # a root-cause finding hides the generic crash findings it explains
+    hidden = {h for sig in db["signatures"] if any(f.id == sig["id"] for f in res.findings)
+              for h in sig.get("supersedes") or []}
+    res.findings = [f for f in res.findings if f.id not in hidden]
     fps = re.findall(r"pacing: ([0-9.]+) fps", text)
     if fps:
         res.fps = float(fps[-1])

@@ -47,8 +47,9 @@ class Reporter:
         self.stage_name = name
         self.emit(Event("stage", message or name, name))
 
-    def progress(self, fraction: float, message: str = "") -> None:
-        self.emit(Event("progress", message, self.stage_name, fraction=max(0.0, min(1.0, fraction))))
+    def progress(self, fraction: float, message: str = "", **data) -> None:
+        """`data` may carry `speed` (e.g. "42.1 MB/s · ~3 min left") for transfers."""
+        self.emit(Event("progress", message, self.stage_name, fraction=max(0.0, min(1.0, fraction)), data=data))
 
     def check(self, name: str, ok: bool | None, detail: str = "") -> None:
         self.emit(Event("check", detail, self.stage_name, data={"name": name, "ok": ok}))
@@ -72,7 +73,8 @@ def printing_reporter(verbose: bool = True) -> Reporter:
             print(f"{stamp}    [{mark}] {e.data.get('name')}: {e.message}", flush=True)
         elif e.kind == "progress":
             if verbose and e.message:
-                print(f"{stamp}    {e.fraction:.0%} {e.message}", flush=True)
+                speed = f" · {e.data['speed']}" if e.data.get("speed") else ""
+                print(f"{stamp}    {e.fraction:.0%} {e.message}{speed}", flush=True)
         elif verbose or e.kind == "error":
             print(f"{stamp}    {e.message}", flush=True)
 

@@ -19,8 +19,8 @@ def show_art_dialog(app: "FramePortApp", package: str) -> None:
     g = library.game(package)
     term = ft.TextField(value=g.get("title") or package, dense=True, expand=True, border_radius=T.RADIUS_SM,
                         bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT, focused_border_color=T.ACCENT,
-                        content_padding=ft.Padding(12, 8, 12, 8), text_size=T.T_BODY)
-    results = ft.GridView(max_extent=190, child_aspect_ratio=0.8, spacing=T.S3, run_spacing=T.S3, height=400)
+                        content_padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)), text_size=T.T_BODY)
+    results = ft.GridView(max_extent=T.px(190), child_aspect_ratio=0.8, spacing=T.S3, run_spacing=T.S3, height=T.px(400))
     status = C.meta("")
 
     def pick(choice):
@@ -49,10 +49,10 @@ def show_art_dialog(app: "FramePortApp", package: str) -> None:
         def work():
             found = sources.search(term.value.strip())
             results.controls = [ft.Container(ft.Column([
-                ft.Container(C.art_fill(r["preview"], radius=8, height=120), height=120),
+                ft.Container(C.art_fill(r["preview"], radius=T.px(8), height=T.px(120)), height=T.px(120)),
                 C.body(r["name"] or "", T.TEXT, size=T.T_META, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 C.meta(r["source"]),
-            ], spacing=4), padding=T.S2, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE, ink=True,
+            ], spacing=T.px(4)), padding=T.S2, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE, ink=True,
                 on_click=lambda e, r=r: pick(r)) for r in found]
             status.value = f"{len(found)} results" if found else "Nothing found. Try a shorter or different name."
             C.update(status, results)
@@ -80,7 +80,7 @@ def show_art_dialog(app: "FramePortApp", package: str) -> None:
         content=ft.Container(ft.Column([
             ft.Row([term, C.secondary("Search", ft.Icons.SEARCH_ROUNDED, search)], spacing=T.S2),
             status, results,
-        ], spacing=T.S3, tight=True), width=660),
+        ], spacing=T.S3, tight=True), width=T.px(660)),
         bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
         actions=[C.ghost("Find automatically", ft.Icons.AUTO_AWESOME_ROUNDED, auto),
                  C.ghost("Close", on_click=lambda e: app.page.pop_dialog())]))

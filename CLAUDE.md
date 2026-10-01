@@ -142,6 +142,11 @@ Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattr
   at the PNGs. Flet 1.0 notes: `ft.run` must own the main thread; background work via `page.run_thread`; FilePicker is
   awaited (`await ft.FilePicker().get_directory_path()`); dialogs via `page.show_dialog/pop_dialog`; running from
   source needs `flet-desktop` (declared) and web mode needs `flet-web`.
+- GUI scale: `theme.set_scale()` (library setting `ui.scale`, "auto" = halfway to Windows' AppliedDPI/96 under WSL (150 % → 125 %; full was too large), where the
+  Linux window gets no Windows scaling; Settings → Appearance; applied at start). Sizes go through tokens or
+  `T.px(n)`, Material defaults through the theme's text_theme; never hardcode a bare pixel number in ui/.
+  `scripts/ui_smoke.py --scale 1.5 --viewport 2560x1440` renders it. Flet draws a grey box for invalid layouts (e.g.
+  an `expand` child in a `wrap=True` Row).
 - Stopping the GUI: `pkill -f` patterns match your own shell — use `pgrep -f "[b]in/frameport-gui|[f]let-desktop-light"`.
 
 ## Hard-won facts (don't re-learn these)
@@ -260,6 +265,19 @@ proc addr: …`), so adapter emulations of functions it doesn't know are unreach
 `native/xrshim` fills the gap: OVRPlugin's `dlopen("libopenxr_loader.so")` string is rewritten to the shim (see
 native/README). Verified on the device with Toy Master (2026-09-30): `extension shim: xrLoadRenderModelFB -> FrameBridge`.
 Toy Master doesn't request a model after that (it uses its own), so the glb loading path is only unit-tested.
+
+**Crash backtraces (2026-09-30):** Lepton writes tombstones only to `lepton-logcats/steamlaunch-<appid>/logcat-crash.log` (after "Dumping logcat"), not launch.log; agent v23 launch tests wait for it and return `crash_log`, triage gets it via `triage(..., crash=)` (not pid-filtered: tombstones come from crash_dump's pid). The guest is `userdebug` (`ro.debuggable=1`), so Lepton's Fossilize layer loads into every app whatever the APK's debuggable flag; it has no off switch. Fossilize crashed Deadpool VR on uninitialized attachment-reference pNexts (several, in FVulkanRenderPass and the render-target layout) → `frame.vk_sanitize` = `native/vkshim` (engine's `dlopen("libvulkan.so")` string → `libfp_vk.so`, wraps vkCreateRenderPass2/KHR, drops unreadable/wrong-sType pNexts; verified: game runs). overport's dispatcher aborts on swapchains > 4096 px (`cmp wN,#4096` in xrCreateSwapchain) → `frame.swapchain_limit` (verified with 4XVR, 7680×3840 accepted by the runtime). Both are default-on (parity classifies their rewrites as
+"expected"; library migration `quest_binary_fixes_v2`). The adapter shows cylinder layers (4XVR's movie screen) as ~15° quad strips (`cylinder_strips`, setting
+`cylinder_strips`); the runtime composites them at full resolution. Equirect (360°) layers are dropped: drawing
+them ourselves (GLES renderer in xrEndFrame: stutter, never showed 4XVR's VR video; Vulkan renderer: hung the
+Frame's GPU in AC Nexus; reading the newest *released* image broke 4XVR's theatre) was removed again on the owner's
+request — don't retry without a new approach. Converted layers must count as "swapped" or the original layer list
+is submitted (runtime returns -2 for every frame). A focus debounce (hiding the Frame's brief
+FOCUSED→VISIBLE→SYNCHRONIZED dips, which make 4XVR recenter) was also removed: AC Nexus stayed black with it (it
+hid 521 ms focus changes at start). The adapter is the committed one plus `cylinder_strips` only.
+
+**Lepton storage (2026-09-30):** each app's /sdcard (= /storage/emulated/0 → `<base>/lepton-data/external`) has `Movies`/`Download`/`Documents` symlinked to the Frame's `~/Videos`/`~/Downloads`/`~/Documents` (liblepton/mounting.sh, only if they exist at start); agent v24 `storage_targets` reads that mapping. Android's MediaProvider canonicalises paths to /home/steamos/... and rejects every file ("doesn't appear under [/system/media...]"), `sm list-volumes` is empty: the media index never works, apps must browse folders. Lepton installs with `adb install -g` (runtime permissions granted, MANAGE_EXTERNAL_STORAGE too). Send files: `install/files.py`, `frameport frame send|storage`, GUI Frame → Send files.
+**SteamVR per-app settings (2026-09-30):** editing steamvr.vrsettings while SteamVR runs is lost; the web API (127.0.0.1:27062 /app/setsettings) needs `x-steamvr-secret`. `native/vrsettings` = `fp_vrsettings.exe` (freestanding, OpenVR `FnTable:IVRSettings_003` as a Utility app, loads SteamVR's bin/win64/openvr_api.dll) sets them live and SteamVR persists them: section `steam.app.<shortcut appid>`, keys `preferredRefreshRate` (float) and `motionSmoothingOverride` (0 global, 1 on, 2 off, 3 always). Steam Link (vrlink) lists the Frame's rates 72/80/90/96/108/120/144 in vrserver.txt and follows the per-app preference ("host preferred N Hz"; whether the key is honoured is unverified in-headset yet). Judder metric: vrcompositor.txt session summary dropped + "Timed out. N total" (Stormland: 0 dropped but 313 timeouts in 2 min); fpsVR (`%LOCALAPPDATA%\fpsVR\*.json`, 0.1 ms histograms) gives p99 CPU/GPU ms. `pcvr.steamvr_tuning` (default on, PC only) applies on Play: highest rate whose budget ≥ p99×1.05, at least one step down, smoothing on.
 
 **Unresolved (as of 2026-09-28):** Arcsmith (right-eye distortion) and Time Stall (both eyes) — swap, tracking, Valve
 layers, depth, pacing ruled out. Sniper Elite VR (DEVICE LOST), Espire 1 (Mesa GL upload crash), HITMAN 3 (freedreno

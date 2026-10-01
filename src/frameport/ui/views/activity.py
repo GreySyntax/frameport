@@ -29,6 +29,11 @@ def _dur(job: Job) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
+
+def _progress_text(job: Job) -> str:
+    """Speed first: the line is ellipsized, and the file name matters least."""
+    return " · ".join(x for x in (job.speed, job.message) if x)
+
 class ActivityPanel:
     def __init__(self, app: "FramePortApp"):
         self.app = app
@@ -76,7 +81,7 @@ class ActivityPanel:
             elif running and j.id in self._live:
                 bar, msg, meta = self._live[j.id]
                 bar.value = j.fraction
-                msg.value = j.message or ""
+                msg.value = _progress_text(j)
                 meta.value = j.stage or ""
             tiles.append(cached[1])
         self._tiles = {j.id: self._tiles[j.id] for j in jobs}
@@ -96,34 +101,34 @@ class ActivityPanel:
                       (job.error or word) + (f" · {_dur(job)}" if job.finished else ""),
                       T.ERROR if job.state == "failed" else T.TEXT_2, max_lines=2)
         head = ft.Row([
-            ft.ProgressRing(width=18, height=18, stroke_width=2, color=T.ACCENT) if running
-            else ft.Icon(icon, color=color, size=20),
+            ft.ProgressRing(width=T.px(18), height=T.px(18), stroke_width=T.px(2), color=T.ACCENT) if running
+            else ft.Icon(icon, color=color, size=T.px(20)),
             ft.Column([C.body(job.title, T.TEXT, weight=ft.FontWeight.W_600, max_lines=2,
                               overflow=ft.TextOverflow.ELLIPSIS), meta],
-                      spacing=2, expand=True),
+                      spacing=T.px(2), expand=True),
             *([C.icon_btn(ft.Icons.CLOSE_ROUNDED, "Cancel", lambda e: self.app.jobs.cancel(job))] if job.active else []),
         ], vertical_alignment=ft.CrossAxisAlignment.START, spacing=T.S3)
         parts: list[ft.Control] = [head]
         if running:
             bar = C.progress_bar(job.fraction)
-            msg = C.meta(job.message or "", max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
+            msg = C.meta(_progress_text(job), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
             parts += [bar, msg]
             self._live[job.id] = (bar, msg, meta)
         if expanded:
             if job.stages:
                 parts.append(ft.Column([
                     ft.Row([ft.Icon(ft.Icons.CHECK_ROUNDED if (i < len(job.stages) - 1 or not running)
-                                    else ft.Icons.ARROW_RIGHT_ROUNDED, size=14,
+                                    else ft.Icons.ARROW_RIGHT_ROUNDED, size=T.px(14),
                                     color=T.OK if (i < len(job.stages) - 1 or job.state == "done") else T.ACCENT),
-                            C.meta(s, T.TEXT_2 if i < len(job.stages) - 1 else T.TEXT)], spacing=6)
-                    for i, s in enumerate(job.stages[-8:])], spacing=2))
+                            C.meta(s, T.TEXT_2 if i < len(job.stages) - 1 else T.TEXT)], spacing=T.px(6))
+                    for i, s in enumerate(job.stages[-8:])], spacing=T.px(2)))
             if job.checks:
                 parts.append(ft.Column([
-                    ft.Row([ft.Icon(CHECK_ICON[c["ok"]][0], color=CHECK_ICON[c["ok"]][1], size=14),
+                    ft.Row([ft.Icon(CHECK_ICON[c["ok"]][0], color=CHECK_ICON[c["ok"]][1], size=T.px(14)),
                             ft.Text(f"{c['name']}" + (f" — {c['detail']}" if c.get("detail") else ""), size=T.T_META,
                                     color=T.TEXT_2, expand=True, selectable=True)],
-                           spacing=6, vertical_alignment=ft.CrossAxisAlignment.START)
-                    for c in job.checks[-40:]], spacing=3))
+                           spacing=T.px(6), vertical_alignment=ft.CrossAxisAlignment.START)
+                    for c in job.checks[-40:]], spacing=T.px(3)))
             extra = self.app.job_followups(job)
             if extra:
                 parts.append(ft.Row(extra, spacing=T.S2, wrap=True))
@@ -137,9 +142,9 @@ class ActivityPanel:
             ], spacing=0, wrap=True))
             if show_log:
                 parts.append(ft.Container(ft.Column([ft.Text(
-                    "\n".join(job.log[-400:]), size=11, font_family="monospace", color=T.TEXT_2, selectable=True)],
+                    "\n".join(job.log[-400:]), size=T.px(11), font_family="monospace", color=T.TEXT_2, selectable=True)],
                     scroll=ft.ScrollMode.AUTO, auto_scroll=job.state == "running"),
-                    bgcolor=T.BG, border_radius=T.RADIUS_SM, padding=T.S2, height=240))
+                    bgcolor=T.BG, border_radius=T.RADIUS_SM, padding=T.S2, height=T.px(240)))
         return ft.Container(ft.Column(parts, spacing=T.S2), bgcolor=T.SURFACE, border_radius=T.RADIUS,
                             border=ft.Border.all(1, T.ACCENT if running else T.BORDER), padding=T.S3,
                             on_click=None if running else lambda e: self._toggle(self.expanded, job.id))

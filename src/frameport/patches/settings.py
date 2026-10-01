@@ -25,6 +25,9 @@ SETTINGS = [
     ("flip_emul", "int", 1, "Emulate flipped quads",
      "Blit quads flagged XrCompositionLayerImageLayoutFB VERTICAL_FLIP upside down (Vulkan). Fixes UI panels and "
      "text that show upside down (e.g. Assassin's Creed Nexus)."),
+    ("cylinder_strips", "int", 1, "Show curved panels",
+     "Cylinder layers (curved menus and movie screens, e.g. 4XVR), which the Frame's runtime lacks, are shown as a "
+     "few flat strips along the curve. 0 = drop them. 360° (equirect) layers can't be shown on the Frame."),
     ("scene_emul", "int", 0, "Emulate Meta scene (room)",
      "Fake XR_FB_scene/spatial entities: a guardian-sized room with floor, ceiling and four walls, for mixed-reality "
      "games that build their level from the room (e.g. Demeter)."),

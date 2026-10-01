@@ -42,7 +42,13 @@ def main() -> int:
     ap.add_argument("--game", default=None)
     ap.add_argument("--frame", default=None, help="steamos@host: also connect and run a launch-test job for --game")
     ap.add_argument("--no-test", action="store_true", help="with --frame: skip the launch-test job")
+    ap.add_argument("--scale", type=float, default=1.0, help="UI scale to render at (e.g. 1.5)")
+    ap.add_argument("--viewport", default="1280x820", help="browser size, e.g. 2560x1440")
     args = ap.parse_args()
+    from frameport.ui import theme
+
+    theme.set_scale(args.scale)
+    vw, vh = (int(x) for x in args.viewport.split("x"))
     args.out.mkdir(parents=True, exist_ok=True)
     game = args.game or (library.games()[0]["package"] if library.games() else None)
     steps = [("library", lambda a: a.navigate(0)), ("frame", lambda a: a.navigate(1)), ("tools", lambda a: a.navigate(2))]
@@ -93,7 +99,7 @@ def main() -> int:
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(args=["--use-gl=swiftshader", "--enable-unsafe-swiftshader"])
-                page = browser.new_page(viewport={"width": 1280, "height": 820})
+                page = browser.new_page(viewport={"width": vw, "height": vh})
                 page.goto(f"http://127.0.0.1:{PORT}", wait_until="networkidle", timeout=120_000)
                 shot = 0
                 deadline = time.time() + 240 + 8 * len(steps)

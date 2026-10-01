@@ -98,7 +98,7 @@ def test_unreal_layout_picks_shipping_exe(tmp_path):
     assert a.engine == "Unreal" and a.xr == "LibOVR"
     assert a.extra["exe"] == "Climb/Binaries/Win64/Climb-Win64-Shipping.exe"
     r = engine.suggest(a)  # Oculus/LibOVR Unreal: Revive on (PC OpenVR backend), files unchanged, crash reporter off
-    assert r.as_is and set(r.patches) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.libovr_redirect",
+    assert r.as_is and set(r.patches) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.libovr_redirect", "pcvr.steamvr_tuning",
                                           "pcvr.no_crash_reporter", "pcvr.oculus_unreal", "pcvr.xr_timefix"}
 
 
@@ -524,8 +524,65 @@ def test_openvr_native_routing(tmp_path):
     assert a.extra["openvr_native"] and a.extra["frame_native"] and not a.extra["needs_revive"]
     r = engine.suggest(a)
     assert "pcvr.revive" not in r.patches and "OpenVR" in a.xr
-    # add LibOVR markers -> Oculus, needs Revive, not Frame-native
+    # add LibOVR markers -> a dual-API Unity build: runs natively, SteamVR selected by argument
     (g / "OVRPlugin.dll").write_bytes(make_pe(extra=b"LibOVRRT%hs_%d.dll"))
     a2 = rift.analyze(g)
-    assert not a2.extra["frame_native"] and a2.extra["needs_revive"]
-    assert "pcvr.revive" in engine.suggest(a2).patches
+    assert a2.extra["launch"] == "native" and a2.extra["launch_args"] == "-vrmode OpenVR"
+    r2 = engine.suggest(a2)
+    assert "pcvr.revive" not in r2.patches and r2.patches["pcvr.launch_args"] == {"args": "-vrmode OpenVR"}
+    # without openvr_api: Oculus only -> FramePort's Revive
+    (g / "openvr_api64.dll").unlink()
+    (g / "SteamVR Game.exe").write_bytes(make_pe(imports=("kernel32.dll",)))
+    a3 = rift.analyze(g)
+    assert a3.extra["launch"] == "revive" and a3.extra["needs_revive"] and not a3.extra["frame_native"]
+    assert "pcvr.revive" in engine.suggest(a3).patches
+
+
+def test_repack_launcher_mode(tmp_path):
+    """A repack set up for SteamVR (bundled LibRevive64.dll + xinput loader next to the exe) runs directly: no second
+    Revive (that broke e.g. the Oculus Platform entitlement check), Wine loads the loader DLLs on the Frame."""
+    from frameport.core.models import Recipe
+    from frameport.patches import pcvr
+
+    g = tmp_path / "Wilsons Heart v1 -X"
+    (g / "Wilsons Heart").mkdir(parents=True)
+    (g / "Wilsons Heart/WHVR.exe").write_bytes(make_pe(imports=("libovrplatform64_1.dll", "kernel32.dll"),
+                                                      extra=b"LibOVRRT%hs_%d.dll"))
+    for n in ("LibRevive64.dll", "openvr_api64.dll", "xinput1_3.dll", "xinput9_1_0.dll"):
+        (g / "Wilsons Heart" / n).write_bytes(make_pe())
+    a = rift.analyze(g)
+    assert a.extra["launch"] == "repack" and a.extra["loader_dlls"] == ["xinput1_3.dll", "xinput9_1_0.dll"]
+    r = engine.suggest(a)
+    assert "pcvr.revive" not in r.patches and "pcvr.revive_openvr" not in r.patches
+    assert r.patches["pcvr.repack_launcher"] == {"dlls": "xinput1_3.dll,xinput9_1_0.dll"}
+    assert "pcvr.libovr_redirect" in r.patches  # the Frame points LibOVRRT at the bundled LibRevive
+    assert pcvr.launch_env(r)["WINEDLLOVERRIDES"] == "xinput1_3,xinput9_1_0=n,b"
+    assert engine.warnings(r) == []
+    r.patches["pcvr.revive"] = {}
+    assert any("conflicts" in w for w in engine.warnings(r))
+    # the user's extra overrides extend the loader's
+    r2 = Recipe("x", patches={"pcvr.repack_launcher": {"dlls": "xinput1_3.dll"},
+                              "pcvr.proton_env": {"env": "WINEDLLOVERRIDES=d3d11=n\nDXVK_HUD=fps"}})
+    assert pcvr.launch_env(r2) == {"WINEDLLOVERRIDES": "xinput1_3=n,b;d3d11=n", "DXVK_HUD": "fps"}
+
+
+def test_unreal_dual_api_uses_vd_bat_args(tmp_path):
+    """Unreal builds shipping the OpenXR plugin run natively; the repack's VD.bat arguments are reused with the
+    Oculus HMD module swapped for OpenXR (no desktop shortcuts needed)."""
+    from frameport.patches import pcvr
+
+    g = tmp_path / "Behemoth"
+    exe_dir = g / "BHM/Binaries/Win64"
+    exe_dir.mkdir(parents=True)
+    (exe_dir / "BHM-Win64-Shipping.exe").write_bytes(make_pe(extra=b"OculusHMD"))
+    (g / "Engine/Binaries/ThirdParty/OpenXR/win64").mkdir(parents=True)
+    (g / "Engine/Binaries/ThirdParty/OpenXR/win64/openxr_loader.dll").write_bytes(make_pe())
+    (exe_dir / "VD.bat").write_text('"C:\\Program Files\\VD\\VirtualDesktop.Streamer.exe" "BHM-Win64-Shipping.exe" '
+                                    "-steam -hmd=OculusXRHMD\r\n")
+    a = rift.analyze(g)
+    assert a.extra["launch"] == "native" and a.extra["launch_args"] == "-steam -hmd=OpenXR"
+    r = engine.suggest(a)
+    assert "pcvr.revive" not in r.patches and "pcvr.oculus_unreal" not in r.patches
+    assert pcvr.game_args(r) == ["-steam", "-hmd=OpenXR", "-nocrashreports"]
+    (exe_dir / "VD.bat").unlink()
+    assert rift.analyze(g).extra["launch_args"] == "-hmd=OpenXR"  # engine default without VD.bat

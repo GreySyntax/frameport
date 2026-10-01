@@ -60,9 +60,9 @@ class GameView:
         actions = self.actions()
         return ft.Container(
             ft.Stack([
-                C.art_fill(art, radius=16, hero=True, left=0, right=0, top=0, bottom=0,
+                C.art_fill(art, radius=T.px(16), hero=True, left=0, right=0, top=0, bottom=0,
                            placeholder_icon=ft.Icons.COMPUTER_ROUNDED if self.rift else ft.Icons.VIEW_IN_AR_ROUNDED),
-                ft.Container(left=0, right=0, top=0, bottom=0, border_radius=16, gradient=ft.LinearGradient(
+                ft.Container(left=0, right=0, top=0, bottom=0, border_radius=T.px(16), gradient=ft.LinearGradient(
                     begin=ft.Alignment.CENTER_LEFT, end=ft.Alignment.CENTER_RIGHT,
                     colors=[T.soft(T.BG, 0.97), T.soft(T.BG, 0.80), T.soft(T.BG, 0.25)], stops=[0.0, 0.45, 1.0])),
                 ft.Container(ft.Row([
@@ -70,7 +70,7 @@ class GameView:
                         C.ghost("Library", ft.Icons.ARROW_BACK_ROUNDED, lambda e: app.go("library")),
                         ft.Container(expand=True),
                         C.meta(facts.upper(), T.TEXT_2, weight=ft.FontWeight.W_600),
-                        ft.Text(display_title(g, self.twins), size=34, weight=ft.FontWeight.W_800, color=T.TEXT,
+                        ft.Text(display_title(g, self.twins), size=T.px(34), weight=ft.FontWeight.W_800, color=T.TEXT,
                                 max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                         ft.Row(chips, spacing=T.S2, wrap=True),
                         ft.Container(height=T.S2),
@@ -78,20 +78,21 @@ class GameView:
                     ], spacing=T.S2, expand=True),
                 ]), padding=ft.Padding(T.S4, T.S3, T.S5, T.S5), left=0, right=0, top=0, bottom=0),
             ]),
-            height=330, border_radius=16, border=ft.Border.all(1, T.BORDER))
+            height=T.px(330), border_radius=T.px(16), border=ft.Border.all(1, T.BORDER))
 
     def actions(self) -> ft.Control:
         app, g, pkg = self.app, self.g, self.package
         job = app.jobs.busy_with(pkg)
         if job:
-            pct = f" {job.fraction:.0%}" if job.fraction is not None else ""
+            pct = (f" {job.fraction:.0%}" if job.fraction is not None else "") + \
+                (f" · {job.speed.split(' · ')[0]}" if job.speed else "")
             return ft.Row([
-                ft.FilledButton(content=ft.Row([ft.ProgressRing(width=16, height=16, stroke_width=2, color=T.ON_ACCENT),
+                ft.FilledButton(content=ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ON_ACCENT),
                                                 ft.Text(f"{job.stage or 'Queued'}{pct}", color=T.ON_ACCENT,
-                                                        weight=ft.FontWeight.W_600)], spacing=10, tight=True),
+                                                        weight=ft.FontWeight.W_600)], spacing=T.px(10), tight=True),
                                 on_click=lambda e: app.show_activity(True),
-                                style=ft.ButtonStyle(bgcolor=T.ACCENT, shape=ft.RoundedRectangleBorder(radius=8),
-                                                     padding=ft.Padding(22, 18, 22, 18))),
+                                style=ft.ButtonStyle(bgcolor=T.ACCENT, shape=ft.RoundedRectangleBorder(radius=T.px(8)),
+                                                     padding=ft.Padding(T.px(22), T.px(18), T.px(22), T.px(18)))),
                 C.ghost("Cancel", ft.Icons.CLOSE_ROUNDED, lambda e: app.jobs.cancel(job)),
             ], spacing=T.S2)
         buttons: list[ft.Control] = []
@@ -120,11 +121,17 @@ class GameView:
                       "missing": "Not installed", None: "Frame not connected"}[st]
         frame_ok = st in ("installed", "outdated")
         # Oculus/LibOVR Rift games need Revive, which can't run on the Frame — be honest about it
-        rift_oculus = self.rift and "pcvr.revive" in (g.get("recipe") or {}).get("patches", {})
-        frame_color = (T.TEXT_3 if rift_oculus and not frame_ok else
+        patches = (g.get("recipe") or {}).get("patches", {})
+        rift_oculus = self.rift and "pcvr.revive" in patches
+        rift_repack = self.rift and "pcvr.repack_launcher" in patches
+        rift_platform = self.rift and (g["analysis"].get("extra") or {}).get("platform_sdk")
+        frame_color = (T.TEXT_3 if (rift_oculus or rift_platform) and not frame_ok else
                        T.OK if st == "installed" else T.WARN if st == "outdated" else T.TEXT_3)
         frame_sub = ("Oculus game — needs Revive, which doesn't run on the Frame. Play it on this PC (SteamVR)."
                      if rift_oculus else
+                     "Needs the Oculus Platform (Meta Horizon app) for its license check, which the Frame doesn't "
+                     "have — it crashes at startup there. Play it on this PC." if rift_platform else
+                     "Uses the repack's bundled Revive — experimental on the Frame" if rift_repack and not last else
                      f"Last launch test: {last.get('verdict')} · furthest: {last.get('milestone') or '—'}" if last
                      else "Runs directly — no Revive needed" if self.rift else "")
         cards.append(self.target_card(
@@ -137,8 +144,12 @@ class GameView:
             dep = app.pc_installs().get(pkg)
             cards.append(self.target_card(
                 ft.Icons.COMPUTER_ROUNDED, "This PC (Steam + Revive)",
-                "In your Steam library" if dep else "Not installed", T.PC if dep else T.TEXT_3,
-                f"Revive {dep.get('revive_version') or ''} · {dep.get('backend', 'openxr')} backend" if dep else "",
+                ("In your Steam library · launch settings changed — update it" if C.pc_outdated(g, dep) else
+                 "In your Steam library") if dep else "Not installed",
+                (T.WARN if C.pc_outdated(g, dep) else T.PC) if dep else T.TEXT_3,
+                (f"Revive {dep.get('revive_version') or ''} · {dep.get('backend') or 'openxr'} backend"
+                 if dep.get("revive_win") else "The repack's own Revive · runs the game directly"
+                 if dep.get("launch") == "repack" else "Runs the game directly") if dep else "",
                 [C.icon_btn(ft.Icons.SCIENCE_OUTLINED, "Launch test on this PC",
                             lambda e: app.test_game(pkg, "pc")),
                  C.icon_btn(ft.Icons.DELETE_OUTLINE_ROUNDED, "Remove from this PC's Steam library",
@@ -147,10 +158,10 @@ class GameView:
 
     def target_card(self, icon, name, line, color, sub, buttons) -> ft.Control:
         return C.card(ft.Row([
-            ft.Container(ft.Icon(icon, color=color, size=22), width=44, height=44, border_radius=10,
+            ft.Container(ft.Icon(icon, color=color, size=T.px(22)), width=T.px(44), height=T.px(44), border_radius=T.px(10),
                          bgcolor=T.soft(color, 0.14), alignment=ft.Alignment.CENTER),
             ft.Column([C.body(name, T.TEXT, weight=ft.FontWeight.W_600), C.body(line, color, size=T.T_META)]
-                      + ([C.meta(sub)] if sub else []), spacing=2, expand=True),
+                      + ([C.meta(sub)] if sub else []), spacing=T.px(2), expand=True),
             *buttons,
         ], spacing=T.S3), expand=True)
 
@@ -200,7 +211,7 @@ class GameView:
             if "details" in self.g:
                 return None
             return C.section("About this game", C.card(ft.Row([
-                ft.ProgressRing(width=16, height=16, stroke_width=2, color=T.ACCENT),
+                ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT),
                 C.meta("Looking up the store description and screenshots…")], spacing=T.S2)))
         parts: list[ft.Control] = []
         if shots:
@@ -208,16 +219,16 @@ class GameView:
             for i, shot in enumerate(shots):
                 url = thumbs.asset_url(thumbs.thumb(shot, 480, shot.stem))
                 strip.controls.append(ft.Container(
-                    C.art_fill(url, radius=T.RADIUS_SM, width=256, height=144), border_radius=T.RADIUS_SM,
+                    C.art_fill(url, radius=T.RADIUS_SM, width=T.px(256), height=T.px(144)), border_radius=T.RADIUS_SM,
                     on_click=lambda e, i=i: self.lightbox(shots, i), ink=True, tooltip="View screenshot"))
             parts.append(strip)
         facts = [(k, d.get(k)) for k in ("developer", "publisher", "release_date") if d.get(k)]
         if facts:
             parts.append(ft.Row([ft.Column([C.meta({"developer": "Developer", "publisher": "Publisher",
-                                                     "release_date": "Released"}[k]), C.body(v, T.TEXT)], spacing=2)
+                                                     "release_date": "Released"}[k]), C.body(v, T.TEXT)], spacing=T.px(2))
                                  for k, v in facts], spacing=T.S6, wrap=True))
         if d.get("genres"):
-            parts.append(ft.Row([C.pill(g, T.TEXT_2) for g in d["genres"][:8]], spacing=6, wrap=True))
+            parts.append(ft.Row([C.pill(g, T.TEXT_2) for g in d["genres"][:8]], spacing=T.px(6), wrap=True))
         text = d.get("description") or d.get("short") or ""
         if text:
             long = len(text) > 480
@@ -243,7 +254,7 @@ class GameView:
     def lightbox(self, shots: list, index: int) -> None:
         page = self.app.page
         state = {"i": index}
-        img = ft.Image(src=thumbs.asset_url(shots[index]), fit=ft.BoxFit.CONTAIN, width=1100, height=620,
+        img = ft.Image(src=thumbs.asset_url(shots[index]), fit=ft.BoxFit.CONTAIN, width=T.px(1100), height=T.px(620),
                        border_radius=T.RADIUS_SM)
         counter = C.meta(f"{index + 1} / {len(shots)}")
 
@@ -258,7 +269,7 @@ class GameView:
                 C.icon_btn(ft.Icons.CHEVRON_LEFT_ROUNDED, "Previous", lambda e: show(-1)), counter,
                 C.icon_btn(ft.Icons.CHEVRON_RIGHT_ROUNDED, "Next", lambda e: show(1)),
                 ft.Container(expand=True), C.ghost("Close", on_click=lambda e: page.pop_dialog())])],
-                spacing=T.S2, tight=True), width=1100),
+                spacing=T.S2, tight=True), width=T.px(1100)),
             bgcolor=T.BG, shape=ft.RoundedRectangleBorder(radius=T.RADIUS), content_padding=T.S3))
 
     def tags(self) -> ft.Control:
@@ -284,25 +295,25 @@ class GameView:
             else:
                 e.control.update()
 
-        field = ft.TextField(hint_text="Add a tag", dense=True, width=150, text_size=T.T_META,
-                             border_radius=20, bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT,
-                             focused_border_color=T.ACCENT, content_padding=ft.Padding(12, 6, 12, 6), on_submit=add)
+        field = ft.TextField(hint_text="Add a tag", dense=True, width=T.px(150), text_size=T.T_META,
+                             border_radius=T.px(20), bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT,
+                             focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(6), T.px(12), T.px(6)), on_submit=add)
 
         def fill():
             mine = user_tags(self.g)
             chips = [ft.Container(ft.Row([C.body(t, T.TEXT, size=T.T_META),
-                                          ft.Icon(ft.Icons.CLOSE_ROUNDED, size=13, color=T.TEXT_2)], spacing=4, tight=True),
-                                  bgcolor=T.ACCENT_SOFT, border_radius=20, padding=ft.Padding(10, 5, 8, 5),
+                                          ft.Icon(ft.Icons.CLOSE_ROUNDED, size=T.px(13), color=T.TEXT_2)], spacing=T.px(4), tight=True),
+                                  bgcolor=T.ACCENT_SOFT, border_radius=T.px(20), padding=ft.Padding(T.px(10), T.px(5), T.px(8), T.px(5)),
                                   on_click=lambda e, t=t: remove(t), tooltip="Remove tag")
                      for t in mine]
-            chips += [ft.Container(C.meta(t), border=ft.Border.all(1, T.BORDER), border_radius=20,
-                                   padding=ft.Padding(10, 5, 10, 5),
+            chips += [ft.Container(C.meta(t), border=ft.Border.all(1, T.BORDER), border_radius=T.px(20),
+                                   padding=ft.Padding(T.px(10), T.px(5), T.px(10), T.px(5)),
                                   tooltip="Added automatically (engine, VR API or store genre)")
                       for t in auto_tags(self.g) if t.lower() not in {m.lower() for m in mine}]
             used = {x for g in self.games for x in user_tags(g)}
             suggestions = [t for t in all_tags(self.games) if t in used and t not in mine][:6]
             chips.append(field)
-            chips += [ft.Container(C.meta("+ " + t, T.ACCENT), padding=ft.Padding(6, 5, 6, 5),
+            chips += [ft.Container(C.meta("+ " + t, T.ACCENT), padding=ft.Padding(T.px(6), T.px(5), T.px(6), T.px(5)),
                                    on_click=lambda e, t=t: save(user_tags(self.g) + [t]), tooltip="Add this tag")
                       for t in suggestions]
             row.controls = chips
@@ -324,7 +335,7 @@ class GameView:
                 T.ACCENT
         chips = [ft.Container(C.body(p.title, T.TEXT, size=T.T_META),
                               tooltip=C.tip(recipe.reasons.get(p.id) or p.description),
-                              bgcolor=T.SURFACE_3, border_radius=6, padding=ft.Padding(10, 5, 10, 5))
+                              bgcolor=T.SURFACE_3, border_radius=T.px(6), padding=ft.Padding(T.px(10), T.px(5), T.px(10), T.px(5)))
                  for p in visible]
         base_count = len(on) - len(visible)
         if base_count > 0:
@@ -352,7 +363,7 @@ class GameView:
         return C.section(
             "What FramePort will do",
             C.card(ft.Column([
-                ft.Row([ft.Icon(icon, color=color, size=18), C.body(lead, T.TEXT, weight=ft.FontWeight.W_500,
+                ft.Row([ft.Icon(icon, color=color, size=T.px(18)), C.body(lead, T.TEXT, weight=ft.FontWeight.W_500,
                                                                      expand=True)], spacing=T.S2),
                 ft.Row(chips, spacing=T.S2, run_spacing=T.S2, wrap=True) if chips else
                 (ft.Container() if as_is else C.meta("Nothing to patch: it runs as is.")),
@@ -423,23 +434,23 @@ class GameView:
                 extra = None
                 if cat == "adapter":
                     val = recipe.params(p.id).get("value", p.params[0].default)
-                    extra = ft.TextField(value=str(val), width=90, dense=True, text_size=T.T_BODY,
+                    extra = ft.TextField(value=str(val), width=T.px(90), dense=True, text_size=T.T_BODY,
                                          border_color=T.BORDER, on_blur=set_value(p.id, p.params[0].kind))
                 elif p.params:
                     q = p.params[0]
                     multi = q.kind == "text"
                     extra = ft.TextField(value=str(recipe.params(p.id).get(q.key, q.default) or ""), hint_text=q.help,
-                                         width=260, dense=True, multiline=multi, min_lines=1,
+                                         width=T.px(260), dense=True, multiline=multi, min_lines=1,
                                          max_lines=4 if multi else 1, text_size=T.T_BODY, border_color=T.BORDER,
                                          on_blur=set_param(p.id, q.key))
                 rows.append(ft.Container(ft.Row([
                     ft.Column([ft.Row([C.body(p.title, T.TEXT, weight=ft.FontWeight.W_500)]
                                       + ([C.pill("experimental", T.WARN, tooltip=C.tip(HELP["experimental"]))]
                                          if p.experimental else [])
-                                      + [C.meta(p.id)], spacing=T.S2, wrap=True), *sub], spacing=3, expand=True),
+                                      + [C.meta(p.id)], spacing=T.S2, wrap=True), *sub], spacing=T.px(3), expand=True),
                     *([extra] if extra else []),
                     ft.Switch(value=on, on_change=toggle(p.id), active_color=T.ACCENT),
-                ], spacing=T.S3), padding=ft.Padding(T.S4, 10, T.S4, 10), border=ft.Border(
+                ], spacing=T.S3), padding=ft.Padding(T.S4, T.px(10), T.S4, T.px(10)), border=ft.Border(
                     top=ft.BorderSide(1, T.BORDER))))
             if not rows:
                 continue

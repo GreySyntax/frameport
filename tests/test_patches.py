@@ -149,3 +149,51 @@ def test_recipe_roundtrip():
 
     r = Recipe("a.b", {"frame.adapter": {}}, ["patch_remove_unreal_force_quit"], True)
     assert library.recipe_from_dict(library.recipe_to_dict(r)) == r
+
+
+def _fixture(name):
+    from pathlib import Path
+
+    return (Path(__file__).with_name("fixtures") / name).read_bytes()
+
+
+def test_swapchain_limit_raises_overport_guard():
+    from frameport.analysis import elf
+    from frameport.patches.frame.swapchain_limit import raise_swapchain_limit
+
+    lib = _fixture("libfakeoverport_arm64.so")
+    out, n = raise_swapchain_limit(lib)
+    assert n == 2 and len(out) == len(lib)
+    cmps = [o for _, m, o in elf.text_instructions(out) if m == "cmp" and "lsl #12" in o]
+    assert cmps and all(o.endswith("#4, lsl #12") for o in cmps)  # 16384
+    assert raise_swapchain_limit(out) == (None, 0)  # idempotent
+    assert elf.dyn_symbols(out, True) == elf.dyn_symbols(lib, True)
+    assert raise_swapchain_limit(_fixture("libfakeengine_arm64.so")) == (None, 0)  # no xrCreateSwapchain
+
+
+def test_swapchain_limit_suggested_for_video_players():
+    p = base.get("frame.swapchain_limit")
+    assert p.detect(_analysis(engine="Other", libs=["libavcodec4x.so", "libvr4p-oculus.so"])).recommended
+    assert p.default_on and p.detect(_analysis(engine="Unity", libs=["libunity.so"])).recommended
+
+
+def test_vk_sanitize_routes_engine_vulkan_through_shim(tmp_path, quest_manifest):
+    from frameport.analysis import elf
+
+    engine = _fixture("libfakeengine_arm64.so")
+    apk = _apk(tmp_path, quest_manifest)
+    with zipfile.ZipFile(apk, "a") as z:
+        z.writestr("lib/arm64-v8a/libUE4.so", engine)
+    with ApkWorkspace(apk) as ws:
+        assert base.get("frame.vk_sanitize").apply(base.ApkContext(ws, _analysis(engine="Unreal"), {}, Reporter(), {}))
+        out = ws.write(tmp_path / "out.apk")
+    with zipfile.ZipFile(out) as z:
+        patched = z.read("lib/arm64-v8a/libUE4.so")
+        shim = z.read("lib/arm64-v8a/libfp_vk.so")
+    assert len(patched) == len(engine) and b"libfp_vk.so\0\0" in patched and b"libvulkan.so\0" not in patched
+    assert elf.soname(shim) == "libfp_vk.so" and "libvulkan.so" in elf.needed(shim)
+    assert {"vkGetInstanceProcAddr", "vkGetDeviceProcAddr", "vkCreateRenderPass2"} <= elf.dyn_symbols(shim, True)
+    # a game without the dlopen string is left alone
+    apk2 = _apk(tmp_path, quest_manifest)
+    with ApkWorkspace(apk2) as ws:
+        assert not base.get("frame.vk_sanitize").apply(base.ApkContext(ws, _analysis(engine="Unreal"), {}, Reporter(), {}))

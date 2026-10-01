@@ -39,8 +39,8 @@ def show_exe_dialog(app: "FramePortApp", package: str, remaining: int = 0,
                 ft.Row([C.body(name, T.TEXT, weight=ft.FontWeight.W_600), C.meta(_size(c.get("size") or 0))],
                        spacing=T.S2),
                 C.meta(folder or "(top folder)", selectable=True),
-                ft.Row(tags, spacing=6, wrap=True) if tags else ft.Container(),
-            ], spacing=4, expand=True),
+                ft.Row(tags, spacing=T.px(6), wrap=True) if tags else ft.Container(),
+            ], spacing=T.px(4), expand=True),
         ], vertical_alignment=ft.CrossAxisAlignment.START), padding=ft.Padding(T.S2, T.S2, T.S3, T.S2),
             border_radius=T.RADIUS_SM, bgcolor=T.SURFACE if c["path"] != current else T.ACCENT_SOFT,
             on_click=lambda e, p=c["path"]: (setattr(group, "value", p), group.update())))
@@ -72,6 +72,6 @@ def show_exe_dialog(app: "FramePortApp", package: str, remaining: int = 0,
         title=ft.Row([ft.Text(title, weight=ft.FontWeight.W_600, expand=True)]
                      + ([C.meta(f"{remaining} more after this")] if remaining else [])),
         content=ft.Container(ft.Column([C.body(lead), group], spacing=T.S4, scroll=ft.ScrollMode.AUTO, tight=True),
-                             width=620, height=min(120 + 96 * len(cands), 520)),
+                             width=T.px(620), height=min(120 + 96 * len(cands), 520)),
         bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
         actions=[C.ghost("Decide later", on_click=later), C.primary("Use this program", on_click=use)]))

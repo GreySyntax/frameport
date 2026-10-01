@@ -1,8 +1,12 @@
 """PC VR (Oculus Rift) options, shown in the UI as patches like the overport ones.
 
-They don't edit the game: they decide how FramePort launches it. On this PC the Steam shortcut runs
-ReviveInjector.exe (Revive's OpenXR backend by default); on the Frame the launcher runs the same injector under
-Proton (ARM64, x86 emulated by FEX inside Proton), which bridges OpenXR to the Frame runtime via wineopenxr.
+They don't edit the game: they decide how FramePort launches it. The analysis (analysis/rift.py launch_mode)
+picks one of three ways, and the patches below follow it (the user can change each one):
+  repack  pcvr.repack_launcher: the folder is already set up for SteamVR (bundled Revive + its loader DLL) → run
+          the exe directly (on the Frame, Wine is told to load the loader DLL from the game folder)
+  native  pcvr.launch_args: SteamVR/OpenXR-capable build → run the exe directly with the arguments that select it
+  revive  pcvr.revive: Oculus-only → the Steam shortcut runs ReviveInjector.exe (on the Frame: under Proton, OpenXR
+          bridged to the Frame runtime via wineopenxr)
 """
 from __future__ import annotations
 
@@ -11,6 +15,14 @@ from .base import Param, Patch, Suggestion, register
 
 def _rift(analysis) -> bool:
     return (analysis.extra or {}).get("kind") == "rift"
+
+
+def _mode(analysis) -> str:
+    """repack | native | revive (older analyses without "launch": from their flags)."""
+    x = analysis.extra or {}
+    if x.get("launch"):
+        return x["launch"]
+    return "native" if x.get("frame_native") else "revive"
 
 
 class _PcvrPatch(Patch):
@@ -27,14 +39,19 @@ class Revive(_PcvrPatch):
     description = ("Launch the game through Revive's injector, which translates the Oculus PC SDK (LibOVR) to OpenXR. "
                    "Needed by every Oculus Rift game that isn't OpenXR-native. FramePort downloads Revive itself.")
     order = 10
+    conflicts = ("pcvr.repack_launcher",)
 
     def detect(self, analysis):
         # Oculus/LibOVR games need Revive to get VR (the bare exe runs flat). Off for games with no Oculus code, which
         # SteamVR (PC) and the Frame's wineopenxr run directly (e.g. Rick and Morty, handled by its catalog recipe).
         if not _rift(analysis):
             return None
-        if analysis.extra.get("frame_native"):
-            return Suggestion(False, "No Oculus code: SteamVR / the Frame run it directly, without Revive.")
+        mode = _mode(analysis)
+        if mode == "repack":
+            return Suggestion(False, "The game folder already has its own Revive set up (see 'Use the repack's "
+                                     "launcher'); a second Revive breaks it.")
+        if mode == "native":
+            return Suggestion(False, "Supports SteamVR/OpenXR itself: SteamVR / the Frame run it directly.")
         return Suggestion(True, "Oculus/LibOVR game: Revive translates it to SteamVR/OpenXR (without it it runs flat).")
 
 
@@ -50,28 +67,72 @@ class ReviveOpenVR(_PcvrPatch):
     def detect(self, analysis):
         if not _rift(analysis):
             return None
-        if analysis.extra.get("frame_native"):
-            return Suggestion(False, "Runs on SteamVR directly; no Revive needed.")
+        if _mode(analysis) != "revive":
+            return Suggestion(False, "Not launched through FramePort's Revive.")
         return Suggestion(True, "PC: Revive's SteamVR/OpenVR backend is the most reliable path.")
 
 
 class LibovrRedirect(_PcvrPatch):
     id = "pcvr.libovr_redirect"
     title = "Provide the Oculus runtime from Revive (Frame)"
-    description = ("On the Frame, place Revive's runtime where the game's Oculus SDK looks for LibOVRRT so it can load "
-                   "a VR runtime (pure runtime substitution — this is what Revive's LoadLibrary redirect does). It "
-                   "does NOT bypass the Oculus runtime signature check: a game that verifies the runtime's signature "
-                   "will still refuse it (it can't run on the Frame). Only helps builds that don't verify it. Requires "
-                   "Revive; ignored on this PC (Revive handles the redirect there).")
+    description = ("On the Frame, place Revive's runtime (FramePort's Revive, or the repack's bundled LibRevive) where "
+                   "the game's Oculus SDK looks for LibOVRRT so it can load a VR runtime (pure runtime substitution — "
+                   "what Revive's LoadLibrary hook does on Windows; that hook doesn't work under Proton on the Frame). "
+                   "It does NOT bypass the Oculus runtime signature check: a game that verifies the runtime's "
+                   "signature will still refuse it. Ignored on this PC (Revive's hook handles it there).")
     order = 12
-    requires = ("pcvr.revive",)
 
     def detect(self, analysis):
         if not _rift(analysis):
             return None
-        if analysis.extra.get("frame_native"):
-            return Suggestion(False, "Runs directly; no Oculus runtime needed.")
+        if _mode(analysis) == "native":
+            return Suggestion(False, "Supports SteamVR/OpenXR itself: no Oculus runtime needed.")
         return Suggestion(True, "Lets the game find Revive's runtime on the Frame (doesn't bypass its signature check).")
+
+
+class RepackLauncher(_PcvrPatch):
+    id = "pcvr.repack_launcher"
+    title = "Use the repack's launcher (bundled Revive)"
+    description = ("Some game folders are already set up for SteamVR: a Revive copy (LibRevive64.dll) next to the "
+                   "game, started by a small loader DLL (e.g. xinput1_3.dll) that Windows loads from the game's "
+                   "folder. Then FramePort starts the game program directly — like double-clicking it — instead of "
+                   "through its own Revive (two Revives conflict; e.g. the Oculus Platform check then fails). On the "
+                   "Frame, Wine is told to use those loader DLLs from the game folder instead of its own.")
+    order = 8
+    conflicts = ("pcvr.revive",)
+    params = [Param("dlls", "str", "", "loader DLLs next to the exe (comma-separated)")]
+
+    def detect(self, analysis):
+        if not _rift(analysis):
+            return None
+        if _mode(analysis) == "repack":
+            dlls = ",".join((analysis.extra.get("loader_dlls") or []))
+            return Suggestion(True, f"The game folder has its own Revive and loader ({dlls}): run the game directly.",
+                              {"dlls": dlls})
+        return None
+
+    def applies(self, analysis) -> bool:
+        return _rift(analysis) and bool((analysis.extra or {}).get("loader_dlls"))
+
+
+class LaunchArgs(_PcvrPatch):
+    id = "pcvr.launch_args"
+    title = "Game arguments (select SteamVR / OpenXR)"
+    description = ("Command-line arguments for the game program. Games that support several VR runtimes pick one "
+                   "with an argument, e.g. Unreal's -hmd=OpenXR or -hmd=SteamVR, Unity's -vrmode OpenVR, or a "
+                   "game's own switch (-Runtime=OpenXRHMD). FramePort fills them in from the game files (the "
+                   "repack's VD.bat with the Oculus module swapped for OpenXR, else the engine's usual switch).")
+    order = 9
+    params = [Param("args", "str", "", "arguments, e.g. -hmd=OpenXR")]
+
+    def detect(self, analysis):
+        if not _rift(analysis):
+            return None
+        args = (analysis.extra or {}).get("launch_args") or ""
+        if args:
+            src = (analysis.extra or {}).get("launch_args_from") or "the game files"
+            return Suggestion(True, f"Selects SteamVR/OpenXR ({src}).", {"args": args})
+        return None
 
 
 class XrTimefix(_PcvrPatch):
@@ -121,8 +182,8 @@ class OculusUnreal(_PcvrPatch):
     def detect(self, analysis):
         if not (_rift(analysis) and analysis.engine == "Unreal"):
             return None
-        if analysis.extra.get("frame_native"):
-            return Suggestion(False, "No Oculus plugin in use: runs directly.")
+        if _mode(analysis) == "native":
+            return Suggestion(False, "Uses SteamVR/OpenXR, not its Oculus plugin.")
         return Suggestion(True, "Unreal game: its Oculus plugin checks for the Oculus service before it starts VR.")
 
     def applies(self, analysis) -> bool:
@@ -154,14 +215,53 @@ class ProtonEnv(_PcvrPatch):
     params = [Param("env", "text", "", "KEY=value lines")]
 
 
-for _cls in (Revive, ReviveOpenVR, LibovrRedirect, NoCrashReporter, OculusUnreal, XrTimefix, ProtonLog,
-             ProtonTool, ProtonEnv):
+class SteamvrTuning(_PcvrPatch):
+    id = "pcvr.steamvr_tuning"
+    title = "Automatic SteamVR performance settings (this PC)"
+    description = ("Before each Play on this PC, FramePort reads SteamVR's record of the game's last session (frames "
+                   "dropped; frame times from fpsVR if installed). If it dropped frames, it lowers the game's refresh "
+                   "rate to one whose frame budget fits (e.g. 96 → 90 Hz) and turns motion smoothing on, through "
+                   "SteamVR's per-application settings; each later session can step down again. Set a refresh rate "
+                   "or smoothing mode here to choose yourself. Ignored on the Frame.")
+    order = 45
+    params = [Param("refresh", "float", 0.0, "refresh rate in Hz (0 = automatic)", 0, 144),
+              Param("smoothing", "str", "auto", "motion smoothing: auto, on, off, always or global")]
+
+    def detect(self, analysis):
+        if _rift(analysis):
+            return Suggestion(True, "Adjusts the refresh rate / motion smoothing when the game can't keep up.")
+        return None
+
+
+for _cls in (RepackLauncher, LaunchArgs, Revive, ReviveOpenVR, LibovrRedirect, NoCrashReporter, OculusUnreal, XrTimefix, ProtonLog,
+             ProtonTool, ProtonEnv, SteamvrTuning):
     register(_cls)
 
 
 def game_args(recipe) -> list[str]:
     """Extra command-line arguments for the game itself."""
-    return ["-nocrashreports"] if "pcvr.no_crash_reporter" in recipe.patches else []
+    import shlex
+
+    out = []
+    if "pcvr.launch_args" in recipe.patches:
+        raw = str(recipe.params("pcvr.launch_args").get("args") or "")
+        try:
+            out += shlex.split(raw, posix=True)
+        except ValueError:
+            out += raw.split()
+    if "pcvr.no_crash_reporter" in recipe.patches and "-nocrashreports" not in out:
+        out.append("-nocrashreports")
+    return out
+
+
+def loader_overrides(recipe) -> str:
+    """WINEDLLOVERRIDES entry for the repack's loader DLLs (native first, then Wine's builtin)."""
+    if "pcvr.repack_launcher" not in recipe.patches:
+        return ""
+    raw = str(recipe.params("pcvr.repack_launcher").get("dlls") or "")
+    names = [n.strip().lower().removesuffix(".dll") for n in raw.replace(";", ",").split(",") if n.strip()]
+    names = [n for n in names if n.replace("_", "").isalnum()]
+    return f"{','.join(names)}=n,b" if names else ""
 
 
 def launch_env(recipe) -> dict[str, str]:
@@ -169,10 +269,14 @@ def launch_env(recipe) -> dict[str, str]:
     env = {}
     if "pcvr.proton_log" in recipe.patches:
         env["PROTON_LOG"] = "1"
+    if loader_overrides(recipe):
+        env["WINEDLLOVERRIDES"] = loader_overrides(recipe)
     raw = recipe.params("pcvr.proton_env").get("env") or ""
     items = raw.items() if isinstance(raw, dict) else (line.partition("=")[::2] for line in str(raw).splitlines())
     for k, v in items:
         k = k.strip()
-        if k:
+        if k == "WINEDLLOVERRIDES" and env.get(k):  # the user's overrides extend the loader's
+            env[k] = env[k] + ";" + str(v).strip()
+        elif k:
             env[k] = str(v).strip()
     return env

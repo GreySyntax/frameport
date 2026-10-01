@@ -27,6 +27,7 @@ class Job:
     stage: str = ""
     message: str = ""
     fraction: float | None = None
+    speed: str = ""  # transfers: "42.1 MB/s · ~3 min left"
     checks: list[dict] = field(default_factory=list)
     log: list[str] = field(default_factory=list)
     stages: list[str] = field(default_factory=list)  # every stage seen, in order
@@ -59,11 +60,12 @@ class Job:
     def _on_event(self, ev: Event) -> None:
         self.version += 1
         if ev.kind == "stage":
-            self.stage, self.message, self.fraction = ev.message, "", None
+            self.stage, self.message, self.fraction, self.speed = ev.message, "", None, ""
             if not self.stages or self.stages[-1] != ev.message:
                 self.stages.append(ev.message)
         elif ev.kind == "progress":
             self.fraction = ev.fraction
+            self.speed = ev.data.get("speed") or ""
             if ev.message:
                 self.message = ev.message
         elif ev.kind == "check":

@@ -36,6 +36,7 @@
 #include <openxr/openxr.h>
 #include <android/log.h>
 #include <dlfcn.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,6 +62,7 @@ static int respace_kick = 0;
 static int strip_depth = 0;
 static int flip_quads = 0;
 static int flip_emul_setting = 1;
+static int cylinder_strips_on = 1;  // show cylinder layers as flat quad strips (cylinder_strips)
 static int scene_emul;  // scene emulation setting (per game)
 static float scene_height = 2.5f;  // scene emulation ceiling height (m)
 static float scene_width, scene_depth;  // optional room size override (m)
@@ -91,6 +93,7 @@ static void read_settings(const char *path) {
         if (sscanf(line, "strip_depth=%f", &value) == 1) strip_depth = value != 0;
         if (sscanf(line, "flip_quads=%f", &value) == 1) flip_quads = value != 0;
         if (sscanf(line, "flip_emul=%f", &value) == 1) flip_emul_setting = value != 0;
+        if (sscanf(line, "cylinder_strips=%f", &value) == 1) cylinder_strips_on = value != 0;
         if (sscanf(line, "scene_emul=%f", &value) == 1) scene_emul = value != 0;
         if (sscanf(line, "scene_height=%f", &value) == 1 && value > 1.5f && value < 5.0f) scene_height = value;
         if (sscanf(line, "scene_width=%f", &value) == 1 && value > 0.5f && value < 20.0f) scene_width = value;
@@ -353,6 +356,49 @@ XRAPI_ATTR XrResult XRAPI_CALL xrDestroySwapchain(XrSwapchain swapchain) {
     forget_swapchain(swapchain);
     flip_on_destroy(swapchain);
     return fn(swapchain);
+}
+
+// ---- cylinder layers (XR_KHR_composition_layer_cylinder), which the Frame runtime lacks: shown as a few flat quads
+// (chords of the arc), each showing its share of the image. The runtime composites them from the app's own image at
+// full resolution, and they stay within centimetres of where the app aims its pointer at the curved surface.
+static XrVector3f strip_rotate(XrQuaternionf q, XrVector3f v) {  // v' = v + 2w(u x v) + 2 u x (u x v)
+    XrVector3f u = {q.x, q.y, q.z}, t = {2 * (u.y * v.z - u.z * v.y), 2 * (u.z * v.x - u.x * v.z), 2 * (u.x * v.y - u.y * v.x)};
+    return (XrVector3f){v.x + q.w * t.x + (u.y * t.z - u.z * t.y), v.y + q.w * t.y + (u.z * t.x - u.x * t.z),
+                        v.z + q.w * t.z + (u.x * t.y - u.y * t.x)};
+}
+
+static XrQuaternionf strip_mul(XrQuaternionf a, XrQuaternionf b) {
+    return (XrQuaternionf){a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+                           a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
+}
+
+// Returns the number of quads written to out (0 = not possible). budget = layers still allowed in the frame.
+static int cylinder_strips(const XrCompositionLayerCylinderKHR *c, XrCompositionLayerQuad *out, int budget) {
+    if (c->centralAngle <= 0 || c->aspectRatio <= 0) return 0;
+    float r = c->radius > 0 && c->radius < 1e4f ? c->radius : 3.0f;
+    int n = (int)ceilf(c->centralAngle / 0.26f);  // ~15 degrees per strip
+    if (n > 8) n = 8;
+    if (n > budget) n = budget;
+    if (n < 1) return 0;
+    float a = c->centralAngle / (float)n, height = r * c->centralAngle / c->aspectRatio;
+    const XrRect2Di rect = c->subImage.imageRect;
+    for (int i = 0; i < n; ++i) {
+        float phi = -c->centralAngle / 2 + (i + 0.5f) * a;  // + = towards +X (the image's right)
+        XrQuaternionf yaw = {0, sinf(-phi / 2), 0, cosf(-phi / 2)};
+        XrPosef pose;
+        pose.orientation = strip_mul(c->pose.orientation, yaw);
+        XrVector3f d = strip_rotate(pose.orientation, (XrVector3f){0, 0, -r * cosf(a / 2)});
+        pose.position = (XrVector3f){c->pose.position.x + d.x, c->pose.position.y + d.y, c->pose.position.z + d.z};
+        int32_t x0 = rect.offset.x + (int32_t)((int64_t)rect.extent.width * i / n);
+        int32_t x1 = rect.offset.x + (int32_t)((int64_t)rect.extent.width * (i + 1) / n);
+        XrSwapchainSubImage sub = c->subImage;
+        sub.imageRect = (XrRect2Di){{x0, rect.offset.y}, {x1 - x0, rect.extent.height}};
+        out[i] = (XrCompositionLayerQuad){XR_TYPE_COMPOSITION_LAYER_QUAD, c->next, c->layerFlags, c->space,
+                                          c->eyeVisibility, sub, pose, {2 * r * sinf(a / 2), height}};
+    }
+    static int logged;
+    if (logged++ < 3) LOG("cylinder layer -> %d quad strips (r=%.2f angle=%.2f)", n, r, c->centralAngle);
+    return n;
 }
 
 // A layer is usable if every swapchain it references was created successfully.
@@ -745,6 +791,18 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession session, const XrFrameEndInf
                 for (const XrBaseInStructure *n = (const XrBaseInStructure *)layer->next; n; n = n->next)
                     tagged |= n->type == 1000040000 && (((const XrCompositionLayerImageLayoutFB *)n)->flags & 1);
                 LOG("new layer: type=%d swapchain=%p flip_tag=%d usable=%d", layer->type, key, tagged, layer_usable(layer));
+            }
+        }
+        if (layer_fix && cylinder_strips_on && no_cylinder && layer->type == XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR &&
+            known_swapchain(((const XrCompositionLayerCylinderKHR *)layer)->subImage.swapchain)) {
+            // keep the whole frame within the runtime's layer limit: every later layer still needs a slot
+            int budget = 16 - (int)count - (int)(info->layerCount - i - 1);
+            int n = cylinder_strips((const XrCompositionLayerCylinderKHR *)layer, &quads[count], budget < 64 - (int)count ? budget : 64 - (int)count);
+            if (n > 0) {
+                for (int k = 0; k < n; ++k) kept[count + k] = (const XrCompositionLayerBaseHeader *)&quads[count + k];
+                count += (uint32_t)n;
+                ++swapped;
+                continue;
             }
         }
         if (!layer || (layer_fix && !layer_usable(layer))) { ++dropped; continue; }

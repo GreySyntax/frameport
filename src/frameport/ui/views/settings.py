@@ -67,6 +67,26 @@ class SettingsView:
                 self.pc.controls = [C.status_row(False, "Couldn't check this PC", str(exc))]
         C.update(self.pc)
 
+    def appearance(self) -> ft.Control:
+        from ...core import library
+
+        current = library.setting("ui.scale", "auto")
+        auto = T.detect_scale()
+        options = [ft.dropdown.Option("auto", f"Automatic ({auto:.0%})")] + [
+            ft.dropdown.Option(str(f), f"{f:.0%}") for f in T.SCALE_CHOICES]
+        note = C.meta(f"Now {T.SCALE:.0%}. Changes apply the next time FramePort starts.")
+
+        def changed(e):
+            library.set_setting("ui.scale", e.control.value)
+            new = T.scale_from_setting(e.control.value)
+            note.value = (f"Now {T.SCALE:.0%}; {new:.0%} after restarting FramePort." if abs(new - T.SCALE) > 0.01
+                          else f"Now {T.SCALE:.0%}.")
+            C.update(note)
+
+        dd = ft.Dropdown(label="Text and layout size", value=str(current) if current != "auto" else "auto",
+                         options=options, width=T.px(260), on_select=changed)
+        return ft.Column([dd, note], spacing=T.S2)
+
     def agent_text(self) -> str:
         """The agent version this app ships, and the one on the connected Frame (it's replaced on the next command
         whenever the files differ)."""
@@ -84,10 +104,10 @@ class SettingsView:
 
     def build(self) -> ft.Control:
         app = self.app
-        self.tools.controls = [ft.Row([ft.ProgressRing(width=16, height=16, stroke_width=2, color=T.ACCENT),
+        self.tools.controls = [ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT),
                                        C.meta("Checking tools…")], spacing=T.S2)]
         app.run_bg(self.fill_tools)
-        self.pc.controls = [ft.Row([ft.ProgressRing(width=16, height=16, stroke_width=2, color=T.ACCENT),
+        self.pc.controls = [ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT),
                                     C.meta("Checking this PC…")], spacing=T.S2)]
         app.run_bg(self.fill_pc)
         try:
@@ -118,7 +138,7 @@ class SettingsView:
                        expand=True),
                 C.ghost("Collect app logs", ft.Icons.FOLDER_ZIP_OUTLINED, lambda e: app.collect_logs()),
                 C.secondary("Report a problem…", ft.Icons.BUG_REPORT_OUTLINED, lambda e: app.report_problem_dialog()),
-            ], spacing=T.S3, wrap=True)), help="diag_bundle"),
+            ], spacing=T.S3)), help="diag_bundle"),
             C.section("Remove FramePort", C.card(ft.Row([
                 C.body("Removes everything FramePort created: its data and tools on this PC, the Steam entries it "
                        "added, and (optionally) its games and files on the Frame. Your game dumps aren't touched.",
@@ -128,6 +148,7 @@ class SettingsView:
                                   style=ft.ButtonStyle(color=T.ERROR, side=ft.BorderSide(1, T.soft(T.ERROR, 0.6)),
                                                        shape=ft.RoundedRectangleBorder(radius=T.RADIUS_SM))),
             ], spacing=T.S4))),
+            C.section("Appearance", C.card(self.appearance(), padding=T.S4), help="ui_scale"),
             C.section("About", C.card(ft.Column([
                 C.kv("Version", ver),
                 C.kv("Frame agent", self.agent_text(), "frame_agent"),

@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 
 import posixpath
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +44,28 @@ def local_data_manifest(data_dir: Path | None) -> dict[str, int]:
     return {p.relative_to(data_dir).as_posix(): p.stat().st_size for p in sorted(data_dir.rglob("*")) if p.is_file()}
 
 
+class Speed:
+    """Upload speed over the last few seconds (a sliding window, so it follows link changes) + time left."""
+
+    def __init__(self, total: int, window: float = 5.0, clock=time.monotonic):
+        self.total, self.window, self.clock, self.samples = total, window, clock, []
+
+    def text(self, done: int) -> str:
+        """"42.1 MB/s · ~3 min left", or "" until there is a second of samples."""
+        now = self.clock()
+        self.samples.append((now, done))
+        while len(self.samples) > 2 and now - self.samples[1][0] >= self.window:
+            self.samples.pop(0)
+        (t0, d0) = self.samples[0]
+        if now - t0 < 1.0 or done <= d0:
+            return ""
+        rate = (done - d0) / (now - t0)
+        left = max(self.total - done, 0) / rate
+        eta = f"{left / 3600:.0f} h {left % 3600 / 60:02.0f} min" if left >= 3600 else (
+            f"{left / 60:.0f} min" if left >= 90 else f"{left:.0f} s")
+        return f"{rate / 1e6:.1f} MB/s · ~{eta} left"
+
+
 def install(frame: Frame, plan: InstallPlan, reporter: Reporter) -> dict:
     reporter.stage("Prepare Frame")
     apk_sha = sha256(plan.apk)
@@ -60,6 +83,7 @@ def install(frame: Frame, plan: InstallPlan, reporter: Reporter) -> dict:
                            f"have {prep['free_bytes'] / 2**30:.1f} GiB")
     total = max(need, 1)
     sent = 0
+    speed = Speed(total)
 
     with transfer_link(frame, reporter, need) as xfer:
         reporter.stage("Upload APK")
@@ -68,13 +92,13 @@ def install(frame: Frame, plan: InstallPlan, reporter: Reporter) -> dict:
         else:
             def apk_cb(done, size):
                 reporter.check_cancel()
-                reporter.progress(done / total, f"APK {done / 2**20:.0f}/{size / 2**20:.0f} MiB")
+                reporter.progress(done / total, f"APK {done / 2**20:.0f}/{size / 2**20:.0f} MiB", speed=speed.text(done))
             xfer.put(plan.apk, posixpath.join(incoming, "game.apk"), apk_cb)
             sent += plan.apk.stat().st_size
         if to_send:
             reporter.stage(f"Upload data ({len(to_send)} files)")
             upload_files(xfer, [(plan.data_dir / rel, f"obb/{rel}", manifest[rel]) for rel in to_send], incoming,
-                         reporter, total, sent)
+                         reporter, total, sent, speed)
         elif manifest:
             reporter.log("game data already on the Frame; not re-sending")
 
@@ -254,7 +278,7 @@ def transfer_link(frame: Frame, reporter: Reporter, need: int):
 
 
 def upload_files(frame: Frame, items: list[tuple[Path, str, int]], remote_root: str, reporter: Reporter,
-                 total: int, sent: int = 0) -> int:
+                 total: int, sent: int = 0, speed: Speed | None = None) -> int:
     """Upload (local, relative path, size) items under remote_root. Interruptible (Cancel, dropped connection) and
     resumable: finished files are skipped next time (the agent counts files already in incoming/), a cut-off big file
     continues from its .part. Returns bytes sent."""
@@ -262,10 +286,12 @@ def upload_files(frame: Frame, items: list[tuple[Path, str, int]], remote_root: 
     small = [i for i in items if i[2] < BIG_FILE]
     frame.mkdirs(posixpath.dirname(posixpath.join(remote_root, rel)) for _, rel, _ in big)
     state = {"sent": sent}
+    speed = speed or Speed(total)
 
     def show(extra: int, label: str):
         reporter.check_cancel()
-        reporter.progress((state["sent"] + extra) / total, label)
+        done = state["sent"] + extra
+        reporter.progress(done / total, label, speed=speed.text(done))
     for local, rel, size in big:
         reporter.check_cancel()
         frame.put(local, posixpath.join(remote_root, rel),

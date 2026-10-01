@@ -12,7 +12,8 @@ def launch_test(frame: Frame, package: str, reporter: Reporter, seconds: int = 4
                  "so this checks startup, not the picture")
     res = frame.agent("launch_test", timeout=seconds + 120, package=package, seconds=seconds)
     log = frame.get_text(res["log"]) if res.get("log_size") else ""
-    result = triage(log, res["state"], package)
+    crash = frame.get_text(res["crash_log"]) if res.get("crash_log") else ""  # tombstones (backtraces), agent >= 23
+    result = triage(log, res["state"], package, crash=crash[-256 * 1024:])
     reporter.check("Process", res["state"] == "RUNNING", f"{res['state']} after {res['elapsed']}s")
     for m in result.milestones:
         reporter.check(m, True)
@@ -21,4 +22,4 @@ def launch_test(frame: Frame, package: str, reporter: Reporter, seconds: int = 4
     for f in result.findings:
         ok = None if f.severity in ("warning", "info") else False
         reporter.check(f.id, ok, f"{f.diagnosis} [{f.evidence[:160]}]")
-    return result, log
+    return result, log + ("\n--------- crash logcat\n" + crash if crash else "")

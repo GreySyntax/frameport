@@ -256,3 +256,21 @@ def open_folder(path: Path | str, select: bool = False) -> bool:
         return True
     except (OSError, ValueError, subprocess.SubprocessError):
         return False
+
+
+PLATFORM_DIRS = ("Meta Horizon/Support/oculus-runtime", "Oculus/Support/oculus-runtime")
+
+
+@lru_cache(maxsize=1)
+def oculus_platform_dir() -> Path | None:
+    """Where this PC's Meta Horizon / Oculus app keeps the Oculus Platform SDK runtime (LibOVRPlatform64_1.dll, used
+    by Oculus Store games for their licence check), or None."""
+    if not available():
+        return None
+    roots = [env_path("ProgramFiles"), env_path("ProgramW6432")] + ([Path("/mnt/c/Program Files")] if is_wsl() else [])
+    for root in [r for r in roots if r]:
+        for sub in PLATFORM_DIRS:
+            d = root / sub
+            if (d / "LibOVRPlatform64_1.dll").is_file():
+                return d
+    return None

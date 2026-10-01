@@ -33,7 +33,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 21
+AGENT_VERSION = 24
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -880,6 +880,47 @@ def cmd_launch(args):
     return {"package": pkg, "gameid": gid, "title": dep.get("title")}
 
 
+LEPTON_LINK = re.compile(r'ln -s "\$\{HOME\}/([^"/]+)" "\$\{TARGET_PATH\}/([^"/]+)"')
+SHARED_DEFAULT = (("Documents", "Documents"), ("Downloads", "Download"), ("Videos", "Movies"))
+
+
+def lepton_shared_folders():
+    """(home folder, Android folder) pairs Lepton links into every app's storage (read from Lepton's mounting.sh;
+    it only links folders that exist when an app starts)."""
+    lepton, _app = lepton_path()
+    text = ""
+    if lepton:
+        try:
+            text = open(os.path.join(os.path.dirname(lepton), "liblepton", "mounting.sh"), errors="replace").read()
+        except OSError:
+            pass
+    pairs = LEPTON_LINK.findall(text)
+    return pairs or list(SHARED_DEFAULT)
+
+
+def cmd_storage_targets(args):
+    """Where files for Lepton apps go: shared folders (seen by every app, e.g. ~/Videos = /sdcard/Movies) and, with a
+    package, that app's own storage (/sdcard) and its files folder. Creates missing shared folders (Lepton links only
+    existing ones). Android's media index doesn't work in Lepton, so apps must browse folders to find files."""
+    out = []
+    for home_name, android in lepton_shared_folders():
+        path = os.path.join(HOME, home_name)
+        os.makedirs(path, exist_ok=True)
+        out.append({"id": home_name.lower(), "path": path, "android": "/sdcard/" + android, "shared": True})
+    pkg = args.get("package")
+    if pkg:
+        pkg = check_pkg(pkg)
+        dep = deployment(pkg)
+        if not dep or dep.get("kind") == "pcvr":
+            raise AgentError(f"{pkg} is not an installed Quest (Lepton) game")
+        ext = os.path.join(dep["base"], "lepton-data", "external")
+        files = os.path.join(ext, "Android", "data", pkg, "files")
+        os.makedirs(files, exist_ok=True)
+        out.append({"id": "app", "path": ext, "android": "/sdcard", "shared": False})
+        out.append({"id": "app-files", "path": files, "android": f"/sdcard/Android/data/{pkg}/files", "shared": False})
+    return {"targets": out}
+
+
 def cmd_list_files(args):
     """Every file of an installed game on the Frame, for the PC's file browser: {roots: [{name, path, files:
     [[rel, size], ...]}], missing: [[rel, expected size, actual size or None], ...], truncated}. Roots are the install
@@ -1519,7 +1560,7 @@ def write_proton_launcher(anchor, base, pkg, title, appid, tool, exe_rel, revive
         argv = prefix + [injector, "/openxr", windows_path(exe)]
     else:
         argv = prefix + [exe]
-    argv += [a for a in game_args or () if re.fullmatch(r"-[A-Za-z0-9_=.:-]+", a)]
+    argv += [a for a in game_args or () if re.fullmatch(r"[A-Za-z0-9_=.:/+-]+", a)]  # e.g. -hmd=OpenXR, -vrmode OpenVR
     extra = "".join(f"export {k}={shlex.quote(str(v))}\n" for k, v in (env or {}).items()
                     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k))
     workdir = os.path.dirname(exe_rel)
@@ -1549,7 +1590,7 @@ def set_crash_reporter(base, enabled):
                 os.replace(p, p[:-len(".disabled")])
 
 
-def set_libovr_redirect(base, exe_rel, enabled):
+def set_libovr_redirect(base, exe_rel, enabled, bundled=False):
     """LoadLibrary redirect (pure runtime substitution): put LibOVRRT{64,32}_1.dll in the game's own DLL search dir as
     a symlink to Revive's LibReviveXR runtime, so the game's Oculus SDK finds a runtime to load. The symlink keeps the
     DLL in the revive/ folder, so its sibling dependencies still resolve. This does NOT touch the game's runtime
@@ -1557,6 +1598,11 @@ def set_libovr_redirect(base, exe_rel, enabled):
     runtime; this only helps builds that don't verify it. We only ever create/remove our own symlink, never a real
     DLL the game shipped. Removed when disabled."""
     game = os.path.join(base, "game")
+    exe_dir = os.path.dirname(os.path.join(game, exe_rel))
+    # the runtime: FramePort's Revive (revive/LibReviveXR*), or with bundled=True the repack's own LibRevive*.dll
+    # next to the exe (a repack set up for SteamVR, whose Windows loader hook doesn't take effect under Proton)
+    runtimes = {bits: (os.path.join(exe_dir, "LibRevive%s.dll" % bits) if bundled else
+                       os.path.join(base, "revive", "LibReviveXR%s.dll" % bits)) for bits in ("64", "32")}
     # where the Oculus SDK looks for LibOVRRT: the game exe's dir (monolithic engines carry the shim in the exe) AND
     # next to every OVRPlugin.dll (Unreal's shim searches its own module dir).
     dirs = {os.path.dirname(os.path.join(game, exe_rel))}
@@ -1565,10 +1611,11 @@ def set_libovr_redirect(base, exe_rel, enabled):
             if n.lower() == "ovrplugin.dll":
                 dirs.add(root)
     for d in dirs:
-        for bits, revive_dll in (("64", "LibReviveXR64.dll"), ("32", "LibReviveXR32.dll")):
+        for bits, target in runtimes.items():
             link = os.path.join(d, "LibOVRRT%s_1.dll" % bits)
-            target = os.path.join(base, "revive", revive_dll)
-            ours = os.path.islink(link) and os.path.join("revive", revive_dll) in os.path.realpath(link)
+            ours = os.path.islink(link) and os.path.basename(os.path.realpath(link)).lower().startswith("librevive")
+            if ours and os.path.realpath(link) != os.path.realpath(target):
+                os.remove(link)  # switched between FramePort's and the bundled Revive
             if enabled and os.path.isfile(target):
                 if os.path.islink(link) or not os.path.exists(link):  # never clobber a real game-shipped DLL
                     if os.path.lexists(link):
@@ -1628,7 +1675,7 @@ def cmd_finalize_pcvr(args):
     if oculus_hmd and not os.path.isfile(os.path.join(base, "helpers", OCULUS_HMD_HELPER)):
         raise AgentError(f"{OCULUS_HMD_HELPER} missing")
     set_crash_reporter(base, enabled=not args.get("no_crash_reporter"))
-    set_libovr_redirect(base, exe_rel, enabled=revive and bool(args.get("libovr_redirect")))
+    set_libovr_redirect(base, exe_rel, enabled=bool(args.get("libovr_redirect")), bundled=not revive)
     write_proton_launcher(anchor, base, pkg, title, appid, tool, exe_rel, revive, args.get("env"), xr_layer,
                           args.get("game_args") or [], oculus_hmd)
     art_in = os.path.join(base, "incoming-artwork")
@@ -1798,10 +1845,18 @@ def cmd_launch_test(args):
             state = "NEVER_STARTED"
             break
     elapsed = round(time.time() - start)
+    if state == "EXITED":  # Lepton dumps the container's logcat buffers (crash backtraces) after "Exited!"
+        until = time.time() + 15
+        while time.time() < until and "Dumping logcat" not in (open(log, errors="replace").read() if os.path.exists(log) else ""):
+            time.sleep(1)
+        time.sleep(2)
     run(["systemctl", "--user", "stop", unit])
     run(["podman", "kill", f"lepton-steamlaunch-{appid}"])
     time.sleep(3)
+    crash = os.path.join(STEAM, "logs", "lepton-logcats", f"steamlaunch-{appid}", "logcat-crash.log")
+    fresh = os.path.exists(crash) and os.path.getmtime(crash) >= start - 1 and os.path.getsize(crash) > 0
     return {"state": state, "elapsed": elapsed, "log": log, "log_size": os.path.getsize(log) if os.path.exists(log) else 0,
+            "crash_log": crash if fresh else None,
             "kernel_keys_before": keys, "kernel_keys_after": key_usage()}
 
 

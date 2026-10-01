@@ -59,21 +59,21 @@ class FramePortApp:
             except Exception:  # noqa: BLE001
                 pass
         self.body = ft.Container(expand=True, padding=ft.Padding(T.S6, T.S5, T.S5, 0))
-        self.nav_col = ft.Column(spacing=2)
+        self.nav_col = ft.Column(spacing=T.px(2))
         self.conn_card = ft.Container()
         self.activity_card = ft.Container()
         self.activity = ActivityPanel(self)
         sidebar = ft.Container(ft.Column([
             ft.Container(ft.Row([
-                ft.Container(ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=18, color=T.ON_ACCENT), width=32, height=32,
-                             border_radius=9, bgcolor=T.ACCENT, alignment=ft.Alignment.CENTER),
-                ft.Text("FramePort", size=17, weight=ft.FontWeight.W_800, color=T.TEXT)], spacing=T.S3),
+                ft.Container(ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(18), color=T.ON_ACCENT), width=T.px(32), height=T.px(32),
+                             border_radius=T.px(9), bgcolor=T.ACCENT, alignment=ft.Alignment.CENTER),
+                ft.Text("FramePort", size=T.px(17), weight=ft.FontWeight.W_800, color=T.TEXT)], spacing=T.S3),
                 padding=ft.Padding(T.S2, T.S2, 0, T.S5)),
             self.nav_col,
             ft.Container(expand=True),
             self.activity_card,
             self.conn_card,
-        ], spacing=T.S2), width=236, bgcolor=T.SIDEBAR, padding=T.S4,
+        ], spacing=T.S2), width=T.px(236), bgcolor=T.SIDEBAR, padding=T.S4,
             border=ft.Border(right=ft.BorderSide(1, T.BORDER)))
         page.add(ft.Row([sidebar, self.body, self.activity.root], expand=True, spacing=0,
                         vertical_alignment=ft.CrossAxisAlignment.STRETCH))
@@ -85,7 +85,7 @@ class FramePortApp:
 
     # ================================================================== shell
     def top_bar(self, heading: str, subtitle: str = "", actions: list[ft.Control] | None = None) -> ft.Control:
-        return ft.Row([ft.Column([C.title(heading), C.body(subtitle)] if subtitle else [C.title(heading)], spacing=2,
+        return ft.Row([ft.Column([C.title(heading), C.body(subtitle)] if subtitle else [C.title(heading)], spacing=T.px(2),
                                  expand=True),
                        *(actions or [])], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3)
 
@@ -94,25 +94,25 @@ class FramePortApp:
         reports progress (several times a second) swallowed clicks — the pressed control was gone on release."""
         nav = {}
         for key, label, icon in NAV:
-            ic = ft.Icon(icon, size=20, color=T.TEXT_2)
-            tx = ft.Text(label, size=14, weight=ft.FontWeight.W_500, color=T.TEXT_2, expand=True)
+            ic = ft.Icon(icon, size=T.px(20), color=T.TEXT_2)
+            tx = ft.Text(label, size=T.px(14), weight=ft.FontWeight.W_500, color=T.TEXT_2, expand=True)
             badge = C.dot(T.OK, 7)
             badge.visible = False
-            box = ft.Container(ft.Row([ic, tx, badge], spacing=T.S3), padding=ft.Padding(T.S3, 10, T.S3, 10),
+            box = ft.Container(ft.Row([ic, tx, badge], spacing=T.S3), padding=ft.Padding(T.S3, T.px(10), T.S3, T.px(10)),
                                border_radius=T.RADIUS_SM, ink=True, on_click=lambda e, k=key: self.go(k))
             nav[key] = (box, ic, tx, badge)
         self.nav_col.controls = [v[0] for v in nav.values()]
         # activity card: a "running" layout and an "idle" layout, switched by visibility
-        self._act_title = ft.Text("", size=12, weight=ft.FontWeight.W_600, color=T.TEXT, expand=True, max_lines=1,
+        self._act_title = ft.Text("", size=T.px(12), weight=ft.FontWeight.W_600, color=T.TEXT, expand=True, max_lines=1,
                                   overflow=ft.TextOverflow.ELLIPSIS)
         self._act_pct = C.meta("")
         self._act_bar = C.progress_bar(None)
         self._act_stage = C.meta("", max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         self._act_running = ft.Column([
-            ft.Row([ft.ProgressRing(width=14, height=14, stroke_width=2, color=T.ACCENT), self._act_title,
-                    self._act_pct], spacing=T.S2), self._act_bar, self._act_stage], spacing=6, visible=False)
+            ft.Row([ft.ProgressRing(width=T.px(14), height=T.px(14), stroke_width=T.px(2), color=T.ACCENT), self._act_title,
+                    self._act_pct], spacing=T.S2), self._act_bar, self._act_stage], spacing=T.px(6), visible=False)
         self._act_idle_text = C.meta("No activity", expand=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
-        self._act_idle = ft.Row([ft.Icon(ft.Icons.HISTORY_ROUNDED, size=16, color=T.TEXT_3), self._act_idle_text],
+        self._act_idle = ft.Row([ft.Icon(ft.Icons.HISTORY_ROUNDED, size=T.px(16), color=T.TEXT_3), self._act_idle_text],
                                 spacing=T.S2)
         self._act_box = ft.Container(ft.Column([self._act_running, self._act_idle], spacing=0), padding=T.S3,
                                      border_radius=T.RADIUS_SM, border=ft.Border.all(1, T.BORDER), ink=True,
@@ -126,8 +126,8 @@ class FramePortApp:
         self._conn_line = C.meta("Not set up")
         self._conn_extra = ft.Container(C.meta(""), visible=False, tooltip=C.tip(C.HELP["frame_summary"]))
         self.conn_card.content = ft.Container(ft.Row([
-            ft.Stack([ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=22, color=T.TEXT_2),
-                      ft.Container(self._conn_dot, right=0, bottom=0)], width=24, height=24),
+            ft.Stack([ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(22), color=T.TEXT_2),
+                      ft.Container(self._conn_dot, right=0, bottom=0)], width=T.px(24), height=T.px(24)),
             ft.Column([self._conn_name, self._conn_line, self._conn_extra], spacing=1, expand=True),
         ], spacing=T.S3), padding=T.S3, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE, ink=True,
             border=ft.Border.all(1, T.BORDER), on_click=lambda e: self.go("frame"))
@@ -150,7 +150,8 @@ class FramePortApp:
         self._act_box.border = ft.Border.all(1, T.ACCENT if cur else T.BORDER)
         if cur:
             self._act_title.value = cur.title
-            self._act_pct.value = f"{cur.fraction:.0%}" if cur.fraction is not None else ""
+            self._act_pct.value = (f"{cur.fraction:.0%}" if cur.fraction is not None else "") + \
+                (f" · {cur.speed.split(' · ')[0]}" if cur.speed else "")
             self._act_bar.value = cur.fraction
             self._act_stage.value = (cur.stage or "Starting…") + (f" · {queued} more queued" if queued else "")
         else:
@@ -242,7 +243,7 @@ class FramePortApp:
     def toast(self, message: str, error: bool = False, action: str | None = None, on_action=None) -> None:
         self.page.show_dialog(ft.SnackBar(
             ft.Text(message, color=T.TEXT), bgcolor=T.soft(T.ERROR, 0.9) if error else T.SURFACE_3,
-            action=action, on_action=on_action, behavior=ft.SnackBarBehavior.FLOATING, width=520,
+            action=action, on_action=on_action, behavior=ft.SnackBarBehavior.FLOATING, width=T.px(520),
             shape=ft.RoundedRectangleBorder(radius=T.RADIUS_SM), duration=5000 if action else 3500))
 
     def run_bg(self, fn, *args) -> None:
@@ -367,8 +368,10 @@ class FramePortApp:
         from ..core import winhost
 
         on_pc = pkg in self.pc_installs()
-        pc_opt = ("Reinstall on this PC" if on_pc else "Install on this PC", ft.Icons.COMPUTER_ROUNDED,
-                  lambda e: self.install(pkg, "pc"), not winhost.available(),
+        stale = on_pc and C.pc_outdated(g, self.pc_installs()[pkg])
+        pc_opt = ("Update on this PC" if stale else "Reinstall on this PC" if on_pc else "Install on this PC",
+                  ft.Icons.COMPUTER_ROUNDED, lambda e: self.install(pkg, "pc"), not winhost.available(),
+                  "The launch settings changed since it was installed: update the Steam shortcut" if stale else
                   None if winhost.available() else "Needs Windows (or WSL on Windows)")
         return [frame_opt, pc_opt] if connected or not winhost.available() else [pc_opt, frame_opt]
 
@@ -443,6 +446,8 @@ class FramePortApp:
                                 lambda e: self.test_game(pkg, "pc")))
                 if on_frame and not rift:
                     out.append(("Adapter settings…", ft.Icons.TUNE_ROUNDED, lambda e: self.settings_dialog(pkg)))
+                    out.append(("Send files to this game…", ft.Icons.DRIVE_FOLDER_UPLOAD_ROUNDED,
+                                lambda e: self.send_files_dialog(pkg)))
                 if on_frame:
                     out.append(("Uninstall from Frame", ft.Icons.DELETE_OUTLINE_ROUNDED,
                                 lambda e: self.uninstall(pkg, "frame")))
@@ -528,18 +533,20 @@ class FramePortApp:
                     C.body("They're Oculus games that need Revive to reach VR, and Revive can't run on the Frame. "
                            "Play them on this PC instead (Install on this PC — SteamVR + Revive). Tick any you still "
                            "want to put on the Frame to experiment (they'll likely run flat or crash)."),
-                    *boxes.values()], spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=520),
+                    *boxes.values()], spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=T.px(520)),
                 bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
                 actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()),
                          C.primary("Continue", on_click=ok)]))
 
         def ask_license():
+            from ..core import winhost
+
             sdk = [g for g in games if g.get("kind") == "rift" and (g["analysis"].get("extra") or {}).get("platform_sdk")]
-            if not sdk:
-                return go([g["package"] for g in games])
-            boxes = {g["package"]: ft.Checkbox(label=self._title(g["package"]), value=True, active_color=T.ACCENT)
-                     for g in sdk}
-            where = "the headset" if to == "frame" else "this PC without the Oculus app"
+            if not sdk or to == "pc" and winhost.oculus_platform_dir():
+                return go([g["package"] for g in games])  # the Meta Horizon app provides the Platform SDK here
+            frame = to == "frame"
+            boxes = {g["package"]: ft.Checkbox(label=self._title(g["package"]), value=not frame,
+                                               active_color=T.ACCENT) for g in sdk}
 
             def ok(e):
                 self.page.pop_dialog()
@@ -548,10 +555,14 @@ class FramePortApp:
             self.page.show_dialog(ft.AlertDialog(
                 title=ft.Text("These games check their Oculus license", weight=ft.FontWeight.W_600),
                 content=ft.Container(ft.Column([
-                    C.body(f"They use the Oculus Platform SDK. Unless your copies don't need the Oculus app, they may "
-                           f"quit right after starting on {where}. FramePort doesn't change how a game checks its "
-                           "license. Untick the ones you'd rather skip."),
-                    *boxes.values()], spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=520),
+                    C.body("They use the Oculus Platform SDK, which comes with the Meta Horizon (Oculus) app. It "
+                           "doesn't exist on the Steam Frame, so there they crash right at startup (seen with Robo "
+                           "Recall, Lies Beneath and Lone Echo) — play them on this PC. Tick any you still want to "
+                           "try on the Frame." if frame else
+                           "They use the Oculus Platform SDK, which comes with the Meta Horizon (Oculus) app — it "
+                           "isn't installed on this PC, so they may quit right after starting. FramePort doesn't "
+                           "change how a game checks its license. Untick the ones you'd rather skip."),
+                    *boxes.values()], spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=T.px(520)),
                 bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
                 actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()),
                          C.primary("Install", on_click=ok)]))
@@ -607,7 +618,7 @@ class FramePortApp:
             title=ft.Text(f"{n} game{'s' if n != 1 else ''} didn't work out" if n > 1 else
                           f"{self._title(jobs[0].package) if jobs[0].package else jobs[0].title} didn't work out",
                           weight=ft.FontWeight.W_600),
-            content=ft.Container(ft.Column(rows, spacing=T.S3, scroll=ft.ScrollMode.AUTO, tight=True), width=600,
+            content=ft.Container(ft.Column(rows, spacing=T.S3, scroll=ft.ScrollMode.AUTO, tight=True), width=T.px(600),
                                  height=min(160 * n + 20, 520)),
             bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
             actions=[C.ghost("Details", on_click=lambda e: (self.page.pop_dialog(), self.show_activity(True))),
@@ -626,10 +637,10 @@ class FramePortApp:
             content=ft.Container(ft.Column([
                 C.meta(f"{path}  ({len(lines)} lines" + (", last 4000 shown)" if len(lines) > 4000 else ")"),
                        selectable=True),
-                ft.Container(ft.Column([ft.Text(shown, size=11, font_family="monospace", color=T.TEXT_2,
+                ft.Container(ft.Column([ft.Text(shown, size=T.px(11), font_family="monospace", color=T.TEXT_2,
                                                 selectable=True)], scroll=ft.ScrollMode.AUTO),
                              bgcolor=T.BG, border_radius=T.RADIUS_SM, padding=T.S3, expand=True),
-            ], spacing=T.S2), width=980, height=620),
+            ], spacing=T.S2), width=T.px(980), height=T.px(620)),
             bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
             actions=[C.ghost("Copy all", ft.Icons.CONTENT_COPY_ROUNDED, lambda e: self.copy(text)),
                      C.primary("Close", on_click=lambda e: self.page.pop_dialog())]))
@@ -791,7 +802,7 @@ class FramePortApp:
 
     def report_problem_dialog(self, pkg: str | None = None) -> None:
         text = ft.TextField(label="What happens? (optional: you can also write it on GitHub)", multiline=True,
-                            min_lines=3, max_lines=8, width=560, border_color=T.BORDER)
+                            min_lines=3, max_lines=8, width=T.px(560), border_color=T.BORDER)
 
         def go(e):
             self.page.pop_dialog()
@@ -804,7 +815,7 @@ class FramePortApp:
                        "removed) and opens a prefilled GitHub issue. Drag the zip into it, check the text, submit.",
                        T.TEXT_2),
                 ft.Row([text, C.help_icon("diag_bundle")]),
-            ], tight=True, spacing=T.S3, width=600),
+            ], tight=True, spacing=T.S3, width=T.px(600)),
             actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()),
                      C.primary("Collect & open GitHub", ft.Icons.OPEN_IN_NEW_ROUNDED, on_click=go)]))
 
@@ -814,7 +825,7 @@ class FramePortApp:
         status = ft.RadioGroup(ft.Row([ft.Radio(value="works", label="Works"),
                                        ft.Radio(value="issues", label="Works with issues")]), value="works")
         notes = ft.TextField(label="Notes (what you checked, known issues)", multiline=True, min_lines=2,
-                             max_lines=6, width=560, border_color=T.BORDER)
+                             max_lines=6, width=T.px(560), border_color=T.BORDER)
         played = ft.Checkbox(label="I played it in the headset with this recipe", value=False)
         send = C.primary("Open GitHub issue", ft.Icons.OPEN_IN_NEW_ROUNDED, on_click=None)
 
@@ -845,13 +856,13 @@ class FramePortApp:
                 ft.Row([status, C.help_icon("share_config")]), notes, played,
                 C.body("Launch tests run without the headset worn, so only you can confirm the picture and controls.",
                        T.TEXT_3),
-            ], tight=True, spacing=T.S3, width=600),
+            ], tight=True, spacing=T.S3, width=T.px(600)),
             actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()), send]))
 
     def settings_dialog(self, package: str) -> None:
         from ..patches.settings import SETTINGS
 
-        fields = {key: ft.TextField(label=title, value="", hint_text=str(default), width=200, dense=True,
+        fields = {key: ft.TextField(label=title, value="", hint_text=str(default), width=T.px(200), dense=True,
                                     border_color=T.BORDER) for key, kind, default, title, _ in SETTINGS}
 
         def save(e):
@@ -861,9 +872,68 @@ class FramePortApp:
         self.page.show_dialog(ft.AlertDialog(
             title=ft.Text(f"Adapter settings · {self._title(package)}"), bgcolor=T.SURFACE_2,
             content=ft.Column([C.body("Only filled-in values change. Restart the game afterwards."),
-                               ft.Row(list(fields.values()), wrap=True, width=640)], tight=True,
+                               ft.Row(list(fields.values()), wrap=True, width=T.px(640))], tight=True,
                               scroll=ft.ScrollMode.AUTO),
             actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()), C.primary("Save", on_click=save)]))
+
+    # ================================================================== files for apps on the Frame
+    def send_files_dialog(self, package: str | None = None):
+        """Pick files/folders and a destination; shared folders are seen by every Quest game (see install/files.py)."""
+        options = [("videos", "Videos: /sdcard/Movies in every game"),
+                   ("downloads", "Downloads: /sdcard/Download in every game"),
+                   ("documents", "Documents: /sdcard/Documents in every game")]
+        if package:
+            options = [("app", f"This game's storage (/sdcard of {self._title(package)})"),
+                       ("app-files", "This game's files folder (/sdcard/Android/data/…/files)")] + options
+        chosen: list[str] = []
+        dest = ft.Dropdown(label="Destination", value=options[0][0], width=T.px(520),
+                           options=[ft.dropdown.Option(k, v) for k, v in options])
+        folder = ft.TextField(label="Sub-folder (optional)", width=T.px(520))
+        picked = C.body("No files chosen yet.", T.TEXT_2)
+
+        def show():
+            names = [Path(p).name for p in chosen]
+            picked.value = (f"{len(names)} chosen: " + ", ".join(names[:4]) + (" …" if len(names) > 4 else "")) \
+                if names else "No files chosen yet."
+            C.update(picked)
+
+        async def add_files(e):
+            files = await ft.FilePicker().pick_files(allow_multiple=True)
+            chosen.extend(f.path for f in files or [] if f.path and f.path not in chosen)
+            show()
+
+        async def add_folder(e):
+            path = await ft.FilePicker().get_directory_path(dialog_title="Folder to send")
+            if path and path not in chosen:
+                chosen.append(path)
+            show()
+
+        def send(e):
+            if not chosen:
+                return
+            self.page.pop_dialog()
+            from ..install import files
+
+            paths, target, sub = [Path(p) for p in chosen], dest.value, folder.value or ""
+
+            def run(job: Job):
+                r = files.send_files(self.target.frame, paths, target, package, sub, job.reporter)
+                return (f"Sent {r['files']} file(s)" + (f", {r['skipped']} already there" if r["skipped"] else "")
+                        + f". In the app, browse to {r['android']}")
+            self.submit("Send files to the Frame", run, package, kind="tool-frame", open_panel=True)
+
+        self.page.show_dialog(ft.AlertDialog(
+            title=ft.Text("Send files to the Frame"), bgcolor=T.SURFACE_2,
+            content=ft.Column([
+                C.body("Videos, documents, mods or saves for Quest games. Apps find them by browsing folders "
+                       "(their \"all videos\" lists stay empty: Android's media index doesn't work on the Frame).",
+                       T.TEXT_2),
+                dest, folder,
+                ft.Row([C.ghost("Add files…", ft.Icons.NOTE_ADD_OUTLINED, add_files),
+                        C.ghost("Add folder…", ft.Icons.CREATE_NEW_FOLDER_OUTLINED, add_folder)]),
+                picked], tight=True, width=T.px(540)),
+            actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()),
+                     C.primary("Send", on_click=send)]))
 
     # ================================================================== library
     async def pick_folder(self, e=None):
@@ -1184,7 +1254,7 @@ class FramePortApp:
                                             cb_keys, cb_frame, cb_saves,
                                             C.meta("Signing keys matter: game updates must be signed with the same key "
                                                    "or their saves are lost on reinstall.")],
-                                           spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=560),
+                                           spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=T.px(560)),
             bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
             actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()),
                      ft.FilledButton("Uninstall", icon=ft.Icons.DELETE_FOREVER_ROUNDED, on_click=go,
@@ -1203,7 +1273,7 @@ class FramePortApp:
                 C.body("All of FramePort's data on this PC is gone" +
                        (f", and your signing keys were saved to {out['backup']}." if out.get("backup") else ".")),
                 C.body("To finish, close FramePort and delete its program folder."),
-            ], spacing=T.S2, tight=True), width=520),
+            ], spacing=T.S2, tight=True), width=T.px(520)),
             bgcolor=T.SURFACE_2, actions=[C.primary("Close FramePort", on_click=close)]))
 
     def finish_welcome(self):
@@ -1233,6 +1303,10 @@ def assets_dir() -> str:
 
 def main(argv=None):
     applog.setup("gui")
+    from ..core import library
+
+    T.set_scale(T.scale_from_setting(library.setting("ui.scale", "auto")))  # before any view is built
+    applog.log.info("ui scale %.2f", T.SCALE)
     ft.run(lambda page: FramePortApp(page), assets_dir=assets_dir())
 
 

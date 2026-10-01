@@ -421,10 +421,27 @@ def test_game(package: str, target: Target, reporter: Reporter, seconds: int = 4
         old.unlink(missing_ok=True)
     reporter.log(f"full launch log ({len((log or '').splitlines())} lines): {log_path}")
     summary = {"state": result.state, "verdict": result.verdict, "milestone": result.milestone, "fps": result.fps,
-               "findings": [f.__dict__ for f in result.findings], "suggestions": result.suggestions(),
+               "findings": [f.__dict__ for f in result.findings],
+               "suggestions": useful_suggestions(package, result.suggestions()),
                "time": time.time(), "target": target.label, "log_path": str(log_path)}
     library.upsert_game(package, last_test=summary)
     return summary
+
+
+def useful_suggestions(package: str, suggestions: list[str]) -> list[str]:
+    """Triage suggestions that would change something: not already on, and not conflicting with the recipe (e.g. no
+    Revive for a repack that runs its own)."""
+    from .patches.base import REGISTRY
+
+    entry = library.game(package) or {}
+    on = set(((entry.get("recipe") or {}).get("patches") or {}))
+    out = []
+    for pid in suggestions:
+        p = REGISTRY.get(pid)
+        if pid in on or (p and any(c in on for c in p.conflicts)):
+            continue
+        out.append(pid)
+    return out
 
 
 def apply_suggestions(package: str, suggestions: list[str]) -> Recipe:

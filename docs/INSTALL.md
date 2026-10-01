@@ -35,11 +35,24 @@ Quest APKs are installed unchanged, Rift games start without Revive. If you inst
 yourself (official installer), FramePort uses that one; otherwise it downloads its own portable copy (Tools shows which;
 nothing is installed system-wide).
 - **Play from this PC:** needs Windows with Steam and SteamVR. "Install on this PC" adds the game to your Steam
-  library (Steam closes and reopens once); stream it to the Frame with Steam Link / SteamVR.
+  library (Steam closes and reopens once); stream it to the Frame with Steam Link / SteamVR. If a game stutters
+  because it can't keep up with the headset's refresh rate, FramePort notices from SteamVR's records and, the next
+  time you press Play, lowers that game's refresh rate (e.g. 96 → 80 Hz) and turns on motion smoothing in SteamVR's
+  per-game settings (patch "Automatic SteamVR performance settings" on the game page, where you can also pick a
+  rate yourself).
 - **Play on the Frame (experimental):** Frame → "Install Proton" (confirm the download in the headset), then "Install
   on Frame (Proton)" on the game page.
 - Games that use the Oculus Platform SDK (FramePort shows a note) check your Oculus license: they need the Oculus app
   installed on the PC with a license you own, so they can't run on the headset.
+
+## Videos, documents and mods for Quest games
+Frame → **Send files** (or a game's menu → **Send files to this game…**) copies files or whole folders from this PC to
+the Frame. **Videos**, **Downloads** and **Documents** are shared by every Quest game: they appear inside each game as
+`/sdcard/Movies`, `/sdcard/Download` and `/sdcard/Documents` (they are the Frame's own `~/Videos`, `~/Downloads`,
+`~/Documents`). A game's own storage (`/sdcard` of that game only) is for mods and saves. Apps find the files by
+**browsing folders** (e.g. in a video player: local storage → Movies); their "all videos" lists stay empty because
+Android's media index doesn't work on the Frame. Command line: `frameport frame send <files> --to videos` (see
+`frameport frame storage`).
 
 ## Sharing a working game, reporting a problem
 - **A game works?** Game menu (right-click in the Library, or "…" on its page) → **Share working config…**. FramePort

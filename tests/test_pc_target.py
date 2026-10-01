@@ -135,9 +135,9 @@ def test_library_migration_adds_no_crash_reporter(tmp_path, monkeypatch):
     }, "settings": {}}))
     games = library.load()["games"]
     # the run-correct migration re-derives from engine defaults: Oculus games get Revive + as-is
-    assert set(games["rift.ue"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.libovr_redirect",
+    assert set(games["rift.ue"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.libovr_redirect", "pcvr.steamvr_tuning",
         "pcvr.no_crash_reporter", "pcvr.oculus_unreal", "pcvr.xr_timefix"}
-    assert set(games["rift.unity"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr",
+    assert set(games["rift.unity"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.steamvr_tuning",
         "pcvr.libovr_redirect", "pcvr.xr_timefix"}
     assert games["rift.ue"]["recipe"]["as_is"] and games["rift.unity"]["recipe"]["as_is"]
     # runs once: a user who turns it off keeps it off
@@ -178,7 +178,8 @@ def test_migration_rederives_rift_recipes(tmp_path, monkeypatch):
     games = library.load()["games"]
     r = games["rift.ue"]["recipe"]
     assert r["as_is"] and "pcvr.revive" in r["patches"] and "pcvr.oculus_unreal" in r["patches"]
-    assert games["com.q.ue"]["recipe"]["patches"] == {}  # Quest games untouched
+    # Quest games untouched by the Rift migrations (they only gain the default-on binary fixes)
+    assert set(games["com.q.ue"]["recipe"]["patches"]) <= {"frame.swapchain_limit", "frame.vk_sanitize"}
 
 def test_oculus_hmd_helper_artifact():
     """The prebuilt helper is a freestanding Windows x64 console exe that only imports kernel32."""
@@ -263,7 +264,8 @@ def test_libovr_redirect_patch():
     from frameport.patches.base import get
 
     p = get("pcvr.libovr_redirect")
-    assert p.requires == ("pcvr.revive",)
+    assert p.requires == ()  # also for repacks (their bundled Revive), not only FramePort's
     assert p.detect(SimpleNamespace(extra={"kind": "rift"})).recommended
+    assert p.detect(SimpleNamespace(extra={"kind": "rift", "launch": "repack"})).recommended
     assert not p.detect(SimpleNamespace(extra={"kind": "rift", "frame_native": True})).recommended
     assert p.detect(SimpleNamespace(extra={})) is None

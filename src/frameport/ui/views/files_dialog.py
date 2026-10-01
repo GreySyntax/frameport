@@ -81,11 +81,11 @@ def human(n: int) -> str:
 
 def show_files_dialog(app: "FramePortApp", package: str, title: str) -> None:
     status = C.meta("Reading the file list from the Frame…")
-    body = ft.Column([ft.Row([ft.ProgressRing(width=16, height=16, stroke_width=2, color=T.ACCENT), status],
+    body = ft.Column([ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT), status],
                              spacing=T.S2)], spacing=T.S3, expand=True)
     dialog = ft.AlertDialog(
         title=ft.Text(f"Files on the Frame — {title}", weight=ft.FontWeight.W_600),
-        content=ft.Container(body, width=760, height=560),
+        content=ft.Container(body, width=T.px(760), height=T.px(560)),
         bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
         actions=[C.ghost("Close", on_click=lambda e: app.page.pop_dialog())])
     app.page.show_dialog(dialog)
@@ -99,24 +99,24 @@ def show_files_dialog(app: "FramePortApp", package: str, title: str) -> None:
         rows = ft.ListView(spacing=0, expand=True)
         search = ft.TextField(hint_text="Filter files (e.g. .pak, Binaries)", dense=True, expand=True,
                               border_radius=T.RADIUS_SM, bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT,
-                              focused_border_color=T.ACCENT, content_padding=ft.Padding(12, 8, 12, 8),
+                              focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)),
                               text_size=T.T_BODY, prefix_icon=ft.Icons.SEARCH_ROUNDED)
 
         def row(depth: int, node: Node | int, root_key: str) -> ft.Control:
-            pad = ft.Padding(8 + depth * 18, 3, 8, 3)
+            pad = ft.Padding(8 + depth * 18, T.px(3), T.px(8), T.px(3))
             if isinstance(node, int):
                 return ft.Container(C.meta(f"… {node} more (use the filter to find them)"), padding=pad)
             key = f"{root_key}\0{node.path}"
             icon = (ft.Icons.FOLDER_OPEN_ROUNDED if key in expanded else ft.Icons.FOLDER_ROUNDED) if node.is_dir \
                 else ft.Icons.INSERT_DRIVE_FILE_OUTLINED
             chevron = ft.Icon(ft.Icons.EXPAND_MORE_ROUNDED if key in expanded else ft.Icons.CHEVRON_RIGHT_ROUNDED,
-                              size=16, color=T.TEXT_3) if node.is_dir else ft.Container(width=16)
+                              size=T.px(16), color=T.TEXT_3) if node.is_dir else ft.Container(width=T.px(16))
             info = f"{human(node.size)} · {node.files} files" if node.is_dir else human(node.size)
             return ft.Container(ft.Row([
-                chevron, ft.Icon(icon, size=16, color=T.ACCENT if node.is_dir else T.TEXT_3),
+                chevron, ft.Icon(icon, size=T.px(16), color=T.ACCENT if node.is_dir else T.TEXT_3),
                 C.body(node.name, T.TEXT, expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                 C.meta(info),
-            ], spacing=6), padding=pad, border_radius=6, ink=node.is_dir,
+            ], spacing=T.px(6)), padding=pad, border_radius=T.px(6), ink=node.is_dir,
                 on_click=(lambda e, k=key: toggle(k)) if node.is_dir else None)
 
         def render():
@@ -128,16 +128,16 @@ def show_files_dialog(app: "FramePortApp", package: str, title: str) -> None:
                     C.meta(f"{human(tree.size)} · {tree.files} files"),
                     ft.Container(expand=True),
                     C.icon_btn(ft.Icons.CONTENT_COPY_ROUNDED, "Copy path", lambda e, p=r["path"]: app.copy(p)),
-                ], spacing=T.S2), padding=ft.Padding(8, T.S2, 8, 2)))
-                controls.append(ft.Container(C.meta(r["path"], selectable=True), padding=ft.Padding(8, 0, 8, 4)))
+                ], spacing=T.S2), padding=ft.Padding(T.px(8), T.S2, T.px(8), T.px(2))))
+                controls.append(ft.Container(C.meta(r["path"], selectable=True), padding=ft.Padding(T.px(8), 0, T.px(8), T.px(4))))
                 if text:
                     found = matches(r["files"], text)
                     controls += [ft.Container(ft.Row([
-                        ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=16, color=T.TEXT_3),
-                        C.body(rel, T.TEXT, expand=True, selectable=True), C.meta(human(size))], spacing=6),
-                        padding=ft.Padding(8, 3, 8, 3)) for rel, size in found]
+                        ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=T.px(16), color=T.TEXT_3),
+                        C.body(rel, T.TEXT, expand=True, selectable=True), C.meta(human(size))], spacing=T.px(6)),
+                        padding=ft.Padding(T.px(8), T.px(3), T.px(8), T.px(3))) for rel, size in found]
                     if not found:
-                        controls.append(ft.Container(C.meta("No matching files"), padding=ft.Padding(8, 3, 8, 3)))
+                        controls.append(ft.Container(C.meta("No matching files"), padding=ft.Padding(T.px(8), T.px(3), T.px(8), T.px(3))))
                 else:
                     visible = visible_rows(tree, {k.split("\0", 1)[1] for k in expanded
                                                   if k.split("\0", 1)[0] == r["path"]})
