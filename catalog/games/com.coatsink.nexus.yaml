@@ -1,7 +1,7 @@
 package: com.coatsink.nexus
 title: Shadow Point
 tested_version: '1.4'
-source_hint: Shadow Point v47+1.4
+source_hint: Shadow Point
 engine: Unity
 xr: VrApi
 status: unsupported

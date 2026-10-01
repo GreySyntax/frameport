@@ -111,6 +111,32 @@ def test_controller_models_setting():
     assert "controller_models" not in adapter_settings({})  # off unless selected: existing builds are unchanged
 
 
+def test_equirect_emul_setting():
+    patch = base.get("adapter.equirect_emul")
+    gles = dict(graphics="GLES or unknown (no Vulkan declaration)")
+    vulkan_360 = _analysis(extra={"xr_layer_exts": ["XR_KHR_composition_layer_equirect2"]})
+    assert not patch.applies(vulkan_360) and patch.detect(vulkan_360) is None  # never offered for Vulkan games
+    plain = _analysis(**gles, extra={"xr_layer_exts": ["XR_KHR_composition_layer_cylinder"]})
+    assert patch.applies(plain) and patch.detect(plain) is None  # GLES but no 360 layers requested
+    player = _analysis(**gles, extra={"xr_layer_exts": ["XR_KHR_composition_layer_cylinder", "XR_KHR_composition_layer_equirect2"]})
+    s = patch.detect(player)
+    assert s.recommended and s.params == {"value": 1}
+    for key in ("equirect_face", "equirect_res", "equirect_flip", "equirect_fps", "equirect_stereo"):
+        assert base.get(f"adapter.{key}").applies(player) and not base.get(f"adapter.{key}").applies(vulkan_360)
+
+
+def test_per_game_session_settings_are_off_unless_selected():
+    keys = ("equirect_emul", "layer_debug", "stable_local", "focus_hold", "aim_pitch", "aim_yaw", "aim_forward",
+            "refresh_rate", "equirect_face", "equirect_flip", "equirect_fps", "equirect_stereo")
+    assert not set(keys) & set(adapter_settings({}))  # existing builds are unchanged
+    chosen = adapter_settings({"adapter.refresh_rate": {"value": 90}, "adapter.aim_pitch": {"value": "-12.5"},
+                               "adapter.focus_hold": {"value": 1}})
+    assert chosen["refresh_rate"] == 90.0 and chosen["aim_pitch"] == -12.5 and chosen["focus_hold"] == 1
+    for key in keys:
+        patch = base.get(f"adapter.{key}")
+        assert patch.detect(_analysis()) is None
+
+
 def test_detect_direct_vrapi_suggests_bridge_and_shim():
     a = _analysis(xr="VrApi", direct_vrapi=True, uses_glad_gl=True, graphics="GLES or unknown", package="x.y.unknown")
     from frameport.recommend import engine
@@ -197,3 +223,14 @@ def test_vk_sanitize_routes_engine_vulkan_through_shim(tmp_path, quest_manifest)
     apk2 = _apk(tmp_path, quest_manifest)
     with ApkWorkspace(apk2) as ws:
         assert not base.get("frame.vk_sanitize").apply(base.ApkContext(ws, _analysis(engine="Unreal"), {}, Reporter(), {}))
+
+
+def test_source_hints_are_generic_and_match_loosely():
+    from frameport.recommend.catalog import generic_source_hint, source_hint_matches
+
+    assert generic_source_hint("4XVR Video Player (Pro + Trial Bypass) v20022+2.0.22 -JF") == "4XVR Video Player"
+    assert generic_source_hint("Marvels Deadpool VR (English Only) v8742+1.0.40.356975.Quest") == "Marvels Deadpool VR"
+    assert generic_source_hint("Batman- Arkham Shadow (Inc Lang Packs) v350961+1.4.1-350961") == "Batman- Arkham Shadow"
+    assert source_hint_matches("Marvels Deadpool VR", "Marvel's Deadpool VR v9000+1.1 -XYZ")  # other release, other name
+    assert source_hint_matches("The Climb 2 v974+2.2", "the climb 2 (quest) v1000")
+    assert not source_hint_matches("The Climb 2", "The Climb v100")

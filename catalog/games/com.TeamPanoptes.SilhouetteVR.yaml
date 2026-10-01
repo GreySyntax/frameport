@@ -1,7 +1,7 @@
 package: com.TeamPanoptes.SilhouetteVR
 title: Silhouette
 tested_version: 1.3.0
-source_hint: Silhouette v200090+1.3.0
+source_hint: Silhouette
 engine: Unity
 xr: OpenXR
 status: issues

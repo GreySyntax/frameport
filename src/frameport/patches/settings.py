@@ -28,6 +28,40 @@ SETTINGS = [
     ("cylinder_strips", "int", 1, "Show curved panels",
      "Cylinder layers (curved menus and movie screens, e.g. 4XVR), which the Frame's runtime lacks, are shown as a "
      "few flat strips along the curve. 0 = drop them. 360° (equirect) layers can't be shown on the Frame."),
+    ("equirect_emul", "int", 0, "Show 360° layers",
+     "360° (equirect) layers, e.g. a video player's virtual theatre or 360° videos (e.g. 4XVR), which the Frame's "
+     "runtime lacks, are drawn by a background thread into a layer behind the game's own picture: the 360° image is "
+     "converted only when it changes (a theatre once, a 360° video once per video frame) and the view is drawn for each "
+     "frame's head pose. GLES games only; without it these layers are missing (black)."),
+    ("equirect_face", "int", 1536, "360° detail",
+     "Maximum size in pixels of each face of the cube the 360° image is converted to (256–2730). Higher is sharper "
+     "but uses more GPU memory."),
+    ("equirect_res", "int", 1536, "360° view resolution",
+     "Size in pixels per eye of the 360° background, redrawn every frame on a background thread (512–4096). Higher is "
+     "sharper but costs more GPU time per frame."),
+    ("equirect_flip", "int", 0, "360° picture orientation",
+     "Only if 360° pictures show wrongly: 1 = upside down, 2 = mirrored, 4 = turned around (add values to combine)."),
+    ("equirect_fps", "float", 60.0, "360° redraw limit (per second)",
+     "At most this many redraws per second of a 360° layer (0 = no limit). Video players need at least the video's "
+     "frame rate."),
+    ("equirect_stereo", "int", 0, "360° stereo",
+     "Stereo (3D) 360° layers: 0 = as the game sends them, 2 = flat (the left image to both eyes)."),
+    ("stable_local", "int", 0, "Keep the play space still",
+     "Every 'local' play space the game creates lines up with the one at the start. For games whose menus or screens "
+     "jump to where you look on the Frame."),
+    ("focus_hold", "int", 0, "Ignore brief focus dips",
+     "Hides the Frame's brief focus dips (well under a second) once the game has been focused for a few seconds. For "
+     "games that recentre or pause every time focus returns."),
+    ("aim_pitch", "float", 0.0, "Pointer tilt (degrees)",
+     "Tilts the controllers' pointing ray up (+) or down (−), for games whose pointer doesn't hit what you aim at."),
+    ("aim_yaw", "float", 0.0, "Pointer turn (degrees)", "Turns the controllers' pointing ray left (+) or right (−)."),
+    ("aim_forward", "float", 0.0, "Pointer origin forward (m)", "Moves where the pointing ray starts forward (+) or back (−)."),
+    ("refresh_rate", "float", 0.0, "Refresh rate (Hz)",
+     "Display refresh rate for this game (72, 80, 90, 96, 108, 120 or 144; 0 = the game's choice). A video's frame "
+     "rate that divides the refresh rate plays smoothest (e.g. 30 fps at 90 Hz, 24 fps at 72 Hz)."),
+    ("layer_debug", "int", 0, "Extra diagnostics (log)",
+     "Logs details for debugging: composition layers and swapchains, focus changes, play-space creation, pointer vs "
+     "grip poses, refresh rates. No effect on the game."),
     ("scene_emul", "int", 0, "Emulate Meta scene (room)",
      "Fake XR_FB_scene/spatial entities: a guardian-sized room with floor, ceiling and four walls, for mixed-reality "
      "games that build their level from the room (e.g. Demeter)."),
@@ -64,7 +98,7 @@ class AdapterSetting(Patch):
         self.default = default
 
     def detect(self, a):
-        from .applicability import needs_scene, uses_render_models
+        from .applicability import needs_scene, uses_equirect_layers, uses_render_models
 
         if self.key == "controller_fix" and a.extra.get("hand_tracking_only"):
             return Suggestion(True, "Hand tracking is required by the game: pass hands through instead of reporting "
@@ -72,6 +106,9 @@ class AdapterSetting(Patch):
         if self.key == "controller_models" and uses_render_models(a):
             return Suggestion(True, "The game asks the headset for its controller models: show Steam Frame controllers "
                                     "instead of Quest Touch controllers.", {"value": 1})
+        if self.key == "equirect_emul" and uses_equirect_layers(a):
+            return Suggestion(True, "The game draws 360° layers (e.g. a video player's theatre or 360° videos), which "
+                                    "the Frame's runtime can't show: show them as panels around you.", {"value": 1})
         if self.key == "scene_emul" and needs_scene(a):
             return Suggestion(True, "Mixed-reality game that builds its level from the room model: emulate a "
                                     "guardian-sized room (e.g. Demeter).", {"value": 1})
@@ -92,6 +129,8 @@ class AdapterSetting(Patch):
             "swapchain_fix": ap.is_gles,
             "gl_hide_multiview": lambda a: a.direct_vrapi and ap.is_gles(a),
             "controller_models": ap.may_use_render_models,
+            **{k: ap.is_gles for k in ("equirect_emul", "equirect_face", "equirect_res", "equirect_flip", "equirect_fps",
+                                       "equirect_stereo")},
         }
         rule = rules.get(self.key)
         return bool(rule(a)) if rule else True

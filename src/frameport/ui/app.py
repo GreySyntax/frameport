@@ -357,9 +357,11 @@ class FramePortApp:
         connected = self.frame_state == "connected"
         st = C.install_state(g, self.frame_info)
         frame_label = {"installed": "Reinstall on Frame", "outdated": "Update on Frame"}.get(st, "Install on Frame")
-        if (g.get("recipe") or {}).get("status") == "unsupported" and g.get("kind") != "rift":
-            return [("Can't run on the Frame", ft.Icons.BLOCK_ROUNDED, None, True,
-                     (g.get("recipe") or {}).get("notes") or "")]
+        blocked = (g.get("recipe") or {}).get("status") == "unsupported" and g.get("kind") != "rift"
+        if blocked and connected:  # known blocker: still allowed (e.g. to try a fix), after a warning
+            frame_label = {"installed": "Reinstall anyway", "outdated": "Update anyway"}.get(st, "Install anyway")
+            return [(frame_label, ft.Icons.WARNING_AMBER_ROUNDED, lambda e: self.install_blocked(pkg), False,
+                     "Marked \"Can't run\": " + ((g.get("recipe") or {}).get("notes") or "a known blocker"))]
         frame_opt = (frame_label, ft.Icons.VIEW_IN_AR_ROUNDED, lambda e: self.install(pkg, "frame"), False, None) \
             if connected else ("Connect your Frame", ft.Icons.LINK_ROUNDED, lambda e: self.go("frame"), False,
                                "Set up the connection to your Steam Frame first")
@@ -446,7 +448,7 @@ class FramePortApp:
                                 lambda e: self.test_game(pkg, "pc")))
                 if on_frame and not rift:
                     out.append(("Adapter settings…", ft.Icons.TUNE_ROUNDED, lambda e: self.settings_dialog(pkg)))
-                    out.append(("Send files to this game…", ft.Icons.DRIVE_FOLDER_UPLOAD_ROUNDED,
+                    out.append(("Add videos & files…", ft.Icons.VIDEO_LIBRARY_OUTLINED,
                                 lambda e: self.send_files_dialog(pkg)))
                 if on_frame:
                     out.append(("Uninstall from Frame", ft.Icons.DELETE_OUTLINE_ROUNDED,
@@ -486,15 +488,16 @@ class FramePortApp:
         return None
 
     # ---------------------------------------------------------------- queueing several installs
-    def install_many(self, pkgs: list[str], to: str = "frame") -> None:
+    def install_many(self, pkgs: list[str], to: str = "frame", allow_blocked: bool = False) -> None:
         """Queue installs. Everything that needs a decision is asked first, one game at a time (which program
-        starts a Rift game; games that check their Oculus license), then all of them run in the background."""
+        starts a Rift game; games that check their Oculus license), then all of them run in the background.
+        Games marked "Can't run" are skipped unless allow_blocked (the user chose "Install anyway")."""
         from .views.exe_dialog import show_exe_dialog
 
         games = [library.game(p) for p in pkgs]
         games = [g for g in games if g and not self.jobs.busy_with(g["package"])]
         skipped = [g for g in games if to == "pc" and g.get("kind") != "rift" or
-                   g.get("kind") != "rift" and (g.get("recipe") or {}).get("status") == "unsupported"]
+                   not allow_blocked and g.get("kind") != "rift" and (g.get("recipe") or {}).get("status") == "unsupported"]
         games = [g for g in games if g not in skipped]
         if not games:
             self.toast("Nothing to install" + (f" ({len(skipped)} can't be installed there)" if skipped else ""))
@@ -695,6 +698,10 @@ class FramePortApp:
                 return (f"{g.get('title')} is installed on this PC — launch it from your Steam library or the Play "
                         "button (SteamVR starts with it)")
             rep.check_cancel()
+            if not library.setting("install.launch_test", True):  # Settings → Installing
+                rep.stage("Installed")
+                return (f"{g.get('title')} is installed on {where}: put the headset on and launch it from your Steam "
+                        "library (automatic launch test is off in Settings)")
             summary = pipeline.test_game(pkg, target, rep)
             job.summary, job.to, job.log_path = summary, to, summary.get("log_path")
             rep.stage(f"Launch test: {'passed' if summary['verdict'] == 'pass' else summary['verdict']}")
@@ -705,6 +712,48 @@ class FramePortApp:
                           "install")
         job.to = to
         return job
+
+    def updatable(self) -> list[tuple[str, str]]:
+        """[(package, "frame" | "pc")] installs with an update ready (a newer build or changed patch settings)."""
+        out = []
+        frame_ok = self.frame_state == "connected"
+        pc = self.pc_installs() if any(g.get("kind") == "rift" for g in library.games()) else {}
+        for g in library.games():
+            pkg = g["package"]
+            if self.jobs.busy_with(pkg):
+                continue
+            if frame_ok and C.install_state(g, self.frame_info) == "outdated":
+                out.append((pkg, "frame"))
+            if pkg in pc and C.pc_outdated(g, pc[pkg]):
+                out.append((pkg, "pc"))
+        return out
+
+    def update_all(self) -> None:
+        """Queue an update for every install marked "update ready" (one at a time, like any install)."""
+        todo = self.updatable()
+        if not todo:
+            self.toast("Everything is up to date")
+            return
+        for pkg, to in todo:
+            self.install(pkg, to)
+        self.toast(f"Updating {len(todo)} game{'s' if len(todo) != 1 else ''}")
+        self.show_activity(True)
+
+    def install_blocked(self, pkg: str) -> None:
+        """Install a game marked "Can't run" after saying why it's marked so."""
+        g = library.game(pkg) or {}
+        notes = (g.get("recipe") or {}).get("notes") or "It has a known blocker on the Steam Frame."
+
+        def go(e):
+            self.page.pop_dialog()
+            self.install_many([pkg], "frame", allow_blocked=True)
+        self.page.show_dialog(ft.AlertDialog(
+            title=ft.Text(f"Install {self._title(pkg)} anyway?"), bgcolor=T.SURFACE_2,
+            content=ft.Column([C.body("This game is marked \"Can't run\" on the Steam Frame:", T.TEXT_2), C.body(notes),
+                               C.body("Install it anyway to try it, e.g. with different patches.", T.TEXT_2)],
+                              tight=True, width=T.px(520)),
+            actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()),
+                     C.primary("Install anyway", ft.Icons.WARNING_AMBER_ROUNDED, go)]))
 
     def test_game(self, pkg: str, to: str = "frame") -> Job:
         title = self._title(pkg)
@@ -883,7 +932,8 @@ class FramePortApp:
                    ("downloads", "Downloads: /sdcard/Download in every game"),
                    ("documents", "Documents: /sdcard/Documents in every game")]
         if package:
-            options = [("app", f"This game's storage (/sdcard of {self._title(package)})"),
+            options = [("videos+app", f"Videos, also added to {self._title(package)}'s own folder (recommended)"),
+                       ("app", f"This game's storage (/sdcard of {self._title(package)})"),
                        ("app-files", "This game's files folder (/sdcard/Android/data/…/files)")] + options
         chosen: list[str] = []
         dest = ft.Dropdown(label="Destination", value=options[0][0], width=T.px(520),
@@ -917,17 +967,22 @@ class FramePortApp:
             paths, target, sub = [Path(p) for p in chosen], dest.value, folder.value or ""
 
             def run(job: Job):
-                r = files.send_files(self.target.frame, paths, target, package, sub, job.reporter)
+                if target == "videos+app":  # players like 4XVR list their own folder, not /sdcard/Movies
+                    r = files.send_files(self.target.frame, paths, "videos", package, sub, job.reporter, link_app=package)
+                else:
+                    r = files.send_files(self.target.frame, paths, target, package, sub, job.reporter)
                 return (f"Sent {r['files']} file(s)" + (f", {r['skipped']} already there" if r["skipped"] else "")
                         + f". In the app, browse to {r['android']}")
             self.submit("Send files to the Frame", run, package, kind="tool-frame", open_panel=True)
 
         self.page.show_dialog(ft.AlertDialog(
-            title=ft.Text("Send files to the Frame"), bgcolor=T.SURFACE_2,
+            title=ft.Text(f"Add videos & files · {self._title(package)}" if package else "Send files to the Frame"),
+            bgcolor=T.SURFACE_2,
             content=ft.Column([
                 C.body("Videos, documents, mods or saves for Quest games. Apps find them by browsing folders "
-                       "(their \"all videos\" lists stay empty: Android's media index doesn't work on the Frame).",
-                       T.TEXT_2),
+                       "(their \"all videos\" lists stay empty: Android's media index doesn't work on the Frame)."
+                       + (" Video players that only list their own folder (e.g. 4XVR's \"Internal Storage\") get the "
+                          "files there too: no second copy, no extra space." if package else ""), T.TEXT_2),
                 dest, folder,
                 ft.Row([C.ghost("Add files…", ft.Icons.NOTE_ADD_OUTLINED, add_files),
                         C.ghost("Add folder…", ft.Icons.CREATE_NEW_FOLDER_OUTLINED, add_folder)]),
@@ -952,8 +1007,35 @@ class FramePortApp:
             if f.path:
                 self.scan(f.path)
 
-    def scan(self, path: str, single: bool = False) -> Job:
+    def scan_roots(self) -> list[str]:
+        """Folders to rescan: the ones scanned before (remembered from now on), else the folders the library's games
+        came from (one level up from each game folder)."""
+        roots = [r for r in library.setting("scan.roots", []) if Path(r).exists()]
+        if not roots:
+            found = set()
+            for g in library.load().get("games", {}).values():
+                origin = g.get("origin") or (str(Path(g["apk"]).parent) if g.get("apk") else None)
+                if origin and Path(origin).parent.exists():
+                    found.add(str(Path(origin).parent))
+            roots = sorted(found)
+        # a folder inside another one is scanned with it (scanning it again would only repeat work)
+        return [r for r in roots if not any(o != r and Path(r).is_relative_to(o) for o in roots)]
+
+    def rescan(self, e=None) -> None:
+        """Scan the library's folders again for games added since (unchanged games aren't analyzed again)."""
+        roots = self.scan_roots()
+        if not roots:
+            self.toast("No folders to rescan yet: add games with Scan a folder")
+            return
+        for r in roots:
+            self.scan(r, only_new=True)
+        self.toast(f"Rescanning {len(roots)} folder{'s' if len(roots) != 1 else ''} for new games")
+
+    def scan(self, path: str, single: bool = False, only_new: bool = False) -> Job:
         last = {"t": 0.0}
+        if not single:  # remembered for "Rescan folders"
+            roots = [r for r in library.setting("scan.roots", []) if r != str(path)]
+            library.set_setting("scan.roots", roots + [str(path)])
 
         def added_one(entry: dict):
             from ..artwork import thumbs
@@ -971,11 +1053,15 @@ class FramePortApp:
         def run(job: Job):
             rep = job.reporter
             rep.stage("Looking for games")
-            added = pipeline.add_path(Path(path), rep, on_added=added_one, force_rift=single, art=True)
+            added = pipeline.add_path(Path(path), rep, on_added=added_one, force_rift=single, art=True,
+                                      only_new=only_new)
             if self.route[0] == "welcome" and added:
                 library.set_setting("ui.welcome_done", True)
                 self.route = ("library",)
             n = len(added)
+            if only_new:
+                return f"{n} new game{'s' if n != 1 else ''} in {Path(path).name}" if added else \
+                    f"No new games in {Path(path).name}"
             return f"Added {n} game{'s' if n != 1 else ''}" if added else "No games found in that folder"
         return self.submit(f"Scan {Path(path).name}", run, None, "scan")
 

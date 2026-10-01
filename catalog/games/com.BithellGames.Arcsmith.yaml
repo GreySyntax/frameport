@@ -1,7 +1,7 @@
 package: com.BithellGames.Arcsmith
 title: Arcsmith
 tested_version: '1.128'
-source_hint: Arcsmith v128+1.128
+source_hint: Arcsmith
 engine: Unity
 xr: VrApi
 status: issues

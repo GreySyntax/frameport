@@ -140,9 +140,13 @@ def compare(new_apk: Path, old_apk: Path) -> dict:
 
 
 def find_source(sources: Path, hint: str, package: str) -> quest_dump.SourceGame | None:
-    for d in sorted(sources.iterdir()):
-        if d.is_dir() and quest_dump.display_name(d.name) == hint:
-            return quest_dump.from_path(d)
+    from .recommend.catalog import source_hint_matches
+
+    for d in sorted(sources.iterdir()):  # by name (loosely: releases name their folders differently)
+        if d.is_dir() and hint and source_hint_matches(hint, d.name):
+            g = quest_dump.from_path(d)
+            if g and quest_dump._package_of(g.apk) == package:
+                return g
     for d in sorted(sources.iterdir()):  # slow path: look inside
         g = quest_dump.from_path(d) if d.is_dir() else None
         if g and quest_dump._package_of(g.apk) == package:

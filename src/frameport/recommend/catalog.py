@@ -141,7 +141,7 @@ def entry_from_library(g: dict, status: str = "works", notes: str | None = None,
                   verified={k: v for k, v in {"date": time.strftime("%Y-%m-%d"),
                                               "known_good_sha256": (g.get("build") or {}).get("sha256"),
                                               **(verified or {})}.items() if v},
-                  source_hint=g.get("name", ""))
+                  source_hint=generic_source_hint(g.get("name", "")))
     if g.get("kind") == "rift":
         env = r.params("pcvr.proton_env").get("env") or ""
         return CatalogEntry(
@@ -164,6 +164,28 @@ def entry_from_library(g: dict, status: str = "works", notes: str | None = None,
         frame=[p for p in r.patches if (c := cat(p)) and c.category == "frame" and not c.default_on],
         adapter={p.split(".", 1)[1]: v.get("value") for p, v in r.patches.items() if p.startswith("adapter.")},
         device_files=r.params("device.files").get("files", {}))
+
+
+def generic_source_hint(name: str) -> str:
+    """The game's title from a download folder name, without what varies between releases: version ("v20022+2.0.22"),
+    bracketed notes ("(Pro + Trial Bypass)", "(English Only)") and release-group suffixes ("-VRP", "-JF")."""
+    import re
+
+    t = re.sub(r"[\(\[][^)\]]*[\)\]]", " ", name or "")
+    t = re.split(r"\s+v\d", t)[0]
+    t = re.sub(r"\s+-\s*[A-Za-z0-9]+\s*$", "", t)
+    return " ".join(t.split()).strip(" -")
+
+
+def source_hint_matches(hint: str, folder_name: str) -> bool:
+    """Loose match of a recipe's source hint against a download folder name (case, punctuation, version and release
+    tags don't matter)."""
+    import re
+
+    def norm(s: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", s.lower())
+    want = norm(generic_source_hint(hint))
+    return bool(want) and want in norm(folder_name)
 
 
 def to_yaml(entry: CatalogEntry) -> str:

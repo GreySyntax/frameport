@@ -1,7 +1,7 @@
 package: com.FuturLab.PowerWashSimulator
 title: PowerWash Simulator VR
 tested_version: 2.5.0
-source_hint: PowerWash Simulator VR v3055+2.5.0
+source_hint: PowerWash Simulator VR
 engine: Unity
 xr: OpenXR
 status: works

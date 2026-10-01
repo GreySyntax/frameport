@@ -1,7 +1,7 @@
 package: com.Ubisoft.ACNexusVR
 title: Assassin's Creed Nexus
 tested_version: MAIN.450412.207706.final
-source_hint: Assassins Creed Nexus VR v207706+MAIN.450412.207706.final
+source_hint: Assassins Creed Nexus VR
 engine: Unity
 xr: OpenXR
 status: issues

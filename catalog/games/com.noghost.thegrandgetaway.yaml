@@ -1,7 +1,7 @@
 package: com.noghost.thegrandgetaway
 title: Wallace & Gromit in The Grand Getaway
 tested_version: 1.0.34
-source_hint: Wallace & Gromit in The Grand Getaway v141+1.0.34
+source_hint: Wallace & Gromit in The Grand Getaway
 engine: Unreal
 xr: OpenXR
 status: works

@@ -1,7 +1,7 @@
 package: com.Sanzaru.Wrath2
 title: Asgard's Wrath 2
 tested_version: 12.1.1689309
-source_hint: Asgards Wrath 2 v5513+12.1.1689309
+source_hint: Asgards Wrath 2
 engine: Unreal
 xr: OpenXR
 status: works

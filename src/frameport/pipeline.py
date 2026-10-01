@@ -25,14 +25,20 @@ from .targets.base import Target
 
 
 def add_path(path: Path, reporter: Reporter | None = None, on_added=None, force_rift: bool = False,
-             art: bool = False) -> list[dict]:
+             art: bool = False, only_new: bool = False) -> list[dict]:
     """Scan a file/folder (recursively), analyze every game found (Quest APKs and Rift game folders) and store it with
     a suggested recipe. on_added(entry) is called as each game lands in the library (the GUI streams cards in).
-    force_rift: `path` is one Rift game folder (added even if no VR runtime is detected). art: fetch artwork too."""
+    force_rift: `path` is one Rift game folder (added even if no VR runtime is detected). art: fetch artwork too.
+    only_new: skip Quest APKs already in the library (a rescan for games added since; Rift folders already skip
+    unchanged games)."""
     path = Path(path)
     added = []
+    known_apks = {str(Path(g["apk"]).resolve()) for g in library.games() if g.get("apk")} if only_new else set()
+    known_packages = {g["package"] for g in library.games()} if only_new else set()
 
     def done(entry):
+        if only_new and entry["package"] in known_packages:  # already in the library (e.g. an unchanged Rift folder)
+            return
         added.append(entry)
         if on_added:
             on_added(entry)
@@ -40,6 +46,14 @@ def add_path(path: Path, reporter: Reporter | None = None, on_added=None, force_
         for src in quest_dump.scan(path):
             if reporter:
                 reporter.check_cancel()
+            if only_new and str(Path(src.apk).resolve()) in known_apks:
+                continue
+            if only_new:  # another copy of a game already in the library (e.g. a patched build): leave it alone
+                try:
+                    if quest_dump._package_of(src.apk) in known_packages:
+                        continue
+                except Exception:  # noqa: BLE001
+                    pass
             try:
                 entry = add_game(src, reporter)
                 if art:

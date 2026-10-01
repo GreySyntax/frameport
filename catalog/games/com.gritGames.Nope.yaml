@@ -1,7 +1,7 @@
 package: com.gritGames.Nope
 title: NOPE CHALLENGE
 tested_version: 1.0.964.7166
-source_hint: NOPE CHALLENGE v964+1.0.964.7166
+source_hint: NOPE CHALLENGE
 engine: Unreal
 xr: OpenXR
 status: works

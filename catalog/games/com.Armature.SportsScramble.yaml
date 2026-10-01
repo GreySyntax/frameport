@@ -1,7 +1,7 @@
 package: com.Armature.SportsScramble
 title: Sports Scramble (Santa Cruz)
 tested_version: '1.0'
-source_hint: Sports Scramble v88+1.0
+source_hint: Sports Scramble
 engine: Unreal
 xr: VrApi
 status: unsupported

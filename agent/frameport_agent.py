@@ -33,7 +33,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 24
+AGENT_VERSION = 26
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -898,6 +898,29 @@ def lepton_shared_folders():
     return pairs or list(SHARED_DEFAULT)
 
 
+# Folders Android itself creates in every app's /sdcard; anything else at the top level was made by the app.
+ANDROID_STORAGE_DIRS = {"alarms", "android", "audiobooks", "dcim", "documents", "download", "movies", "music",
+                        "notifications", "pictures", "podcasts", "recordings", "ringtones", "screenshots"}
+
+
+def app_media_dirs(ext):
+    """The app's own top-level folders in its /sdcard (e.g. 4XVR's 4XPlayer, which its "Internal Storage" list shows
+    instead of /sdcard/Movies): real folders only (not Lepton's links to the shared folders), not hidden."""
+    try:
+        names = sorted(os.listdir(ext))
+    except OSError:
+        return []
+    return [n for n in names if not n.startswith(".") and n.lower() not in ANDROID_STORAGE_DIRS
+            and os.path.isdir(os.path.join(ext, n)) and not os.path.islink(os.path.join(ext, n))]
+
+
+def lepton_external(pkg):
+    dep = deployment(pkg)
+    if not dep or dep.get("kind") == "pcvr":
+        raise AgentError(f"{pkg} is not an installed Quest (Lepton) game")
+    return os.path.join(dep["base"], "lepton-data", "external")
+
+
 def cmd_storage_targets(args):
     """Where files for Lepton apps go: shared folders (seen by every app, e.g. ~/Videos = /sdcard/Movies) and, with a
     package, that app's own storage (/sdcard) and its files folder. Creates missing shared folders (Lepton links only
@@ -910,15 +933,53 @@ def cmd_storage_targets(args):
     pkg = args.get("package")
     if pkg:
         pkg = check_pkg(pkg)
-        dep = deployment(pkg)
-        if not dep or dep.get("kind") == "pcvr":
-            raise AgentError(f"{pkg} is not an installed Quest (Lepton) game")
-        ext = os.path.join(dep["base"], "lepton-data", "external")
+        ext = lepton_external(pkg)
         files = os.path.join(ext, "Android", "data", pkg, "files")
         os.makedirs(files, exist_ok=True)
         out.append({"id": "app", "path": ext, "android": "/sdcard", "shared": False})
         out.append({"id": "app-files", "path": files, "android": f"/sdcard/Android/data/{pkg}/files", "shared": False})
+        for i, name in enumerate(app_media_dirs(ext)):  # the app's own folders (e.g. a video player's library)
+            out.append({"id": "app-media" if i == 0 else f"app-media:{name}", "path": os.path.join(ext, name),
+                        "android": f"/sdcard/{name}", "shared": False, "folder": name})
     return {"targets": out}
+
+
+def cmd_link_media(args):
+    """Make files from the shared folders (e.g. ~/Videos) appear in an app's own folder too, as hard links (no copy,
+    no extra space). For players that list their own folder rather than /sdcard/Movies (4XVR: 4XPlayer). args:
+    package, files (paths under ~/Videos, ~/Downloads, ~/Documents), folder (optional; default: the app's first own
+    folder, see app_media_dirs). Returns {folder, android, linked, existing, missing}; folder None when the app has no
+    own folder (it then finds the files in the shared folders)."""
+    pkg = check_pkg(args["package"])
+    ext = lepton_external(pkg)
+    folder = args.get("folder") or next(iter(app_media_dirs(ext)), None)
+    if not folder:
+        return {"folder": None, "android": None, "linked": [], "existing": [], "missing": []}
+    if "/" in folder or folder in (".", ".."):
+        raise AgentError(f"bad folder {folder!r}")
+    dest = os.path.join(ext, folder)
+    os.makedirs(dest, exist_ok=True)
+    shared = [os.path.realpath(os.path.join(HOME, h)) for h, _a in lepton_shared_folders()]
+    linked, existing, missing = [], [], []
+    for path in args.get("files") or []:
+        real = os.path.realpath(path)
+        if not any(real == s or real.startswith(s + os.sep) for s in shared):
+            raise AgentError(f"{path} is not in a shared folder ({', '.join(shared)})")
+        if not os.path.isfile(real):
+            missing.append(path)
+            continue
+        target = os.path.join(dest, os.path.basename(real))
+        if os.path.exists(target):
+            if os.path.samefile(target, real):
+                existing.append(os.path.basename(real))
+                continue
+            os.remove(target)  # an older file of the same name: show the one just sent
+        try:
+            os.link(real, target)
+        except OSError:
+            shutil.copy2(real, target)  # different file system (not the case with Lepton's layout)
+        linked.append(os.path.basename(real))
+    return {"folder": folder, "android": f"/sdcard/{folder}", "linked": linked, "existing": existing, "missing": missing}
 
 
 def cmd_list_files(args):
@@ -1003,6 +1064,9 @@ app_dir={base_q}
 # Some games (Unreal cloud saves) create folders without write/search permission inside Lepton,
 # which silently breaks saving. Repair them before and during every launch.
 fix_perms() {{ find "$app_dir/lepton-data/external" -type d ! -perm -u+rwx -exec chmod u+rwx {{}} + 2>/dev/null || true; }}
+# Android can't create an app's external files/cache folders inside Lepton ("Invalid mkdirs path ... not a known app
+# path"): getExternalCacheDir() then returns nothing, which breaks e.g. Whirligig's video player cache. Create them here.
+mkdir -p "$app_dir/lepton-data/external/Android/data/{pkg}/files" "$app_dir/lepton-data/external/Android/data/{pkg}/cache" 2>/dev/null || true
 fix_perms
 ( while sleep 2 && kill -0 $$ 2>/dev/null; do fix_perms; done ) & permfix=$!
 export SteamAppId={appid}

@@ -176,12 +176,17 @@ class LibraryView:
                    ft.PopupMenuItem(content=ft.Text("Add an APK file…"), icon=ft.Icons.ANDROID_ROUNDED,
                                     on_click=app.pick_apk)],
             bgcolor=T.SURFACE_2, tooltip="")
+        self.rescan_btn = C.secondary("Rescan folders", ft.Icons.REFRESH_ROUNDED, app.rescan,
+                                      tooltip=C.tip(HELP["rescan"]))
+        self.update_all_btn = C.secondary("Update all", ft.Icons.SYSTEM_UPDATE_ALT_ROUNDED, lambda e: app.update_all(),
+                                          tooltip=C.tip(HELP["update_all"]))
+        self.update_all_btn.visible = False
         self.select_btn = C.secondary("Select", ft.Icons.CHECKLIST_ROUNDED, lambda e: self.set_select_mode(True),
                                       tooltip=C.tip(HELP["select"]))
         self.root = ft.Column([
             ft.Row([ft.Column([ft.Text("Library", size=T.T_TITLE, weight=ft.FontWeight.W_700, color=T.TEXT,
                                        no_wrap=True), self.subtitle], spacing=T.px(2), expand=True), self.search,
-                    self.select_btn, add], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3),
+                    self.update_all_btn, self.rescan_btn, self.select_btn, add], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3),
             self.resume_bar, self.hint, self.filters, self.body, self.sel_bar,
         ], expand=True, spacing=T.S4)
         # skeleton cards until the first batch arrives
@@ -368,6 +373,10 @@ class LibraryView:
         if n_pc:
             parts.append(f"{n_pc} on this PC")
         self.subtitle.value = " · ".join(parts)
+        updates = len(self.app.updatable())
+        self.update_all_btn.visible = updates > 0
+        self.update_all_btn.content = f"Update all ({updates})" if updates else "Update all"
+        C.update(self.update_all_btn)
         self._update_hint()
         has_rift = any(g.get("kind") == "rift" for g in games)
         where = [("all", "All"), ("frame", "On Frame"), ("none", "Not installed")]

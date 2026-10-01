@@ -1,7 +1,7 @@
 package: com.camouflaj.manta
 title: 'Batman: Arkham Shadow'
 tested_version: 1.4.1-350961
-source_hint: Batman- Arkham Shadow (Inc Lang Packs) v350961+1.4.1-350961
+source_hint: 'Batman- Arkham Shadow'
 engine: Unity
 xr: OpenXR
 status: works

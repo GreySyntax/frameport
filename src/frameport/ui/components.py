@@ -294,3 +294,10 @@ def menu_items(actions: list[tuple | None]) -> list[ft.PopupMenuItem]:
     while out and out[-1].content is None:
         out.pop()
     return out
+
+
+def is_media_player(g: dict) -> bool:
+    """A video player (360° layers in its recipe or analysis, e.g. 4XVR): its page offers "Add videos" up front."""
+    patches = ((g.get("recipe") or {}).get("patches") or {})
+    exts = ((g.get("analysis") or {}).get("extra") or {}).get("xr_layer_exts") or []
+    return "adapter.equirect_emul" in patches or any(e.startswith("XR_KHR_composition_layer_equirect") for e in exts)

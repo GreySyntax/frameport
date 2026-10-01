@@ -36,6 +36,7 @@ signatures:
     use_alt: true
   - id: swapchain-format
     pattern: 'xrCreateSwapchain.*(-26|FORMAT_UNSUPPORTED)|swapchain format .* rejected'
+    unless: 'FrameBridge:\s+retry (samples=1|format=\d+) result=0'  # the adapter's fallback worked
     severity: error
     diagnosis: The Frame rejected the swapchain format (GLES games must use sRGB formats, no MSAA).
     suggest: [adapter.swapchain_fix]
@@ -93,6 +94,18 @@ signatures:
     diagnosis: Lepton's Fossilize layer crashed while recording a render pass (the engine leaves an attachment reference's pNext uninitialized).
     suggest: [frame.vk_sanitize]
     supersedes: [native-crash]
+  - id: equirect-layers-dropped
+    pattern: 'new layer: type=100009100\d [^\n]*usable=0|new layer: type=1000018000 [^\n]*usable=0'
+    severity: warning
+    diagnosis: The game shows 360° (equirect) layers, e.g. a video player's theatre or 360° videos, which the Frame's
+      runtime can't composite, so they are missing. GLES games can get them back as panels around the player.
+    suggest: [adapter.equirect_emul]
+  - id: equirect-emul-disabled
+    pattern: 'equirect_emul: (disabled|drawing failed|not a GLES session)'
+    severity: warning
+    diagnosis: The 360° layer emulation switched itself off for this session (no shared GLES context, or drawing
+      failed); the 360° layers are dropped as without it. See the lines before it in the log.
+    suggest: []
   - id: swapchain-size-abort
     pattern: '#01 pc [^\n]*libopenxr_loader\.so \(xrCreateSwapchain\+|Wrong createInfo size'
     severity: fatal

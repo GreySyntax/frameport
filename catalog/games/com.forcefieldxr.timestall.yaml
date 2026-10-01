@@ -1,7 +1,7 @@
 package: com.forcefieldxr.timestall
 title: Time Stall
 tested_version: '1.0'
-source_hint: Time Stall v631960+1.0
+source_hint: Time Stall
 engine: Unreal
 xr: VrApi
 status: issues

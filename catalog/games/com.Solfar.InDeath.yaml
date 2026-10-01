@@ -1,7 +1,7 @@
 package: com.Solfar.InDeath
 title: 'In Death: Unchained'
 tested_version: 1.8.0
-source_hint: In Death- Unchained v123248087+1.8.0
+source_hint: 'In Death- Unchained'
 engine: Unreal
 xr: OpenXR
 status: works

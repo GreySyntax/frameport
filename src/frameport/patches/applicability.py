@@ -61,3 +61,10 @@ def uses_render_models(a: Analysis) -> bool:
 def may_use_render_models(a: Analysis) -> bool:
     """Could ask for runtime controller models at all: declares them, or ships Meta's OVRPlugin (Unity/Unreal)."""
     return uses_render_models(a) or "libOVRPlugin.so" in a.libs
+
+
+def uses_equirect_layers(a: Analysis) -> bool:
+    """The game's own native code (not Meta's OVRPlugin, which lists every layer type) requests 360° composition
+    layers, which the Frame runtime lacks; only GLES games can get them back (equirect_emul)."""
+    exts = a.extra.get("xr_layer_exts") or []
+    return is_gles(a) and any(e.startswith("XR_KHR_composition_layer_equirect") for e in exts)

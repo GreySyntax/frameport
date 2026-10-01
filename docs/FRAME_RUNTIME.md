@@ -25,6 +25,13 @@
   FUNCTION_UNSUPPORTED). XR_FB_render_model is presumably missing too (not checked on the device yet); the adapter
   emulates it only with `controller_models=1` and uses a native one if the runtime ever has it. Missing (dropped): XR_KHR_composition_layer_equirect2, XR_KHR_composition_layer_cylinder
   (the VrApi bridge converts cylinders to quads).
+- Layer types (checked 2026-09-30 in `/opt/steamvr/bin/androidarm64/vrclient.so`, the Android-side runtime Lepton
+  mounts at `/data/steamvr/runtime`): its compositors (`CSxrCompositorPrism`, `CSxrCompositorOpenVR`) only have
+  `ComposeLayerQuad` and `ComposeLayerProjection`; cube/cylinder/equirect/equirect2 exist only as enum names, so
+  there is nothing to switch on. It has a layer limit ("Exceeded the layer limit"; the value is logged by
+  `layer_debug` from `maxLayerCount`). The adapter emulates cylinders (strips) and, per game, equirect layers
+  (`equirect_emul`, an adapter projection layer). Quad layers are drawn above every projection layer regardless of
+  submission order (seen 2026-10-01: quads placed before 4XVR's projection layer covered it).
 - Swapchain formats: GLES `GL_SRGB8_ALPHA8` (35907) / `GL_SRGB8` (35905) only, samples = 1. Vulkan: 43 (R8G8B8A8_SRGB)
   and 50, not 37/44 (UNORM).
 - Environment blend: ALPHA_BLEND available (greyscale passthrough cameras).

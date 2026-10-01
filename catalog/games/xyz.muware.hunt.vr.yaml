@@ -1,7 +1,7 @@
 package: xyz.muware.hunt.vr
 title: H.U.N.T
 tested_version: 0.1.2
-source_hint: H.U.N.T v11+0.1.2
+source_hint: H.U.N.T
 engine: Unity
 xr: OpenXR
 status: works

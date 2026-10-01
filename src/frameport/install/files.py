@@ -3,8 +3,10 @@
 Lepton gives every app the Frame's ~/Videos, ~/Downloads and ~/Documents as /sdcard/Movies, /sdcard/Download and
 /sdcard/Documents (shared by all apps), and each app its own /sdcard (<install>/lepton-data/external). The agent reports
 these destinations (`storage_targets`, read from Lepton itself). Android's media index doesn't work inside Lepton, so
-media apps find these files by browsing folders (e.g. 4XVR: local storage → Movies), not in "all videos" lists.
-Uploads are resumable and use the fast link (USB / the Frame's hotspot) like game installs.
+media apps find these files by browsing folders, not in "all videos" lists. Some players only list their own folder
+in /sdcard (4XVR: "Internal Storage" = /sdcard/4XPlayer): `link_app` hard-links what was sent to the shared folders into
+that app's own folder too (agent `link_media`; no copy, no extra space). Uploads are resumable and use the fast link
+(USB / the Frame's hotspot) like game installs.
 """
 from __future__ import annotations
 
@@ -54,7 +56,8 @@ def _safe_subdir(subdir: str) -> str:
 
 
 def send_files(frame: Frame, paths: list[Path], target: str = "videos", package: str | None = None,
-               subdir: str = "", reporter: Reporter | None = None) -> dict:
+               subdir: str = "", reporter: Reporter | None = None, link_app: str | None = None) -> dict:
+    """Upload to `target`. With link_app (a shared target only): the files also appear in that app's own folder."""
     reporter = reporter or Reporter()
     reporter.stage("Prepare the Frame")
     dests = {t["id"]: t for t in storage_targets(frame, package if target.startswith("app") else None)}
@@ -73,6 +76,16 @@ def send_files(frame: Frame, paths: list[Path], target: str = "videos", package:
         reporter.stage(f"Upload {len(items)} file(s)")
         installer.upload_files(xfer, items, dest["path"], reporter, max(total, 1))
     where = posixpath.join(dest["android"], sub) if sub else dest["android"]
+    linked = None
+    if link_app and dest["shared"]:
+        remote = [posixpath.join(dest["path"], i[1]) for i in items + have]
+        linked = frame.agent("link_media", package=link_app, files=remote)
+        if linked.get("folder"):
+            reporter.log(f"added {len(linked['linked']) + len(linked['existing'])} file(s) to the game's own folder "
+                         f"{linked['android']}")
+            where = linked["android"]
+        else:
+            reporter.log("the game has no folder of its own yet (start it once); it finds the files in " + where)
     reporter.log(f"done: in the app, open {where}")
     return {"files": len(items), "skipped": len(have), "bytes": total, "path": posixpath.join(dest["path"], sub), "android": where,
-            "shared": dest["shared"]}
+            "shared": dest["shared"], "linked": linked}

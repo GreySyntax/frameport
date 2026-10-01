@@ -25,7 +25,11 @@
 //    created them before tracking started recreate them (respace_kick);
 //  * optionally flips quad layers vertically for apps whose UI panels show upside down (flip_quads);
 //  * optionally serves Steam Frame controller models through XR_FB_render_model (controller_models,
-//    render_model.c).
+//    render_model.c);
+//  * per-game session fixes (session_fixes.c, all off by default): layer_debug diagnostics, stable_local,
+//    focus_hold, aim pose correction (aim_pitch/aim_yaw/aim_forward), refresh_rate;
+//  * optionally shows 360° (equirect/equirect2) layers as cube-face quads drawn by a worker thread with a shared
+//    GLES context (equirect_emul, layer_emul_gl.c; GLES sessions only, off by default).
 //
 // Settings (key=value lines), later sources override earlier ones:
 //   <libdir>/libframe_settings.so
@@ -73,6 +77,19 @@ static int runtime_has_image_layout;  // runtime supports XR_FB_composition_laye
 static int no_equirect, no_equirect2, no_cylinder, no_cube;
 static int runtime_has_fb_passthrough, emulate_passthrough, alpha_blend_failed;
 static int controller_models;  // serve Frame controller models via XR_FB_render_model (render_model.c)
+// Per-game settings, all off by default (session_fixes.c, layer_emul_gl.c).
+static int layer_debug;      // diagnostics: layers, swapchains, session states, spaces, aim/grip, refresh rates
+static int stable_local;     // keep every LOCAL space the app creates on the session-start origin
+static int focus_hold;       // hide brief focus dips once the session has been focused for a while
+static float aim_pitch, aim_yaw, aim_forward;  // aim pose correction (degrees, degrees, metres)
+static float refresh_rate;   // requested display refresh rate (Hz), 0 = the app's choice
+static int equirect_emul;    // show 360 layers as cube faces (GLES)
+static int equirect_face = 1536;  // max cube map face size (px)
+static int equirect_res = 1536;   // projection image size per eye (px)
+static int equirect_flip;    // source orientation fix: 1 upside down, 2 mirrored, 4 turned 180 degrees
+static float equirect_fps = 60;   // max redraws per second per 360 layer (0 = no limit)
+static int equirect_stereo;  // 0 auto (mono if the layer limit can't hold both eyes), 1 stereo, 2 mono
+static XrTime last_predicted_time;
 static void render_model_init(const char *package);
 
 static void read_settings(const char *path) {
@@ -99,6 +116,19 @@ static void read_settings(const char *path) {
         if (sscanf(line, "scene_width=%f", &value) == 1 && value > 0.5f && value < 20.0f) scene_width = value;
         if (sscanf(line, "scene_depth=%f", &value) == 1 && value > 0.5f && value < 20.0f) scene_depth = value;
         if (sscanf(line, "controller_models=%f", &value) == 1) controller_models = value != 0;
+        if (sscanf(line, "layer_debug=%f", &value) == 1) layer_debug = value != 0;
+        if (sscanf(line, "stable_local=%f", &value) == 1) stable_local = value != 0;
+        if (sscanf(line, "focus_hold=%f", &value) == 1) focus_hold = value != 0;
+        if (sscanf(line, "aim_pitch=%f", &value) == 1 && fabsf(value) <= 90) aim_pitch = value;
+        if (sscanf(line, "aim_yaw=%f", &value) == 1 && fabsf(value) <= 90) aim_yaw = value;
+        if (sscanf(line, "aim_forward=%f", &value) == 1 && fabsf(value) <= 0.5f) aim_forward = value;
+        if (sscanf(line, "refresh_rate=%f", &value) == 1 && (value == 0 || (value >= 60 && value <= 144))) refresh_rate = value;
+        if (sscanf(line, "equirect_emul=%f", &value) == 1) equirect_emul = value != 0;
+        if (sscanf(line, "equirect_face=%f", &value) == 1 && value >= 256 && value <= 2730) equirect_face = (int)value;
+        if (sscanf(line, "equirect_res=%f", &value) == 1 && value >= 512 && value <= 4096) equirect_res = (int)value;
+        if (sscanf(line, "equirect_flip=%f", &value) == 1 && value >= 0 && value <= 7) equirect_flip = (int)value;
+        if (sscanf(line, "equirect_fps=%f", &value) == 1 && value >= 0 && value <= 144) equirect_fps = value;
+        if (sscanf(line, "equirect_stereo=%f", &value) == 1 && value >= 0 && value <= 2) equirect_stereo = (int)value;
     }
     fclose(f);
     LOG("settings read from %s", path);
@@ -140,6 +170,11 @@ static void initialize(void) {
     LOG("scale=%.2f foveation_fix=%d controller_fix=%d swapchain_fix=%d layer_fix=%d mutable_fix=%d swap_eyes=%d passthrough_emul=%d respace_kick=%d flip_quads=%d controller_models=%d loader=%s",
         scale, foveation_fix, controller_fix, swapchain_fix, layer_fix, mutable_fix, swap_eyes, passthrough_emul,
         respace_kick, flip_quads, controller_models, next_gipa ? "OK" : (dlerror() ?: "FAILED"));
+    if (layer_debug || stable_local || focus_hold || aim_pitch || aim_yaw || aim_forward || refresh_rate || equirect_emul)
+        LOG("per-game: layer_debug=%d stable_local=%d focus_hold=%d aim=%.1f/%.1f/%.3f refresh_rate=%.0f equirect_emul=%d "
+            "(face %d, res %d, flip %d, fps %.0f, stereo %d)", layer_debug, stable_local, focus_hold, aim_pitch, aim_yaw,
+            aim_forward, refresh_rate, equirect_emul, equirect_face, equirect_res, equirect_flip, equirect_fps,
+            equirect_stereo);
 }
 
 static PFN_xrVoidFunction lookup(XrInstance instance, const char *name) {
@@ -182,7 +217,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateInstance(const XrInstanceCreateInfo *info
     }
 
     XrInstanceCreateInfo fixed = *info;
-    const char **names = calloc(info->enabledExtensionCount + 1, sizeof(*names));
+    const char **names = calloc(info->enabledExtensionCount + 2, sizeof(*names));
     if (!names) { free(available); return XR_ERROR_OUT_OF_MEMORY; }
     uint32_t kept = 0;
     for (uint32_t i = 0; i < info->enabledExtensionCount; ++i) {
@@ -205,6 +240,12 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateInstance(const XrInstanceCreateInfo *info
     if (chained && !enabled) {
         names[kept++] = "XR_KHR_android_create_instance";
         LOG("added %s", "XR_KHR_android_create_instance");
+    }
+    if (refresh_rate > 0) {  // the refresh_rate setting needs XR_FB_display_refresh_rate even if the app doesn't use it
+        int requested = 0, offered = 0;
+        for (uint32_t i = 0; i < kept; ++i) requested |= !strcmp(names[i], "XR_FB_display_refresh_rate");
+        for (uint32_t j = 0; available && j < available_count; ++j) offered |= !strcmp(available[j].extensionName, "XR_FB_display_refresh_rate");
+        if (!requested && offered) { names[kept++] = "XR_FB_display_refresh_rate"; LOG("added XR_FB_display_refresh_rate (refresh_rate)"); }
     }
     fixed.enabledExtensionNames = names;
     fixed.enabledExtensionCount = kept;
@@ -303,6 +344,13 @@ static void forget_swapchain(XrSwapchain handle) {
 
 static void flip_on_create_swapchain(XrSwapchain handle, const XrSwapchainCreateInfo *info);
 static void flip_on_destroy(XrSwapchain handle);
+static void emul_on_create_swapchain(XrSwapchain handle, const XrSwapchainCreateInfo *info);
+static void emul_on_destroy_swapchain(XrSwapchain handle);
+static int emul_virtual_create(XrSession session, const XrSwapchainCreateInfo *info, XrSwapchain *out);
+static int emul_is_virtual(XrSwapchain handle);
+static void emul_virtual_destroy(XrSwapchain handle);
+static XrResult emul_virtual_enumerate(XrSwapchain handle, uint32_t capacity, uint32_t *count, XrSwapchainImageBaseHeader *images);
+static void emul_on_acquire(XrSwapchain handle, uint32_t index);
 
 static int known_swapchain(XrSwapchain handle) {
     int found = 0;
@@ -325,11 +373,21 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateSwapchain(XrSession session, const XrSwap
         fixed.next = p;
     }
     if (mutable_fix) fixed.usageFlags |= XR_SWAPCHAIN_USAGE_MUTABLE_FORMAT_BIT;
+    if (equirect_emul && swapchain && emul_virtual_create(session, &fixed, swapchain)) {
+        remember_swapchain(*swapchain);
+        emul_on_create_swapchain(*swapchain, &fixed);
+        return XR_SUCCESS;
+    }
     XrResult result = fn(session, &fixed, swapchain);
-    LOG("xrCreateSwapchain %ux%u format=%lld samples=%u array=%u faces=%u usage=0x%llx result=%d", fixed.width,
-        fixed.height, (long long)fixed.format, fixed.sampleCount, fixed.arraySize, fixed.faceCount,
-        (unsigned long long)fixed.usageFlags, result);
-    if (XR_SUCCEEDED(result)) { remember_swapchain(*swapchain); flip_on_create_swapchain(*swapchain, &fixed); return result; }
+    LOG("xrCreateSwapchain %ux%u format=%lld samples=%u array=%u faces=%u usage=0x%llx flags=0x%llx result=%d",
+        fixed.width, fixed.height, (long long)fixed.format, fixed.sampleCount, fixed.arraySize, fixed.faceCount,
+        (unsigned long long)fixed.usageFlags, (unsigned long long)fixed.createFlags, result);
+    if (XR_SUCCEEDED(result)) {
+        remember_swapchain(*swapchain);
+        flip_on_create_swapchain(*swapchain, &fixed);
+        emul_on_create_swapchain(*swapchain, &fixed);
+        return result;
+    }
     if (!swapchain_fix) return result;
 
     // Frame's runtime rejects some GLES formats (GL_RGBA8) and MSAA swapchains (overport #71).
@@ -346,7 +404,11 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateSwapchain(XrSession session, const XrSwap
             LOG("  retry format=%lld result=%d", (long long)replacement, result);
         }
     }
-    if (XR_SUCCEEDED(result)) { remember_swapchain(*swapchain); flip_on_create_swapchain(*swapchain, &fixed); }
+    if (XR_SUCCEEDED(result)) {
+        remember_swapchain(*swapchain);
+        flip_on_create_swapchain(*swapchain, &fixed);
+        emul_on_create_swapchain(*swapchain, &fixed);
+    }
     return result;
 }
 
@@ -355,6 +417,8 @@ XRAPI_ATTR XrResult XRAPI_CALL xrDestroySwapchain(XrSwapchain swapchain) {
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
     forget_swapchain(swapchain);
     flip_on_destroy(swapchain);
+    emul_on_destroy_swapchain(swapchain);
+    if (equirect_emul && emul_is_virtual(swapchain)) { emul_virtual_destroy(swapchain); return XR_SUCCESS; }
     return fn(swapchain);
 }
 
@@ -402,19 +466,24 @@ static int cylinder_strips(const XrCompositionLayerCylinderKHR *c, XrComposition
 }
 
 // A layer is usable if every swapchain it references was created successfully.
+// Swapchains the runtime can show: created by it (adapter-served 360 pictures only feed the adapter's own drawing).
+static int runtime_swapchain(XrSwapchain handle) {
+    return known_swapchain(handle) && !(equirect_emul && emul_is_virtual(handle));
+}
+
 static int layer_usable(const XrCompositionLayerBaseHeader *layer) {
     switch (layer->type) {
     case XR_TYPE_COMPOSITION_LAYER_PROJECTION: {
         const XrCompositionLayerProjection *p = (const XrCompositionLayerProjection *)layer;
         for (uint32_t v = 0; v < p->viewCount; ++v)
-            if (!known_swapchain(p->views[v].subImage.swapchain)) return 0;
+            if (!runtime_swapchain(p->views[v].subImage.swapchain)) return 0;
         return 1;
     }
     case XR_TYPE_COMPOSITION_LAYER_QUAD:
-        return known_swapchain(((const XrCompositionLayerQuad *)layer)->subImage.swapchain);
+        return runtime_swapchain(((const XrCompositionLayerQuad *)layer)->subImage.swapchain);
     case XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR:
         if (no_cylinder) return 0;
-        return known_swapchain(((const XrCompositionLayerCylinderKHR *)layer)->subImage.swapchain);
+        return runtime_swapchain(((const XrCompositionLayerCylinderKHR *)layer)->subImage.swapchain);
     case XR_TYPE_COMPOSITION_LAYER_EQUIRECT_KHR:
         if (no_equirect) return 0;
         return known_swapchain(((const XrCompositionLayerEquirectKHR *)layer)->subImage.swapchain);
@@ -423,7 +492,7 @@ static int layer_usable(const XrCompositionLayerBaseHeader *layer) {
         return known_swapchain(((const XrCompositionLayerEquirect2KHR *)layer)->subImage.swapchain);
     case XR_TYPE_COMPOSITION_LAYER_CUBE_KHR:
         if (no_cube) return 0;
-        return known_swapchain(((const XrCompositionLayerCubeKHR *)layer)->swapchain);
+        return runtime_swapchain(((const XrCompositionLayerCubeKHR *)layer)->swapchain);
     default:
         return 1;  // layer types without swapchains (e.g. passthrough) or unknown: pass through
     }
@@ -506,6 +575,10 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetSystemProperties(XrInstance instance, XrSyst
     PFN_xrGetSystemProperties fn = (PFN_xrGetSystemProperties)lookup(instance, "xrGetSystemProperties");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
     XrResult result = fn(instance, system, properties);
+    if (XR_SUCCEEDED(result) && properties && layer_debug)
+        LOG("layer_debug: system '%s' maxLayerCount=%u max swapchain %ux%u", properties->systemName,
+            properties->graphicsProperties.maxLayerCount, properties->graphicsProperties.maxSwapchainImageWidth,
+            properties->graphicsProperties.maxSwapchainImageHeight);
     if (XR_SUCCEEDED(result) && (emulate_passthrough || emulate_scene || emulate_render_model) && properties)
         for (XrBaseOutStructure *p = (XrBaseOutStructure *)properties->next; p; p = p->next) {
             if (p->type == XR_TYPE_SYSTEM_PASSTHROUGH_PROPERTIES_FB)
@@ -594,11 +667,20 @@ XRAPI_ATTR XrResult XRAPI_CALL xrDestroySpace(XrSpace space) {
     return fn ? fn(space) : XR_ERROR_FUNCTION_UNSUPPORTED;
 }
 
+#include "session_fixes.c"
+#include "layer_emul_gl.c"
+
 XRAPI_ATTR XrResult XRAPI_CALL xrCreateSession(XrInstance instance, const XrSessionCreateInfo *info, XrSession *session) {
     PFN_xrCreateSession fn = (PFN_xrCreateSession)lookup(instance, "xrCreateSession");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
     XrResult result = fn(instance, info, session);
-    if (XR_SUCCEEDED(result)) { flip_emul = flip_emul_setting; flip_on_create_session(info); scene_on_create_session(*session); }
+    if (XR_SUCCEEDED(result)) {
+        flip_emul = flip_emul_setting;
+        flip_on_create_session(info);
+        scene_on_create_session(*session);
+        session_fixes_on_create_session(*session);
+        emul_on_create_session(*session, info);
+    }
     return result;
 }
 
@@ -606,8 +688,12 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateSwapchainImages(XrSwapchain swapchain,
         XrSwapchainImageBaseHeader *images) {
     PFN_xrEnumerateSwapchainImages fn = (PFN_xrEnumerateSwapchainImages)lookup(active_instance, "xrEnumerateSwapchainImages");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
-    XrResult result = fn(swapchain, capacity, count, images);
-    if (XR_SUCCEEDED(result) && images && capacity && count) flip_on_enumerate_images(swapchain, *count, images);
+    XrResult result = equirect_emul && emul_is_virtual(swapchain) ? emul_virtual_enumerate(swapchain, capacity, count, images)
+                                                                  : fn(swapchain, capacity, count, images);
+    if (XR_SUCCEEDED(result) && images && capacity && count) {
+        flip_on_enumerate_images(swapchain, *count, images);
+        emul_on_enumerate(swapchain, *count < capacity ? *count : capacity, images);
+    }
     return result;
 }
 
@@ -615,8 +701,14 @@ XRAPI_ATTR XrResult XRAPI_CALL xrAcquireSwapchainImage(XrSwapchain swapchain, co
         uint32_t *index) {
     PFN_xrAcquireSwapchainImage fn = (PFN_xrAcquireSwapchainImage)lookup(active_instance, "xrAcquireSwapchainImage");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    if (equirect_emul && emul_is_virtual(swapchain)) {  // adapter-served write-once picture: one image
+        if (!index) return XR_ERROR_VALIDATION_FAILURE;
+        *index = 0;
+        emul_on_acquire(swapchain, 0);
+        return XR_SUCCESS;
+    }
     XrResult result = fn(swapchain, info, index);
-    if (XR_SUCCEEDED(result) && index) flip_on_acquire(swapchain, *index);
+    if (XR_SUCCEEDED(result) && index) { flip_on_acquire(swapchain, *index); emul_on_acquire(swapchain, *index); }
     return result;
 }
 
@@ -638,7 +730,17 @@ XRAPI_ATTR XrResult XRAPI_CALL xrPollEvent(XrInstance instance, XrEventDataBuffe
         pthread_mutex_unlock(&scene_lock);
         if (got) return XR_SUCCESS;
     }
-    XrResult result = fn(instance, event);
+    XrResult result = focus_hold && event ? focus_hold_poll(fn, instance, event) : fn(instance, event);
+    if (result == XR_SUCCESS && event && (layer_debug || stable_local)) {
+        if (event->type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED && layer_debug)
+            LOG("layer_debug: session state %d at %.3f", ((const XrEventDataSessionStateChanged *)event)->state,
+                monotonic_ns() / 1e9);
+        if (event->type == XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING) {
+            const XrEventDataReferenceSpaceChangePending *e = (const XrEventDataReferenceSpaceChangePending *)event;
+            if (layer_debug) LOG("layer_debug: runtime reference space change pending type=%d", e->referenceSpaceType);
+            if (e->referenceSpaceType == XR_REFERENCE_SPACE_TYPE_LOCAL) local_anchor_stale = 1;
+        }
+    }
     if (!respace_kick || !event) return result;
     if (result == XR_SUCCESS && event->type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED) {
         const XrEventDataSessionStateChanged *e = (const XrEventDataSessionStateChanged *)event;
@@ -669,16 +771,21 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateReferenceSpace(XrSession session, const X
         XrSpace *space) {
     PFN_xrCreateReferenceSpace fn = (PFN_xrCreateReferenceSpace)lookup(active_instance, "xrCreateReferenceSpace");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    XrReferenceSpaceCreateInfo fixed;
+    if (stable_local && info && info->referenceSpaceType == XR_REFERENCE_SPACE_TYPE_LOCAL) {
+        fixed = *info;
+        fixed.poseInReferenceSpace = stable_local_pose(session, info->poseInReferenceSpace);
+        info = &fixed;
+    }
     XrResult result = fn(session, info, space);
     if (info && space) {
         LOG("xrCreateReferenceSpace type=%d result=%d space=%p", info->referenceSpaceType, result,
             (void *)(uintptr_t)*space);
+        if (layer_debug && XR_SUCCEEDED(result)) debug_reference_space(session, info, *space);
         if (XR_SUCCEEDED(result) && info->referenceSpaceType == XR_REFERENCE_SPACE_TYPE_VIEW) view_space_handle = *space;
     }
     return result;
 }
-
-static XrTime last_predicted_time;
 
 XRAPI_ATTR XrResult XRAPI_CALL xrWaitFrame(XrSession session, const XrFrameWaitInfo *info, XrFrameState *state) {
     PFN_xrWaitFrame fn = (PFN_xrWaitFrame)lookup(active_instance, "xrWaitFrame");
@@ -692,6 +799,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrWaitFrame(XrSession session, const XrFrameWaitI
         // predictedDisplayTime is about one display period ahead of "now".
         xr_time_offset = (int64_t)(state->predictedDisplayTime - state->predictedDisplayPeriod) - mono;
         xr_time_calibrated = 1;
+        if (layer_debug) debug_aim_vs_grip(state->predictedDisplayTime);
     }
     return result;
 }
@@ -701,6 +809,9 @@ XRAPI_ATTR XrResult XRAPI_CALL xrLocateViews(XrSession session, const XrViewLoca
     PFN_xrLocateViews fn = (PFN_xrLocateViews)lookup(active_instance, "xrLocateViews");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
     XrResult result = fn(session, info, state, capacity, count, views);
+    if (equirect_emul && XR_SUCCEEDED(result) && info && count && views && state &&
+        (state->viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT))
+        emul_on_locate_views(info->space, info->displayTime, *count < capacity ? *count : capacity, views);
     // respace_kick trigger: ~90 consecutive untracked head poses in a non-VIEW space.
     static int untracked;
     if (respace_kick && XR_SUCCEEDED(result) && state && info && info->space != view_space_handle) {
@@ -764,6 +875,38 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession session, const XrFrameEndInf
     if ((!layer_fix && !swap_eyes && !emulate_passthrough && !flip_quads && !flip_emul && !strip_depth) || !info || !info->layerCount ||
         info->layerCount > 64)
         return fn(session, info);
+    if (layer_debug) {  // the submitted layer list (order, flags, eyes, chained structs) whenever its shape changes
+        static char last[1024];
+        char now[1024];
+        size_t used = 0;
+        for (uint32_t i = 0; i < info->layerCount && used < sizeof(now) - 64; ++i) {
+            const XrCompositionLayerBaseHeader *l = info->layers[i];
+            if (!l) continue;
+            int eye = -1;
+            if (l->type == XR_TYPE_COMPOSITION_LAYER_QUAD) eye = ((const XrCompositionLayerQuad *)l)->eyeVisibility;
+            if (l->type == XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR) eye = ((const XrCompositionLayerCylinderKHR *)l)->eyeVisibility;
+            if (l->type == XR_TYPE_COMPOSITION_LAYER_EQUIRECT2_KHR) eye = ((const XrCompositionLayerEquirect2KHR *)l)->eyeVisibility;
+            used += (size_t)snprintf(now + used, sizeof(now) - used, " [%d f=0x%llx e=%d", l->type,
+                                     (unsigned long long)l->layerFlags, eye);
+            if (l->type == XR_TYPE_COMPOSITION_LAYER_EQUIRECT2_KHR) {  // mapping + source size: 360 vs 180, SBS halves
+                const XrCompositionLayerEquirect2KHR *q = (const XrCompositionLayerEquirect2KHR *)l;
+                used += (size_t)snprintf(now + used, sizeof(now) - used, " h=%.2f u=%.2f l=%.2f r=%.1f rect=%d,%d %dx%d",
+                                         q->centralHorizontalAngle, q->upperVerticalAngle, q->lowerVerticalAngle,
+                                         q->radius, q->subImage.imageRect.offset.x, q->subImage.imageRect.offset.y,
+                                         q->subImage.imageRect.extent.width, q->subImage.imageRect.extent.height);
+            }
+            for (const XrBaseInStructure *n = (const XrBaseInStructure *)l->next; n && used < sizeof(now) - 32; n = n->next)
+                used += (size_t)snprintf(now + used, sizeof(now) - used, " n=%d", n->type);
+            used += (size_t)snprintf(now + used, sizeof(now) - used, "]");
+        }
+        if (strcmp(now, last)) {
+            LOG("layer_debug: frame layers blend=%d:%s", info->environmentBlendMode, now);
+            snprintf(last, sizeof(last), "%s", now);
+        }
+    }
+    // equirect_emul: the frame's 360 layers are replaced by one emulated projection layer (at the first one's place)
+    const XrCompositionLayerBaseHeader *emul_layer_out = NULL;
+    int emul_first = layer_fix && emul_active() ? emul_prepare_frame(info, &emul_layer_out) : -1;
     const XrCompositionLayerBaseHeader *kept[64];
     XrCompositionLayerProjection projections[64];
     XrCompositionLayerProjectionView views[64][2];
@@ -793,8 +936,13 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession session, const XrFrameEndInf
                 LOG("new layer: type=%d swapchain=%p flip_tag=%d usable=%d", layer->type, key, tagged, layer_usable(layer));
             }
         }
+        if (emul_first >= 0 && emul_layer_out && emul_is_equirect(layer)) {
+            if ((int)i == emul_first) kept[count++] = emul_layer_out;  // all 360 layers are drawn into it
+            ++swapped;
+            continue;
+        }
         if (layer_fix && cylinder_strips_on && no_cylinder && layer->type == XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR &&
-            known_swapchain(((const XrCompositionLayerCylinderKHR *)layer)->subImage.swapchain)) {
+            runtime_swapchain(((const XrCompositionLayerCylinderKHR *)layer)->subImage.swapchain)) {
             // keep the whole frame within the runtime's layer limit: every later layer still needs a slot
             int budget = 16 - (int)count - (int)(info->layerCount - i - 1);
             int n = cylinder_strips((const XrCompositionLayerCylinderKHR *)layer, &quads[count], budget < 64 - (int)count ? budget : 64 - (int)count);
@@ -1054,6 +1202,22 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const 
     HOOK(xrLocateHandJointsEXT)
     HOOK(xrGetCurrentInteractionProfile)
     HOOK(xrEnumerateInstanceExtensionProperties)
+    // Per-game hooks: only installed when their setting is on, so other games run through exactly the same calls.
+#define HOOK_AS(fn, impl) if (!strcmp(name, #fn)) { *function = (PFN_xrVoidFunction)impl; return XR_SUCCESS; }
+    if (equirect_emul) {
+        HOOK_AS(xrReleaseSwapchainImage, hook_xrReleaseSwapchainImage)
+        HOOK_AS(xrWaitSwapchainImage, hook_xrWaitSwapchainImage)
+        HOOK_AS(xrDestroySession, hook_xrDestroySession)
+    }
+    if (layer_debug || refresh_rate > 0 || equirect_emul) HOOK_AS(xrBeginSession, hook_xrBeginSession)
+    if (layer_debug || refresh_rate > 0) {
+        HOOK_AS(xrRequestDisplayRefreshRateFB, hook_request_refresh_rate)
+    }
+    if (layer_debug || aim_correction_on()) {
+        HOOK_AS(xrSuggestInteractionProfileBindings, hook_xrSuggestInteractionProfileBindings)
+        HOOK_AS(xrCreateActionSpace, hook_xrCreateActionSpace)
+    }
+#undef HOOK_AS
 #undef HOOK
     return next_gipa(instance, name, function);
 }

@@ -67,6 +67,15 @@ class SettingsView:
                 self.pc.controls = [C.status_row(False, "Couldn't check this PC", str(exc))]
         C.update(self.pc)
 
+    def installing(self) -> ft.Control:
+        from ...core import library
+
+        def changed(e):
+            library.set_setting("install.launch_test", bool(e.control.value))
+        return ft.Switch(label="Launch test after installing on the Frame (starts the game once without the headset "
+                               "and checks its log)", value=bool(library.setting("install.launch_test", True)),
+                         on_change=changed)
+
     def appearance(self) -> ft.Control:
         from ...core import library
 
@@ -148,6 +157,7 @@ class SettingsView:
                                   style=ft.ButtonStyle(color=T.ERROR, side=ft.BorderSide(1, T.soft(T.ERROR, 0.6)),
                                                        shape=ft.RoundedRectangleBorder(radius=T.RADIUS_SM))),
             ], spacing=T.S4))),
+            C.section("Installing", C.card(self.installing(), padding=T.S4), help="launch_test"),
             C.section("Appearance", C.card(self.appearance(), padding=T.S4), help="ui_scale"),
             C.section("About", C.card(ft.Column([
                 C.kv("Version", ver),

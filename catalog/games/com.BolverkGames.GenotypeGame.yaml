@@ -1,7 +1,7 @@
 package: com.BolverkGames.GenotypeGame
 title: Genotype
 tested_version: '1.8'
-source_hint: Genotype v922+1.8
+source_hint: Genotype
 engine: Unity
 xr: OpenXR
 status: works

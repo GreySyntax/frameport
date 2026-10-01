@@ -1,7 +1,7 @@
 package: com.com.spectralgames.Medieval
 title: Medieval Dynasty New Settlement
 tested_version: '2.4'
-source_hint: Medieval Dynasty New Settlement v233+2.4
+source_hint: Medieval Dynasty New Settlement
 engine: Unity
 xr: OpenXR
 status: works

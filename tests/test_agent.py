@@ -1,10 +1,12 @@
 """The Frame-side agent (stdlib only) — pieces that don't need a Frame."""
 import importlib.util
 import json
-from types import SimpleNamespace
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 AGENT = Path(__file__).resolve().parents[1] / "agent" / "frameport_agent.py"
 
@@ -564,3 +566,26 @@ def test_storage_targets_follow_lepton(monkeypatch, tmp_path):
     monkeypatch.setattr(a, "lepton_path", lambda: (None, None))
     ids = {x["id"] for x in a.cmd_storage_targets({})["targets"]}
     assert ids == {"documents", "downloads", "videos"}
+
+
+def test_link_media_into_app_own_folder(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    monkeypatch.setattr(a, "lepton_path", lambda: (None, None))  # default shared folders
+    base = tmp_path / "Applications/quest-frame/cn.player"
+    ext = base / "lepton-data/external"
+    for d in ("4XPlayer", "Android", "DCIM", "Music", ".hidden"):
+        (ext / d).mkdir(parents=True)
+    (tmp_path / "Videos").mkdir()
+    (ext / "Movies").symlink_to(tmp_path / "Videos")  # Lepton's link to the shared folder: not the app's own
+    (base / "deployment.json").write_text(json.dumps({"package": "cn.player", "base": str(base)}))
+    assert a.app_media_dirs(str(ext)) == ["4XPlayer"]
+    t = {x["id"]: x for x in a.cmd_storage_targets({"package": "cn.player"})["targets"]}
+    assert t["app-media"]["android"] == "/sdcard/4XPlayer"
+    video = tmp_path / "Videos/a_360.mp4"
+    video.write_bytes(b"x" * 10)
+    r = a.cmd_link_media({"package": "cn.player", "files": [str(video), str(tmp_path / "Videos/gone.mp4")]})
+    assert r["folder"] == "4XPlayer" and r["linked"] == ["a_360.mp4"] and r["missing"]
+    assert (ext / "4XPlayer/a_360.mp4").stat().st_ino == video.stat().st_ino  # a hard link, not a copy
+    assert a.cmd_link_media({"package": "cn.player", "files": [str(video)]})["existing"] == ["a_360.mp4"]
+    with pytest.raises(a.AgentError):  # only files from the shared folders
+        a.cmd_link_media({"package": "cn.player", "files": [str(base / "deployment.json")]})

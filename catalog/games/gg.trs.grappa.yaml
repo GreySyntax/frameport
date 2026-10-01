@@ -1,7 +1,7 @@
 package: gg.trs.grappa
 title: Journey of the Gods
 tested_version: 1.0.479431
-source_hint: Journey of the Gods v479431+1.0.479431
+source_hint: Journey of the Gods
 engine: Unreal
 xr: VrApi
 status: unsupported

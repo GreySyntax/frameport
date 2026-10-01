@@ -1,7 +1,7 @@
 package: com.xrgames.hitman3reloaded
 title: 'HITMAN 3 VR: Reloaded'
 tested_version: 0.0.3469 main-14813cc56
-source_hint: HITMAN 3 VR- Reloaded v3469+0.0.3469
+source_hint: 'HITMAN 3 VR- Reloaded'
 engine: Other
 xr: OpenXR
 status: unsupported

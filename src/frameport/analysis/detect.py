@@ -56,6 +56,11 @@ def _features(manifest: bytes) -> dict[str, bool]:
     return out
 
 
+# OpenXR composition-layer extensions the Frame runtime lacks (see docs/FRAME_RUNTIME.md).
+LAYER_EXTENSIONS = ("XR_KHR_composition_layer_cylinder", "XR_KHR_composition_layer_equirect",
+                    "XR_KHR_composition_layer_equirect2", "XR_KHR_composition_layer_cube")
+
+
 def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Analysis:
     path = Path(path)
     with zipfile.ZipFile(path) as z:
@@ -100,11 +105,14 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
 
     uses_glad = False
     oculus_os_refs = []
+    layer_exts = set()
     for name, data in lib_bytes.items():
         if not elf.is_elf(data):
             continue
         if b"com/oculus/os/AnalyticsEvent" in data:
             oculus_os_refs.append(name)
+        if name != "libOVRPlugin.so":  # OVRPlugin lists every layer extension; only the game's own requests count
+            layer_exts |= {ext for ext in LAYER_EXTENSIONS if ext.encode() + b"\0" in data}
         if name not in ("libvrapi.so", "libOVRPlugin.so") and b"GLAD_GL_" in data and "eglGetProcAddress" in elf.dyn_symbols(data, False):
             uses_glad = True
 
@@ -149,6 +157,7 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
             "hand_tracking_only": features.get("oculus.software.handtracking", False),
             "unreal_version": unreal_version,
             "oculus_os_refs": sorted(oculus_os_refs),
+            "xr_layer_exts": sorted(layer_exts),  # composition-layer extensions the game's own libraries request
         },
     )
 

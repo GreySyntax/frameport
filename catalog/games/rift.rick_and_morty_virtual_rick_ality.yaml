@@ -2,7 +2,7 @@ package: rift.rick_and_morty_virtual_rick_ality
 title: 'Rick and Morty: Virtual Rick-ality'
 kind: rift
 tested_version: v2288226
-source_hint: Rick and Morty - Virtual Rick-ality v2288226
+source_hint: 'Rick and Morty - Virtual Rick-ality'
 engine: Unity
 xr: OpenVR
 status: works

@@ -328,13 +328,15 @@ def frame_send(paths: list[Path] = typer.Argument(..., help="files or folders to
                to: str = typer.Option("videos", help="destination: videos, downloads, documents, app, app-files"),
                game: Optional[str] = typer.Option(None, help="package of the game, for --to app / app-files"),
                folder: str = typer.Option("", help="sub-folder inside the destination"),
+               app: Optional[str] = typer.Option(None, help="package of a player: also add the files to its own folder "
+                                                            "(e.g. 4XVR lists /sdcard/4XPlayer, not Movies)"),
                frame: Optional[str] = None):
     """Send files to apps on the Frame. videos/downloads/documents are shared by every Quest game (they appear as
     /sdcard/Movies, /sdcard/Download, /sdcard/Documents); app/app-files are one game's own storage. Apps find the
     files by browsing folders (Android's media index doesn't work in Lepton)."""
     from .install import files
 
-    r = files.send_files(_target(frame).frame, paths, to, game, folder, printing_reporter())
+    r = files.send_files(_target(frame).frame, paths, to, game, folder, printing_reporter(), link_app=app)
     typer.echo(f"sent {r['files']} file(s) ({r['bytes'] / 2**20:.0f} MiB, {r['skipped']} already there); "
                f"in the app: {r['android']}")
 

@@ -1,7 +1,7 @@
 package: com.YourCompany.RoboRecall
 title: Robo Recall
 tested_version: '1.0'
-source_hint: Robo Recall- Unplugged v47091+1.0
+source_hint: 'Robo Recall- Unplugged'
 engine: Unreal
 xr: VrApi
 status: works

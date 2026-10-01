@@ -138,8 +138,8 @@ def build_adapter(tc: Path):
     common = ["-shared", "-fPIC", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-gnu-conditional-omitted-operand",
               "-Wno-missing-field-initializers", "-Wl,-Bsymbolic", "-Wl,-soname,libopenxr_loader_generic.so", "-I", inc]
     run([exe(tc, "aarch64-linux-android29-clang"), *common, "-Wl,-z,max-page-size=16384", "frame_adapter.c", "forwarders.S",
-         "-ldl", "-llog", "-o", ART / "arm64-v8a/libopenxr_loader_generic.so"], cwd=src)
-    run([exe(tc, "armv7a-linux-androideabi29-clang"), *common, "frame_adapter.c", "forwarders_arm32.S", "-ldl", "-llog",
+         "-ldl", "-llog", "-lm", "-o", ART / "arm64-v8a/libopenxr_loader_generic.so"], cwd=src)
+    run([exe(tc, "armv7a-linux-androideabi29-clang"), *common, "frame_adapter.c", "forwarders_arm32.S", "-ldl", "-llog", "-lm",
          "-o", ART / "armeabi-v7a/libopenxr_loader_generic.so"], cwd=src)
 
 

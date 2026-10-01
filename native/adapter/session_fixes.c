@@ -1,0 +1,313 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Included by frame_adapter.c. Per-game session fixes, all off by default (enabled in a game's recipe):
+//  * layer_debug: diagnostics only — layer/swapchain details, session-state timing, reference-space creation (and how
+//    far each new LOCAL space is from the session's first one), aim vs grip poses, refresh-rate calls;
+//  * stable_local: every LOCAL reference space the app creates coincides with the one at session start (for runtimes
+//    that place each new LOCAL space at the current head yaw, which makes menus jump to where you look);
+//  * focus_hold: hides brief FOCUSED -> VISIBLE -> (SYNCHRONIZED) dips once the session has been focused for a while
+//    (apps that recentre on regaining focus);
+//  * aim_pitch / aim_yaw / aim_forward: correct the aim pose of controllers (pointer rays) by a fixed offset;
+//  * refresh_rate: display refresh rate requested at session start (and instead of the app's own requests).
+#include "layer_math.h"
+
+static void emul_on_begin_session(const XrSessionBeginInfo *info);  // layer_emul_gl.c
+
+static int64_t monotonic_ns(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (int64_t)now.tv_sec * 1000000000ll + now.tv_nsec;
+}
+
+// ---------------------------------------------------------------- stable_local
+static XrSpace local_anchor = XR_NULL_HANDLE;  // private LOCAL space created right after xrCreateSession
+static int local_anchor_stale;                 // runtime announced a LOCAL change (user recentre): re-anchor
+static XrSpace debug_first_local = XR_NULL_HANDLE;  // layer_debug: first LOCAL space, to measure later ones against
+
+static XrSpace create_local(XrSession session) {
+    PFN_xrCreateReferenceSpace create = (PFN_xrCreateReferenceSpace)lookup(active_instance, "xrCreateReferenceSpace");
+    XrReferenceSpaceCreateInfo ci = {XR_TYPE_REFERENCE_SPACE_CREATE_INFO, NULL, XR_REFERENCE_SPACE_TYPE_LOCAL,
+                                     {{0, 0, 0, 1}, {0, 0, 0}}};
+    XrSpace space = XR_NULL_HANDLE;
+    if (!create || XR_FAILED(create(session, &ci, &space))) return XR_NULL_HANDLE;
+    return space;
+}
+
+static void destroy_space(XrSpace space) {
+    PFN_xrDestroySpace destroy = (PFN_xrDestroySpace)lookup(active_instance, "xrDestroySpace");
+    if (destroy && space) destroy(space);
+}
+
+// Pose of `space` in `base` at the latest predicted display time; 0 if not (yet) known.
+static int locate_pose(XrSpace space, XrSpace base, XrPosef *pose) {
+    PFN_xrLocateSpace locate = (PFN_xrLocateSpace)lookup(active_instance, "xrLocateSpace");
+    if (!locate || !space || !base || !last_predicted_time) return 0;
+    XrSpaceLocation loc = {XR_TYPE_SPACE_LOCATION, NULL, 0, {{0, 0, 0, 1}, {0, 0, 0}}};
+    if (XR_FAILED(locate(space, base, last_predicted_time, &loc))) return 0;
+    const XrSpaceLocationFlags valid = XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT;
+    if ((loc.locationFlags & valid) != valid) return 0;
+    *pose = loc.pose;
+    return 1;
+}
+
+static void session_fixes_on_create_session(XrSession session) {
+    if (stable_local) {
+        local_anchor = create_local(session);
+        LOG("stable_local: session anchor %s", local_anchor ? "created" : "FAILED");
+    }
+}
+
+// The pose to create an app LOCAL space with, so that it coincides with the session-start LOCAL space.
+static XrPosef stable_local_pose(XrSession session, XrPosef app_pose) {
+    if (!local_anchor) return app_pose;
+    XrSpace fresh = create_local(session);
+    if (!fresh) return app_pose;
+    XrPosef anchor_in_fresh;
+    int known = locate_pose(local_anchor, fresh, &anchor_in_fresh);
+    if (known && local_anchor_stale) {  // the user recentred: from now on the new LOCAL origin is the anchor
+        destroy_space(local_anchor);
+        local_anchor = fresh;
+        local_anchor_stale = 0;
+        LOG("stable_local: re-anchored after a runtime recentre");
+        return app_pose;
+    }
+    destroy_space(fresh);
+    if (!known) return app_pose;
+    float moved = lm_length(anchor_in_fresh.position), turned = lm_angle(anchor_in_fresh.orientation);
+    if (moved < 0.01f && turned < 0.01f) return app_pose;  // runtime kept LOCAL stable: nothing to correct
+    LOG("stable_local: new LOCAL space is %.3f m / %.1f deg from the session's, compensating", moved,
+        turned * 180 / LM_PI);
+    return lm_pose_mul(anchor_in_fresh, app_pose);
+}
+
+static void debug_reference_space(XrSession session, const XrReferenceSpaceCreateInfo *info, XrSpace space) {
+    const XrPosef *p = &info->poseInReferenceSpace;
+    LOG("layer_debug: space created type=%d space=%p pose=(%.3f,%.3f,%.3f | %.3f,%.3f,%.3f,%.3f) t=%.3f",
+        info->referenceSpaceType, (void *)(uintptr_t)space, p->position.x, p->position.y, p->position.z,
+        p->orientation.x, p->orientation.y, p->orientation.z, p->orientation.w, monotonic_ns() / 1e9);
+    if (info->referenceSpaceType != XR_REFERENCE_SPACE_TYPE_LOCAL) return;
+    if (!debug_first_local) { debug_first_local = create_local(session); return; }
+    XrPosef rel;
+    if (locate_pose(space, debug_first_local, &rel))
+        LOG("layer_debug: that LOCAL space sits at %.3f m / %.1f deg (yaw %.1f) from the session's first LOCAL space",
+            lm_length(rel.position), lm_angle(rel.orientation) * 180 / LM_PI,
+            2 * atan2f(rel.orientation.y, rel.orientation.w) * 180 / LM_PI);
+    else
+        LOG("layer_debug: that LOCAL space can't be located yet (no tracking)");
+}
+
+// ---------------------------------------------------------------- focus_hold
+#define FOCUS_HOLD_MIN_FOCUSED_NS 3000000000ll  // only after this long in FOCUSED (start-up transitions untouched)
+#define FOCUS_HOLD_MAX_DIP_NS 600000000ll       // dips longer than this are delivered (late, in order)
+static struct {
+    XrEventDataBuffer events[6];
+    int count, holding, delivering;
+    int64_t since;
+} held;
+static int is_focused;
+static int64_t focused_since;
+
+static int session_state_of(const XrEventDataBuffer *event) {
+    return event->type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED ? (int)((const XrEventDataSessionStateChanged *)event)->state : -1;
+}
+
+static void focus_hold_note(int state) {
+    if (state == XR_SESSION_STATE_FOCUSED && !is_focused) { is_focused = 1; focused_since = monotonic_ns(); }
+    else if (state >= 0 && state != XR_SESSION_STATE_FOCUSED) is_focused = 0;
+}
+
+static XrResult focus_hold_poll(PFN_xrPollEvent fn, XrInstance instance, XrEventDataBuffer *event) {
+    for (;;) {
+        if (held.delivering) {  // hand held events to the app, oldest first
+            if (held.count) {
+                *event = held.events[0];
+                memmove(&held.events[0], &held.events[1], (size_t)--held.count * sizeof(held.events[0]));
+                focus_hold_note(session_state_of(event));
+                return XR_SUCCESS;
+            }
+            held.delivering = 0;
+        }
+        XrResult result = fn(instance, event);
+        int64_t now = monotonic_ns();
+        if (result != XR_SUCCESS) {
+            if (held.holding && now - held.since > FOCUS_HOLD_MAX_DIP_NS) {
+                LOG("focus_hold: focus lost for > %lld ms, delivering %d state change(s)",
+                    FOCUS_HOLD_MAX_DIP_NS / 1000000, held.count);
+                held.holding = 0; held.delivering = 1;
+                continue;
+            }
+            return result;
+        }
+        int state = session_state_of(event);
+        if (state < 0) return result;  // other events pass straight through
+        if (held.holding) {
+            if (state == XR_SESSION_STATE_FOCUSED) {
+                LOG("focus_hold: hid a %.0f ms focus dip (%d state change(s))", (now - held.since) / 1e6, held.count);
+                held.count = 0; held.holding = 0;
+                continue;  // the app never saw it leave FOCUSED
+            }
+            if (held.count < 6) held.events[held.count++] = *event;
+            if (state != XR_SESSION_STATE_VISIBLE && state != XR_SESSION_STATE_SYNCHRONIZED) {
+                held.holding = 0; held.delivering = 1;  // stopping, loss pending, exiting: deliver everything now
+            }
+            continue;
+        }
+        if (state == XR_SESSION_STATE_VISIBLE && is_focused && now - focused_since >= FOCUS_HOLD_MIN_FOCUSED_NS) {
+            held.holding = 1; held.since = now; held.count = 0;
+            held.events[held.count++] = *event;
+            continue;
+        }
+        focus_hold_note(state);
+        return result;
+    }
+}
+
+// ---------------------------------------------------------------- aim pose correction + aim/grip diagnostics
+#define MAX_POSE_ACTIONS 64
+static struct { XrAction action; int aim; } pose_actions[MAX_POSE_ACTIONS];
+static int pose_action_count;
+static struct { XrSpace space; XrPath subaction; int aim; } pose_spaces[MAX_POSE_ACTIONS];
+static int pose_space_count;
+static pthread_mutex_t pose_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static int aim_correction_on(void) { return aim_pitch != 0 || aim_yaw != 0 || aim_forward != 0; }
+
+static void note_pose_binding(XrAction action, const char *path) {
+    size_t n = strlen(path);
+    int aim = n >= 9 && !strcmp(path + n - 9, "/aim/pose");
+    int grip = n >= 10 && !strcmp(path + n - 10, "/grip/pose");
+    if (!aim && !grip) return;
+    pthread_mutex_lock(&pose_lock);
+    int known = 0;
+    for (int i = 0; i < pose_action_count; ++i) known |= pose_actions[i].action == action;
+    if (!known && pose_action_count < MAX_POSE_ACTIONS) {
+        pose_actions[pose_action_count].action = action;
+        pose_actions[pose_action_count++].aim = aim;
+    }
+    pthread_mutex_unlock(&pose_lock);
+}
+
+static int pose_action_kind(XrAction action) {  // 1 aim, 0 grip, -1 unknown
+    int kind = -1;
+    pthread_mutex_lock(&pose_lock);
+    for (int i = 0; i < pose_action_count && kind < 0; ++i)
+        if (pose_actions[i].action == action) kind = pose_actions[i].aim;
+    pthread_mutex_unlock(&pose_lock);
+    return kind;
+}
+
+static XRAPI_ATTR XrResult XRAPI_CALL hook_xrSuggestInteractionProfileBindings(XrInstance instance,
+        const XrInteractionProfileSuggestedBinding *suggested) {
+    PFN_xrSuggestInteractionProfileBindings fn =
+        (PFN_xrSuggestInteractionProfileBindings)lookup(instance, "xrSuggestInteractionProfileBindings");
+    if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    PFN_xrPathToString to_string = (PFN_xrPathToString)lookup(instance, "xrPathToString");
+    if (suggested && to_string)
+        for (uint32_t i = 0; i < suggested->countSuggestedBindings; ++i) {
+            char path[XR_MAX_PATH_LENGTH];
+            uint32_t size = 0;
+            if (XR_SUCCEEDED(to_string(instance, suggested->suggestedBindings[i].binding, sizeof(path), &size, path)))
+                note_pose_binding(suggested->suggestedBindings[i].action, path);
+        }
+    return fn(instance, suggested);
+}
+
+static XRAPI_ATTR XrResult XRAPI_CALL hook_xrCreateActionSpace(XrSession session, const XrActionSpaceCreateInfo *info,
+        XrSpace *space) {
+    PFN_xrCreateActionSpace fn = (PFN_xrCreateActionSpace)lookup(active_instance, "xrCreateActionSpace");
+    if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    if (!info) return fn(session, info, space);
+    int kind = pose_action_kind(info->action);
+    XrActionSpaceCreateInfo fixed = *info;
+    if (kind == 1 && aim_correction_on()) {
+        XrQuaternionf q = lm_qmul(lm_axis_angle(0, 1, 0, aim_yaw * LM_PI / 180), lm_axis_angle(1, 0, 0, aim_pitch * LM_PI / 180));
+        XrPosef correction = {q, {0, 0, -aim_forward}};
+        fixed.poseInActionSpace = lm_pose_mul(correction, info->poseInActionSpace);
+        static int logged;
+        if (logged++ < 4) LOG("aim correction: pitch %.1f deg, yaw %.1f deg, forward %.3f m", aim_pitch, aim_yaw, aim_forward);
+    }
+    XrResult result = fn(session, &fixed, space);
+    if (layer_debug && XR_SUCCEEDED(result) && space && kind >= 0) {
+        pthread_mutex_lock(&pose_lock);
+        if (pose_space_count < MAX_POSE_ACTIONS) {
+            pose_spaces[pose_space_count].space = *space;
+            pose_spaces[pose_space_count].subaction = info->subactionPath;
+            pose_spaces[pose_space_count++].aim = kind;
+        }
+        pthread_mutex_unlock(&pose_lock);
+        LOG("layer_debug: %s action space %p (subaction %llu)", kind ? "aim" : "grip", (void *)(uintptr_t)*space,
+            (unsigned long long)info->subactionPath);
+    }
+    return result;
+}
+
+// layer_debug: about once a second, the aim pose of each hand expressed in its grip pose.
+static void debug_aim_vs_grip(XrTime time) {
+    static int64_t last;
+    int64_t now = monotonic_ns();
+    if (!layer_debug || !time || now - last < 1000000000ll) return;
+    last = now;
+    PFN_xrLocateSpace locate = (PFN_xrLocateSpace)lookup(active_instance, "xrLocateSpace");
+    if (!locate) return;
+    pthread_mutex_lock(&pose_lock);
+    for (int a = 0; a < pose_space_count; ++a) {
+        if (!pose_spaces[a].aim) continue;
+        for (int g = 0; g < pose_space_count; ++g) {
+            if (pose_spaces[g].aim || pose_spaces[g].subaction != pose_spaces[a].subaction) continue;
+            XrSpaceLocation loc = {XR_TYPE_SPACE_LOCATION, NULL, 0, {{0, 0, 0, 1}, {0, 0, 0}}};
+            if (XR_SUCCEEDED(locate(pose_spaces[a].space, pose_spaces[g].space, time, &loc)) &&
+                (loc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
+                XrQuaternionf q = loc.pose.orientation;
+                float pitch = asinf(fmaxf(-1, fminf(1, 2 * (q.w * q.x - q.y * q.z)))) * 180 / LM_PI;
+                float yaw = atan2f(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.x * q.x + q.y * q.y)) * 180 / LM_PI;
+                LOG("layer_debug: aim in grip (subaction %llu): pos %.3f,%.3f,%.3f pitch %.1f yaw %.1f flags 0x%llx",
+                    (unsigned long long)pose_spaces[a].subaction, loc.pose.position.x, loc.pose.position.y,
+                    loc.pose.position.z, pitch, yaw, (unsigned long long)loc.locationFlags);
+            }
+            break;
+        }
+    }
+    pthread_mutex_unlock(&pose_lock);
+}
+
+// ---------------------------------------------------------------- refresh rate
+static void debug_refresh_rates(XrSession session) {
+    PFN_xrEnumerateDisplayRefreshRatesFB enumerate =
+        (PFN_xrEnumerateDisplayRefreshRatesFB)lookup(active_instance, "xrEnumerateDisplayRefreshRatesFB");
+    PFN_xrGetDisplayRefreshRateFB get = (PFN_xrGetDisplayRefreshRateFB)lookup(active_instance, "xrGetDisplayRefreshRateFB");
+    float rates[32], current = 0;
+    uint32_t n = 0;
+    char text[256] = "";
+    if (enumerate && XR_SUCCEEDED(enumerate(session, 32, &n, rates)))
+        for (uint32_t i = 0, used = 0; i < n && i < 32 && used < sizeof(text) - 8; ++i)
+            used += (uint32_t)snprintf(text + used, sizeof(text) - used, " %.0f", rates[i]);
+    if (get) get(session, &current);
+    LOG("layer_debug: refresh rates offered:%s; current %.1f Hz", *text ? text : " (unknown)", current);
+}
+
+static void refresh_on_begin_session(XrSession session) {
+    if (layer_debug) debug_refresh_rates(session);
+    if (refresh_rate <= 0) return;
+    PFN_xrRequestDisplayRefreshRateFB request =
+        (PFN_xrRequestDisplayRefreshRateFB)lookup(active_instance, "xrRequestDisplayRefreshRateFB");
+    XrResult result = request ? request(session, refresh_rate) : XR_ERROR_FUNCTION_UNSUPPORTED;
+    LOG("refresh_rate: requested %.1f Hz at session start: result %d", refresh_rate, result);
+}
+
+static XRAPI_ATTR XrResult XRAPI_CALL hook_request_refresh_rate(XrSession session, float rate) {
+    PFN_xrRequestDisplayRefreshRateFB fn =
+        (PFN_xrRequestDisplayRefreshRateFB)lookup(active_instance, "xrRequestDisplayRefreshRateFB");
+    if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    float wanted = refresh_rate > 0 ? refresh_rate : rate;
+    XrResult result = fn(session, wanted);
+    LOG("refresh rate: app asked for %.1f Hz, requested %.1f Hz: result %d", rate, wanted, result);
+    // A refused override keeps the current rate (as frame-control's compat layer does) instead of failing the app.
+    return XR_FAILED(result) && refresh_rate > 0 ? XR_SUCCESS : result;
+}
+
+static XRAPI_ATTR XrResult XRAPI_CALL hook_xrBeginSession(XrSession session, const XrSessionBeginInfo *info) {
+    PFN_xrBeginSession fn = (PFN_xrBeginSession)lookup(active_instance, "xrBeginSession");
+    if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    XrResult result = fn(session, info);
+    if (XR_SUCCEEDED(result)) { emul_on_begin_session(info); refresh_on_begin_session(session); }
+    return result;
+}

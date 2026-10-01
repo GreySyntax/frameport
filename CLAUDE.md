@@ -114,7 +114,7 @@ Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
 - `agent/frameport_agent.py` — runs **on the Frame** (python3 stdlib only), JSON over SSH. Owns the install layout,
   launch.sh template, Steam shortcuts (binary VDF), launch tests. Bump `AGENT_VERSION` when changing it.
 - `bootstrap/bootstrap.sh` — one-time Frame setup served by the pairing server (sshd, app key, avahi service, Lepton).
-- `catalog/games/<package>.yaml` — 34 recipes verified 2026-09-28; `catalog/triage.yaml` — log signatures → fixes.
+- `catalog/games/<package>.yaml` — 34 recipes verified 2026-09-28 + Deadpool VR (2026-10-01, owner-confirmed); `catalog/triage.yaml` — log signatures → fixes.
 - `native/` — sources of the prebuilt binaries in `artifacts/` (adapter, VrApi bridge patches, GL shim, stubs).
   `native/build.py` rebuilds them with NDK r27c (downloaded on demand into `native/.cache`, git-ignored; uses
   `-ffile-prefix-map` so no local paths get embedded; zip symlinks are restored as copies). Users never need the NDK.
@@ -274,7 +274,27 @@ Frame's GPU in AC Nexus; reading the newest *released* image broke 4XVR's theatr
 request — don't retry without a new approach. Converted layers must count as "swapped" or the original layer list
 is submitted (runtime returns -2 for every frame). A focus debounce (hiding the Frame's brief
 FOCUSED→VISIBLE→SYNCHRONIZED dips, which make 4XVR recenter) was also removed: AC Nexus stayed black with it (it
-hid 521 ms focus changes at start). The adapter is the committed one plus `cylinder_strips` only.
+hid 521 ms focus changes at start). The new approach (below) is per-game, off the app's render thread, GLES-only.
+
+**360° layers / 4XVR (2026-09-30):** the Frame's Android SteamVR runtime (`/opt/steamvr/bin/androidarm64/vrclient.so`,
+mounted in Lepton as `/data/steamvr/runtime`) only composites quad + projection layers (cube/cylinder/equirect(2)
+are enum names only) — nothing to unlock. Per-game adapter settings (off by default, hooks installed only when on):
+`equirect_emul` (GLES only: a worker thread with a shared EGL context converts each 360° image to a cube map when it
+changes and draws one adapter projection layer from it for every frame with exactly that frame's views (the app's own
+projection views, else xrLocateViews at displayTime); xrEndFrame waits ≤6 ms for the worker's CPU submit, never the
+GPU. Learned in the headset: quads can't be a background (the Frame draws quad layers above all projection layers
+whatever the order: hid 4XVR's balcony/controllers), and the Frame doesn't reproject a projection layer from its own
+pose (images drawn only after head turns, or ahead from xrWaitFrame and sometimes late, wobbled);
+`equirect_flip/face/res/fps/stereo`), `stable_local`, `focus_hold` (only after 3 s FOCUSED, dips <600 ms),
+`aim_pitch/aim_yaw/aim_forward`, `refresh_rate`, `layer_debug` (diagnostics). 4XVR re-creates LOCAL spaces every 2–4 s
+(menu recentring suspect); its theatres are baked 7680×3840 equirect2 images (`assets/100.png` …). Test 360° videos
+(NASA, public domain) are in the Frame's ~/Videos; copies in `~/Downloads/frameport-360`. 4XVR's "Internal Storage"
+lists its own `/sdcard/4XPlayer`, not Movies: agent v25 `link_media` hard-links sent files into an app's own top-level
+folder (`app_media_dirs`), `frameport frame send --app <pkg>`, GUI game page "Add videos" (players) / "Add videos &
+files…". A 4XVR webm stereo swapchain was refused with XR_ERROR_LIMIT_REACHED (-10) → right eye grey; our projection
+swapchain was halved (1536/eye) in case memory is the limit (unverified). Frame data snapshot
+(SteamVR runtimes, Lepton scripts, logs; never commit Valve binaries): `~/frameport-research/frame-data-2026-09-30/`.
+Not yet verified in the headset.
 
 **Lepton storage (2026-09-30):** each app's /sdcard (= /storage/emulated/0 → `<base>/lepton-data/external`) has `Movies`/`Download`/`Documents` symlinked to the Frame's `~/Videos`/`~/Downloads`/`~/Documents` (liblepton/mounting.sh, only if they exist at start); agent v24 `storage_targets` reads that mapping. Android's MediaProvider canonicalises paths to /home/steamos/... and rejects every file ("doesn't appear under [/system/media...]"), `sm list-volumes` is empty: the media index never works, apps must browse folders. Lepton installs with `adb install -g` (runtime permissions granted, MANAGE_EXTERNAL_STORAGE too). Send files: `install/files.py`, `frameport frame send|storage`, GUI Frame → Send files.
 **SteamVR per-app settings (2026-09-30):** editing steamvr.vrsettings while SteamVR runs is lost; the web API (127.0.0.1:27062 /app/setsettings) needs `x-steamvr-secret`. `native/vrsettings` = `fp_vrsettings.exe` (freestanding, OpenVR `FnTable:IVRSettings_003` as a Utility app, loads SteamVR's bin/win64/openvr_api.dll) sets them live and SteamVR persists them: section `steam.app.<shortcut appid>`, keys `preferredRefreshRate` (float) and `motionSmoothingOverride` (0 global, 1 on, 2 off, 3 always). Steam Link (vrlink) lists the Frame's rates 72/80/90/96/108/120/144 in vrserver.txt and follows the per-app preference ("host preferred N Hz"; whether the key is honoured is unverified in-headset yet). Judder metric: vrcompositor.txt session summary dropped + "Timed out. N total" (Stormland: 0 dropped but 313 timeouts in 2 min); fpsVR (`%LOCALAPPDATA%\fpsVR\*.json`, 0.1 ms histograms) gives p99 CPU/GPU ms. `pcvr.steamvr_tuning` (default on, PC only) applies on Play: highest rate whose budget ≥ p99×1.05, at least one step down, smoothing on.

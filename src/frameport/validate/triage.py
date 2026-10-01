@@ -96,6 +96,8 @@ def triage(log: str, state: str = "UNKNOWN", package: str | None = None, crash: 
         if sig.get("kind", "quest") != kind:
             continue
         hit = re.search(sig["pattern"], text)
+        if hit and sig.get("unless") and re.search(sig["unless"], text):
+            hit = None  # e.g. a rejected swapchain the adapter retried successfully
         if hit:
             line = next((l for l in lines if re.search(sig["pattern"], l)), hit.group(0))
             res.findings.append(Finding(sig["id"], sig["severity"], sig["diagnosis"], list(sig.get("suggest") or []),
