@@ -60,12 +60,21 @@ unchanged. FramePort uses an installed Revive, or downloads a portable copy.
   on the game page.
 - Games that use the Oculus Platform SDK check the licence through the Oculus app, so they run on the PC only.
 
-## Videos, documents and mods
+## Files on the Frame (videos, documents, mods, saves)
 
-Steam Frame → **Send files** (or a game's menu → **Add videos & files…**) copies files to the Frame. **Videos**,
-**Downloads** and **Documents** appear inside every Quest game as `/sdcard/Movies`, `/sdcard/Download` and
-`/sdcard/Documents`. Apps find them by browsing folders; Android's media index doesn't work on the Frame. Command
-line: `frameport frame send <files> --to videos`.
+The **Files** tab manages files on the Frame over the same connection as installs; no other transfer app is needed.
+Pick a location, browse folders, and use **Upload files** / **Upload folder**, **New folder**, or the download, rename
+and delete buttons on each entry. Uploads and downloads run in the Activity panel, resume after an interruption and
+skip files that are already there.
+
+- **Videos**, **Downloads** and **Documents** appear inside every Quest game as `/sdcard/Movies`, `/sdcard/Download`
+  and `/sdcard/Documents`. Apps find files by browsing folders; Android's media index doesn't work on the Frame.
+- **Game storage** is one game's own `/sdcard` (mods, saves). A game's menu → **Add videos & files…** opens it.
+  Video players that list only their own folder (e.g. 4XVR's "Internal Storage" = `4XPlayer`) find videos uploaded
+  into that folder.
+- **Home folder** shows everything in the Frame's home folder (hidden files with **Show hidden files**).
+
+Command line: `frameport frame send <files> --to videos`.
 
 ## Sharing a working game, reporting a problem
 

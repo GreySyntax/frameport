@@ -102,8 +102,9 @@ class GameView:
         if C.is_media_player(g) and g.get("kind") != "rift" and app.frame_state == "connected" and \
                 C.install_state(g, app.frame_info) in ("installed", "outdated"):
             buttons.append(C.secondary("Add videos", ft.Icons.VIDEO_LIBRARY_OUTLINED,
-                                       lambda e: app.send_files_dialog(pkg), False,
-                                       "Send videos from this PC; they also appear in the player's own folder"))
+                                       lambda e: app.go("files", pkg), False,
+                                       "Opens this player's storage on the Frame (Files tab): upload videos into the "
+                                       "folder it lists"))
         more = ft.PopupMenuButton(icon=ft.Icons.MORE_HORIZ_ROUNDED, icon_color=T.TEXT_2, bgcolor=T.SURFACE_2,
                                   tooltip="More actions", items=C.menu_items(app.game_actions(pkg, quick=False)))
         return ft.Row(buttons + [more], spacing=T.S2, wrap=True)

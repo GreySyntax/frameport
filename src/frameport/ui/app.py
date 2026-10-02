@@ -24,7 +24,7 @@ from .components import install_state  # noqa: F401  (re-exported: tests and old
 from .jobs import Job, JobManager
 
 NAV = [("library", "Library", ft.Icons.GRID_VIEW_ROUNDED), ("frame", "Steam Frame", ft.Icons.VIEW_IN_AR_ROUNDED),
-       ("settings", "Settings", ft.Icons.TUNE_ROUNDED)]
+       ("files", "Files", ft.Icons.FOLDER_OPEN_ROUNDED), ("settings", "Settings", ft.Icons.TUNE_ROUNDED)]
 POLL_SECONDS = 30
 
 
@@ -44,6 +44,7 @@ class FramePortApp:
         self.welcome_started = False
         self._pc_cache: tuple[float, dict] | None = None
         self.library_view = None  # created once (views/library.LibraryView), re-mounted on every visit
+        self.files_view = None  # likewise (views/files.FilesView): keeps the location/folder between visits
         self.exe_queue: list[str] = []  # games whose executable the user should confirm (after a scan)
         self._failures: list[Job] = []  # failed installs/tests, shown together when the queue is done
         self.jobs = JobManager(self._on_job)
@@ -209,6 +210,12 @@ class FramePortApp:
                 view = GameView(self, *self.route[1:]).build()
             elif kind == "frame":
                 view = FrameView(self).build()
+            elif kind == "files":
+                from .views.files import FilesView
+
+                if self.files_view is None:
+                    self.files_view = FilesView(self)
+                view = self.files_view.mount(*self.route[1:])
             elif kind == "settings":
                 view = SettingsView(self).build()
             else:
@@ -232,6 +239,9 @@ class FramePortApp:
             self.library_view.refresh_async()
         elif self.route[0] in ("game", "frame", "welcome", "settings"):
             self.render()
+        elif self.route[0] == "files" and (self.files_view is None or self.files_view.root is None
+                                           or self.frame_state != "connected"):
+            self.render()  # connected / disconnected: switch between the browser and "connect first"
         else:
             self._refresh_sidebar()
 
@@ -287,7 +297,9 @@ class FramePortApp:
                 self.updater.restart = None  # the update didn't get ready: don't quit
             self.updater.on_jobs_changed()  # an update waiting for the queue to empty installs now
             if job.kind in ("install", "test", "uninstall", "tool-frame") and self.target:
-                self.refresh_frame(quiet=True)  # re-renders when the Frame's list changed (e.g. after an uninstall)
+                self.refresh_frame(quiet=True)
+            if job.kind == "tool-frame" and self.route[0] == "files" and self.files_view is not None:
+                self.files_view.load()  # show what an upload added  # re-renders when the Frame's list changed (e.g. after an uninstall)
             if job.kind == "install" and job.package and job.package in self._records():
                 self._record(job.package, to=job.to, state="paused" if job.state == "cancelled" else "failed",
                              error=job.error, stage=job.stage)
@@ -457,7 +469,7 @@ class FramePortApp:
                 if on_frame and not rift:
                     out.append(("Adapter settings…", ft.Icons.TUNE_ROUNDED, lambda e: self.settings_dialog(pkg)))
                     out.append(("Add videos & files…", ft.Icons.VIDEO_LIBRARY_OUTLINED,
-                                lambda e: self.send_files_dialog(pkg)))
+                                lambda e: self.go("files", pkg)))
                 if on_frame:
                     out.append(("Uninstall from Frame", ft.Icons.DELETE_OUTLINE_ROUNDED,
                                 lambda e: self.uninstall(pkg, "frame")))
@@ -932,71 +944,6 @@ class FramePortApp:
                                ft.Row(list(fields.values()), wrap=True, width=T.px(640))], tight=True,
                               scroll=ft.ScrollMode.AUTO),
             actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()), C.primary("Save", on_click=save)]))
-
-    # ================================================================== files for apps on the Frame
-    def send_files_dialog(self, package: str | None = None):
-        """Pick files/folders and a destination; shared folders are seen by every Quest game (see install/files.py)."""
-        options = [("videos", "Videos: /sdcard/Movies in every game"),
-                   ("downloads", "Downloads: /sdcard/Download in every game"),
-                   ("documents", "Documents: /sdcard/Documents in every game")]
-        if package:
-            options = [("videos+app", f"Videos, also added to {self._title(package)}'s own folder (recommended)"),
-                       ("app", f"This game's storage (/sdcard of {self._title(package)})"),
-                       ("app-files", "This game's files folder (/sdcard/Android/data/…/files)")] + options
-        chosen: list[str] = []
-        dest = ft.Dropdown(label="Destination", value=options[0][0], width=T.px(520),
-                           options=[ft.dropdown.Option(k, v) for k, v in options])
-        folder = ft.TextField(label="Sub-folder (optional)", width=T.px(520))
-        picked = C.body("No files chosen yet.", T.TEXT_2)
-
-        def show():
-            names = [Path(p).name for p in chosen]
-            picked.value = (f"{len(names)} chosen: " + ", ".join(names[:4]) + (" …" if len(names) > 4 else "")) \
-                if names else "No files chosen yet."
-            C.update(picked)
-
-        async def add_files(e):
-            files = await ft.FilePicker().pick_files(allow_multiple=True)
-            chosen.extend(f.path for f in files or [] if f.path and f.path not in chosen)
-            show()
-
-        async def add_folder(e):
-            path = await ft.FilePicker().get_directory_path(dialog_title="Folder to send")
-            if path and path not in chosen:
-                chosen.append(path)
-            show()
-
-        def send(e):
-            if not chosen:
-                return
-            self.page.pop_dialog()
-            from ..install import files
-
-            paths, target, sub = [Path(p) for p in chosen], dest.value, folder.value or ""
-
-            def run(job: Job):
-                if target == "videos+app":  # players like 4XVR list their own folder, not /sdcard/Movies
-                    r = files.send_files(self.target.frame, paths, "videos", package, sub, job.reporter, link_app=package)
-                else:
-                    r = files.send_files(self.target.frame, paths, target, package, sub, job.reporter)
-                return (f"Sent {r['files']} file(s)" + (f", {r['skipped']} already there" if r["skipped"] else "")
-                        + f". In the app, browse to {r['android']}")
-            self.submit("Send files to the Frame", run, package, kind="tool-frame", open_panel=True)
-
-        self.page.show_dialog(ft.AlertDialog(
-            title=ft.Text(f"Add videos & files · {self._title(package)}" if package else "Send files to the Frame"),
-            bgcolor=T.SURFACE_2,
-            content=ft.Column([
-                C.body("Videos, documents, mods or saves for Quest games. Apps find them by browsing folders "
-                       "(their \"all videos\" lists stay empty: Android's media index doesn't work on the Frame)."
-                       + (" Video players that only list their own folder (e.g. 4XVR's \"Internal Storage\") get the "
-                          "files there too: no second copy, no extra space." if package else ""), T.TEXT_2),
-                dest, folder,
-                ft.Row([C.ghost("Add files…", ft.Icons.NOTE_ADD_OUTLINED, add_files),
-                        C.ghost("Add folder…", ft.Icons.CREATE_NEW_FOLDER_OUTLINED, add_folder)]),
-                picked], tight=True, width=T.px(540)),
-            actions=[C.ghost("Cancel", on_click=lambda e: self.page.pop_dialog()),
-                     C.primary("Send", on_click=send)]))
 
     # ================================================================== library
     async def pick_folder(self, e=None):

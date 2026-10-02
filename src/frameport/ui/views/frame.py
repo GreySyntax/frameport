@@ -78,7 +78,7 @@ class FrameView:
         self.app.run_bg(self._fill_installed, items, col)
         body = C.card(col, padding=T.S2) if items else \
             C.card(C.body("Nothing installed yet. Pick a game in the Library and click Install."), padding=T.S5)
-        send = C.ghost("Send files", ft.Icons.DRIVE_FOLDER_UPLOAD_ROUNDED, lambda e: self.app.send_files_dialog(),
+        send = C.ghost("Files", ft.Icons.FOLDER_OPEN_ROUNDED, lambda e: self.app.go("files"),
                        tooltip=C.tip(HELP["send_files"]))
         return C.section(f"Installed games ({len(items)})", body,
                          action=ft.Row([send, C.ghost("Free up space", ft.Icons.CLEANING_SERVICES_ROUNDED,

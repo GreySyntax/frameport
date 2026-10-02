@@ -85,11 +85,11 @@ HELP: dict[str, str] = {
                   "installed), one after another.",
     "rescan": "Scans the folders you added games from again and adds games that appeared since. Games already in the "
               "library keep their recipe, tags and art; unchanged ones aren't analyzed again.",
-    "send_files": "Copy videos, documents, mods or saves from this PC to the Frame for Quest games. Videos, "
-                  "Downloads and Documents are shared by every game (/sdcard/Movies, /sdcard/Download, "
-                  "/sdcard/Documents); a game's own storage is in its menu. Apps find the files by browsing folders. "
-                  "For video players use the game's \"Add videos & files\": the files also appear in the player's "
-                  "own folder (e.g. 4XVR's Internal Storage), without a second copy.",
+    "send_files": "Browse and manage files on the Frame (Files tab): upload from this PC, download, rename, delete. "
+                  "Videos, Downloads and Documents are shared by every Quest game (/sdcard/Movies, /sdcard/Download, "
+                  "/sdcard/Documents); each installed game also has its own storage (its /sdcard). Apps find files "
+                  "by browsing folders. Video players that list only their own folder (e.g. 4XVR's Internal "
+                  "Storage = 4XPlayer): upload into that folder in the game's storage.",
     "free_space": "Deletes the rollback copies kept from each game's previous install and leftover uploads. The "
                   "games and saves stay.",
     "adapter_settings": "Change FrameBridge settings of an installed game (render scale, controller mapping and so "

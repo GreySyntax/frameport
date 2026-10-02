@@ -25,6 +25,51 @@ PORT = 8557
 ERRORS: list[str] = []
 
 
+class FakeFS:
+    """--fake-frame's file system for the Files tab: a temp folder with sample files, served like SFTP."""
+
+    def __init__(self):
+        import tempfile
+
+        self.home = tempfile.mkdtemp(prefix="fp-fake-frame-")
+        samples = {"Videos": ["Earth from orbit (360).mp4", "Mars landing (VR180).mkv", "Concert 8K 3D.mp4"],
+                   "Downloads": ["Mods/", "readme.txt"], "Documents": ["Saves/", "Notes.pdf"]}
+        sizes = {".mp4": 2_400_000_000, ".mkv": 1_100_000_000}
+        for folder, names in samples.items():
+            base = os.path.join(self.home, folder)
+            os.makedirs(os.path.join(base, "Trips"), exist_ok=True)
+            for n in names:
+                if n.endswith("/"):
+                    os.makedirs(os.path.join(base, n), exist_ok=True)
+                else:
+                    with open(os.path.join(base, n), "wb") as f:
+                        f.truncate(sizes.get(os.path.splitext(n)[1], 48_000))  # sparse: no real disk use
+
+    def agent(self, command, **args):
+        if command == "storage_targets":
+            return {"targets": [{"id": n.lower(), "path": os.path.join(self.home, n), "android": a, "shared": True}
+                                for n, a in (("Videos", "/sdcard/Movies"), ("Downloads", "/sdcard/Download"),
+                                             ("Documents", "/sdcard/Documents"))]}
+        raise RuntimeError(f"fake Frame: {command} not available")
+
+    @property
+    def sftp(self):
+        import paramiko
+
+        class SFTP:
+            def listdir_attr(self, path):
+                out = []
+                for name in sorted(os.listdir(path)):
+                    a = paramiko.SFTPAttributes.from_stat(os.lstat(os.path.join(path, name)))
+                    a.filename = name
+                    out.append(a)
+                return out
+
+            def stat(self, path):
+                return paramiko.SFTPAttributes.from_stat(os.stat(path))
+        return SFTP()
+
+
 class FakeTarget:
     """--fake-frame: a pretend Steam Frame with the library's working Quest builds installed (no network, no device),
     for documentation screenshots."""
@@ -33,6 +78,7 @@ class FakeTarget:
         from frameport.frame.connection import parse_target
 
         self.label = "steamframe"
+        self.frame = FakeFS()
         self.target = parse_target("steamos@steamframe.local")
         works = [g for g in library.games() if g.get("kind") != "rift" and (g.get("build") or {}).get("sha256")
                  and (g.get("recipe") or {}).get("status") in ("works", "issues")]
@@ -104,6 +150,7 @@ def main() -> int:
         if game:
             steps += [("game", lambda a: a.open_game(game)), ("game-customize", lambda a: a.open_game(game, advanced=True))]
         steps.append(("frame", lambda a: a.navigate(1)))
+        steps.append(("files", lambda a: a.go("files")))
     if args.update:
         from frameport import updates
 

@@ -14,7 +14,12 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
     status_row, art_fill, confirm, `update()` = safe update: in Flet 1.0 reading `.page` of an unmounted control
     raises), `jobs.py` (background FIFO job queue, one at a time, cancel via Reporter; no Flet), `views/`
     (library: search/filters/tags/sort as pure tested helpers; game: hero + one-click install, patches under
-    "Customize"; frame: device + readiness + installed, or connect wizard; settings; welcome; activity panel).
+    "Customize"; frame: device + readiness + installed, or connect wizard; files: the Frame's file manager (persistent
+    like the library; locations = Videos/Downloads/Documents from agent `storage_targets`, each installed Quest game's
+    storage, the home folder; SFTP via `install/files.py` list_dir/upload/download/make_dir/rename/delete, all
+    confined to the location by `files.inside`; Lepton's links in a game's storage can't be renamed/deleted; replaced
+    the "Send files" dialog, game menu → "Add videos & files…" = `go("files", pkg)`); settings; welcome; activity
+    panel).
     User tags live in library entries (`tags`), filters in library setting `ui.library`.
     **Performance rules** (the app froze before): never put image bytes in controls — artwork is served by URL from the
     GUI assets dir (= user data dir; `ft.run(assets_dir=…)`), as thumbnails (`artwork/thumbs.py`, Pillow); the
