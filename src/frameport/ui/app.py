@@ -285,10 +285,13 @@ class FramePortApp:
         self.page.update()
 
     def toast(self, message: str, error: bool = False, action: str | None = None, on_action=None) -> None:
+        """A temporary notification: closes itself (errors and ones with a button stay a little longer) or with its
+        X. persist=False: Flutter otherwise keeps a snack bar with an action open until it's swiped away."""
         self.page.show_dialog(ft.SnackBar(
             ft.Text(message, color=T.TEXT), bgcolor=T.soft(T.ERROR, 0.9) if error else T.SURFACE_3,
             action=action, on_action=on_action, behavior=ft.SnackBarBehavior.FLOATING, width=T.px(520),
-            shape=ft.RoundedRectangleBorder(radius=T.RADIUS_SM), duration=5000 if action else 3500))
+            shape=ft.RoundedRectangleBorder(radius=T.RADIUS_SM), duration=8000 if error else 6000 if action else 4000,
+            persist=False, show_close_icon=True, close_icon_color=T.TEXT_2))
 
     def run_bg(self, fn, *args) -> None:
         def wrapper():
