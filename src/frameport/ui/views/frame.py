@@ -54,7 +54,7 @@ class FrameView:
             rows.append(C.status_row(
                 bool(ready), tr("PC VR games (Proton)"),
                 tr("{display_name} installed").format(display_name=ready['display_name']) if ready else
-                (tr("{display_name} can be installed (about 1 GB; Steam restarts once)").format(display_name=sug['display_name']) if sug else
+                (tr("{display_name} can be installed (about 1 GiB; Steam restarts once)").format(display_name=sug['display_name']) if sug else
                  tr("Not offered by Steam on this Frame yet")),
                 C.secondary(tr("Test"), ft.Icons.SCIENCE_OUTLINED, lambda e: app.test_proton()) if ready else
                 C.primary(tr("Install"), ft.Icons.DOWNLOAD_ROUNDED, lambda e: app.install_proton(), disabled=not sug),

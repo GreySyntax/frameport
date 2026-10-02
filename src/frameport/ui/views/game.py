@@ -20,8 +20,8 @@ from ..help import HELP
 if TYPE_CHECKING:
     from ..app import FramePortApp
 
-CATEGORY_TITLES = {"frame": tr("Steam Frame fixes"), "overport": tr("overport patches"), "adapter": tr("Adapter settings"),
-                   "device": tr("Frame-side files & environment"), "pcvr": tr("PC VR (Revive / Proton)")}
+CATEGORY_TITLES = {"frame": tr("Steam Frame patches"), "overport": tr("OVRPort patches"), "adapter": tr("Adapter settings"),
+                   "device": tr("Files and environment on the Frame"), "pcvr": tr("PC VR (Revive / Proton)")}
 
 
 def _ago(t: float | None) -> str:
@@ -349,11 +349,11 @@ class GameView:
                  for p in visible]
         base_count = len(on) - len(visible)
         if base_count > 0:
-            chips.append(C.with_help(C.meta(tr("+ {base_count} standard fixes").format(base_count=base_count)), "standard_fixes"))
+            chips.append(C.with_help(C.meta(tr("+ {base_count} standard patches").format(base_count=base_count)), "standard_fixes"))
         as_is = recipe.as_is
         if as_is and self.rift:
             # a pre-patched Rift copy still needs a VR runtime on the Frame: Revive is added at launch, not to its files
-            lead, icon, color = (tr("Your copy is used as it is (only the Frame's copy gets launch fixes)") +
+            lead, icon, color = (tr("Your copy is used as it is (only the Frame's copy gets launch patches)") +
                                  (tr(" · Revive provides the Oculus runtime") if "pcvr.revive" in recipe.patches else "")), \
                 ft.Icons.INVENTORY_2_ROUNDED, T.PC
         elif as_is:

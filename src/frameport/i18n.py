@@ -45,6 +45,16 @@ def available() -> list[str]:
     return ["en"] + sorted(p.stem for p in LOCALES.glob("*.json") if p.stem not in ("en", "template"))
 
 
+def language_name(code: str) -> str:
+    """A language's own name, from its file's "_language" entry ("English" for en)."""
+    if code == "en":
+        return "English"
+    try:
+        return json.loads((LOCALES / f"{code}.json").read_text(encoding="utf-8")).get("_language") or code
+    except (OSError, ValueError):
+        return code
+
+
 def tr(text: str) -> str:
     """The translation of an English text (the text itself when there is none)."""
     value = _catalog.get(text)

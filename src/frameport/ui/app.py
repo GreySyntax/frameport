@@ -352,7 +352,7 @@ class FramePortApp:
                                  lambda e: self._submit_install(job.package, getattr(job, "to", "frame"))))
         if summary and summary.get("suggestions") and job.package:
             sugg = summary["suggestions"]
-            out.append(C.primary(tr("Apply suggested fixes & reinstall"), ft.Icons.HEALING_ROUNDED,
+            out.append(C.primary(tr("Apply the suggested patches and reinstall"), ft.Icons.HEALING_ROUNDED,
                                  lambda e: (pipeline.apply_suggestions(job.package, sugg),
                                             self.install(job.package, getattr(job, "to", "frame")))))
         if job.package and job.state != "running" and library.game(job.package):
@@ -478,7 +478,7 @@ class FramePortApp:
                                 lambda e: self.test_game(pkg, "pc")))
                 if on_frame and not rift:
                     out.append((tr("Adapter settings…"), ft.Icons.TUNE_ROUNDED, lambda e: self.settings_dialog(pkg)))
-                    out.append((tr("Add videos & files…"), ft.Icons.VIDEO_LIBRARY_OUTLINED,
+                    out.append((tr("Add videos and files…"), ft.Icons.VIDEO_LIBRARY_OUTLINED,
                                 lambda e: self.go("files", pkg)))
                 if on_frame:
                     out.append((tr("Uninstall from Frame"), ft.Icons.DELETE_OUTLINE_ROUNDED,
@@ -639,7 +639,7 @@ class FramePortApp:
             if job.log_path:
                 buttons.append(C.ghost(tr("Launch log"), ft.Icons.DESCRIPTION_ROUNDED,
                                        lambda e, j=job: self.show_log_file(j.log_path, j.title)))
-            buttons.append(C.ghost(tr("Report problem"), ft.Icons.BUG_REPORT_OUTLINED,
+            buttons.append(C.ghost(tr("Report a problem…"), ft.Icons.BUG_REPORT_OUTLINED,
                                    lambda e, p=pkg: (self.page.pop_dialog(), self.report_problem_dialog(p))))
             rows.append(C.card(ft.Column([
                 C.body(self._title(pkg) if pkg else job.title, T.TEXT, weight=ft.FontWeight.W_600),
@@ -668,7 +668,8 @@ class FramePortApp:
         self.page.show_dialog(ft.AlertDialog(
             title=ft.Text(tr("Launch log · {title}").format(title=title), weight=ft.FontWeight.W_600),
             content=ft.Container(ft.Column([
-                C.meta(tr("{path}  ({len} lines").format(path=path, len=len(lines)) + (tr(", last 4000 shown)") if len(lines) > 4000 else ")"),
+                C.meta(f"{path} · " + (tr_n("{n} line", "{n} lines", len(lines)) if len(lines) <= 4000 else
+                                       tr("{n} lines, the last 4000 shown").format(n=len(lines))),
                        selectable=True),
                 ft.Container(ft.Column([ft.Text(shown, size=T.px(11), font_family="monospace", color=T.TEXT_2,
                                                 selectable=True)], scroll=ft.ScrollMode.AUTO),
@@ -898,7 +899,7 @@ class FramePortApp:
                 ft.Row([text, C.help_icon("diag_bundle")]),
             ], tight=True, spacing=T.S3, width=T.px(600)),
             actions=[C.ghost(tr("Cancel"), on_click=lambda e: self.page.pop_dialog()),
-                     C.primary(tr("Collect & open GitHub"), ft.Icons.OPEN_IN_NEW_ROUNDED, on_click=go)]))
+                     C.primary(tr("Collect and open GitHub"), ft.Icons.OPEN_IN_NEW_ROUNDED, on_click=go)]))
 
     def share_config_dialog(self, pkg: str) -> None:
         g = library.game(pkg) or {}
@@ -1230,7 +1231,7 @@ class FramePortApp:
                 return tr("{display_name} is installed on your Frame").format(display_name=tool['display_name'])
             self.submit(tr("Install Proton on the Frame"), run, kind="tool-frame", open_panel=True)
         C.confirm(self.page, tr("Install Proton on the Frame?"),
-                  tr("FramePort has Steam on the Frame download Proton and the runtime it needs (about 1 GB). Steam "
+                  tr("FramePort has Steam on the Frame download Proton and the runtime it needs (about 1 GiB). Steam "
                   "restarts once, which closes a running game."), tr("Install"), go)
 
     def test_proton(self):

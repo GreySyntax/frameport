@@ -8,7 +8,7 @@ import flet as ft
 
 from ... import pipeline
 from ...core import library
-from ...i18n import tr
+from ...i18n import fmt_size, tr
 from .. import components as C
 from .. import theme as T
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def _size(n: int) -> str:
-    return tr("{value:.0f} MB").format(value=n / 2**20) if n < 2**30 else tr("{value:.1f} GB").format(value=n / 2**30)
+    return fmt_size(n)
 
 
 def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,

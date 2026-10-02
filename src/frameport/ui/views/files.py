@@ -176,7 +176,7 @@ class FilesView:
         if games:
             rows.append(ft.Container(C.meta(tr("Game storage").upper()), padding=ft.Padding(T.S2, T.S3, 0, T.px(2))))
             for pkg, title in games:
-                loc = self.game_locs.get(pkg) or {"id": tr("app:{pkg}").format(pkg=pkg), "label": title, "package": pkg}
+                loc = self.game_locs.get(pkg) or {"id": f"app:{pkg}", "label": title, "package": pkg}
                 rows.append(self._location_row(loc, ft.Icons.SPORTS_ESPORTS_OUTLINED))
         rows.append(ft.Container(C.meta(tr("Advanced").upper()), padding=ft.Padding(T.S2, T.S3, 0, T.px(2))))
         home = {"id": "home", "label": tr("Home folder"), "path": self.app.target.frame.home, "android": "",
@@ -211,7 +211,7 @@ class FilesView:
             C.update(self.status)
         self._render_locations()
         if package:
-            self.open_location({"id": tr("app:{package}").format(package=package), "package": package,
+            self.open_location({"id": f"app:{package}", "package": package,
                                 "label": dict(self._installed_games()).get(package, package)})
         elif self.loc is None and self.shared:
             self.open_location(self.shared[0])

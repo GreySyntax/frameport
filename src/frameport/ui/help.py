@@ -42,7 +42,7 @@ HELP: dict[str, str] = _Translated({
     "recipe": "A recipe is the list of patches FramePort applies to a game before installing it. Known-good recipes "
               "were tested on a Frame; the others are suggested from the game's engine and VR API. Hover a patch "
               "for why it's there.",
-    "standard_fixes": "Fixes every game of this kind gets (on by default). Customize lists them all.",
+    "standard_fixes": "Patches every game of this kind gets (on by default). Customize lists them all.",
     "as_is": "Turn this on if your copy is already patched: an APK is installed unchanged instead of being patched "
              "again. PC VR games are never modified on this PC; the Frame's copy only gets launch fixes.",
     "alt_build": "Some games need a second build with different overport patches (for some Unreal games: one with "
@@ -63,11 +63,11 @@ HELP: dict[str, str] = _Translated({
     "recipe_source": "Where this game's recipe came from: catalog (tested on a Frame), heuristics (suggested by "
                      "FramePort) or user (changed by you).",
     # ---- patch categories
-    "cat_pcvr": "How a Rift game starts: Revive translates the Oculus API to OpenXR, Proton runs the Windows program on "
-                "the Frame.",
-    "cat_frame": "Fixes for what the Frame's runtime does differently from a Quest (graphics formats, missing OpenXR "
+    "cat_pcvr": "How a PC VR game starts: Proton runs the Windows program on the Frame; for Oculus games, Revive "
+                "translates the Oculus API to OpenXR.",
+    "cat_frame": "Patches for what the Frame's runtime does differently from a Quest (graphics formats, missing OpenXR "
                  "extensions, Lepton's launcher requirements).",
-    "cat_overport": "overport converts Quest games from Meta's own VR APIs to standard OpenXR. These are its "
+    "cat_overport": "OVRPort converts Quest games from Meta's own VR APIs to standard OpenXR. These are its "
                     "optional patches.",
     "cat_adapter": "Settings of FrameBridge, the adapter FramePort adds to Quest games. They can also be changed "
                    "after installing, from the Frame page.",
@@ -81,7 +81,7 @@ HELP: dict[str, str] = _Translated({
                 "that it connects with the key.",
     "lepton": "Lepton is Valve's Android container on the Frame. Quest games run inside it, one container per game. "
               "It needs Developer Mode.",
-    "proton": "Proton is Valve's Windows compatibility layer. On the Frame it runs Oculus Rift games (with Revive). "
+    "proton": "Proton is Valve's Windows compatibility layer. On the Frame it runs PC VR games. "
               "Its ARM64 build isn't installed by default; FramePort can install it (Steam restarts once).",
     "openxr": "The VR runtime games talk to. On the Frame that's SteamVR.",
     "kernel_keys": "Every game start on the Frame used to leak one kernel key, and after about 200 launches every game "
@@ -106,8 +106,8 @@ HELP: dict[str, str] = _Translated({
                   "games and saves stay.",
     "adapter_settings": "Change FrameBridge settings of an installed game (render scale, controller mapping and so "
                         "on). They're read when the game starts.",
-    "frame_summary": "Quest ✓: Lepton is installed, so Quest games can run. PC VR ✓: Proton is installed, so Rift games "
-                     "can run on the Frame.",
+    "frame_summary": "Quest ✓: Lepton is installed, so Quest games can run. PC VR ✓: Proton is installed, so PC VR "
+                     "games can run on the Frame.",
     # ---- settings
     "data_folder": "FramePort's tools, library, artwork and the signing keys of your rebuilt games. Back it up: an "
                    "update must be signed with the same key, or the game (and its saves) has to be reinstalled.",

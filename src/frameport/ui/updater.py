@@ -117,7 +117,7 @@ class Updater:
                 width=T.px(560), height=T.px(min(420, 130 + 26 * len(notes.splitlines())))),
             actions=[C.ghost(tr("Skip this version"), on_click=later),
                      C.ghost(tr("Release page"), ft.Icons.OPEN_IN_NEW_ROUNDED, lambda e: page.launch_url(up.page)),
-                     C.primary(tr("Update and restart"), ft.Icons.SYSTEM_UPDATE_ROUNDED, go)]))
+                     C.primary(tr("Update now"), ft.Icons.SYSTEM_UPDATE_ROUNDED, go)]))
 
     # ---------------------------------------------------------------- installing
     def install(self) -> None:

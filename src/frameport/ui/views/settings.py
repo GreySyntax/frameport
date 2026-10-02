@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import flet as ft
 
-from ... import REPO_URL, __version__
+from ... import REPO_URL, __version__, i18n
 from ...core.paths import user_data_dir
 from ...i18n import tr
 from ...recommend import catalog
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 TOOL_TITLES = {"java": tr("Java runtime"), "overport": "overport", "apksigner": "apksigner", "revive": tr("Revive")}
 TOOL_WHY = {"java": tr("Runs overport and apksigner"), "overport": tr("Converts Quest games to OpenXR"),
-            "apksigner": tr("Signs rebuilt games"), "revive": tr("Runs Oculus Rift games on OpenXR")}
+            "apksigner": tr("Signs rebuilt games"), "revive": tr("Runs Oculus PC games on OpenXR")}
 
 
 class SettingsView:
@@ -119,7 +119,7 @@ class SettingsView:
 
         current = library.setting("ui.scale", "auto")
         auto = T.detect_scale()
-        options = [ft.dropdown.Option("auto", f"Automatic ({auto:.0%})")] + [
+        options = [ft.dropdown.Option("auto", tr("Automatic ({auto:.0%})").format(auto=auto))] + [
             ft.dropdown.Option(str(f), f"{f:.0%}") for f in T.SCALE_CHOICES]
         note = C.meta(tr("Now {scale:.0%}. Changes apply the next time FramePort starts.").format(scale=T.SCALE))
 
@@ -132,7 +132,17 @@ class SettingsView:
 
         dd = ft.Dropdown(label=tr("Text and layout size"), value=str(current) if current != "auto" else "auto",
                          options=options, width=T.px(260), on_select=changed)
-        return ft.Column([dd, note], spacing=T.S2)
+        controls = [dd, note]
+        languages = i18n.available()
+        if len(languages) > 1:  # only once a translation exists
+            def language_changed(e):
+                library.set_setting("ui.language", e.control.value)
+                C.update(lang_note)
+            lang = ft.Dropdown(label=tr("Language"), value=i18n.language(), width=T.px(260), on_select=language_changed,
+                               options=[ft.dropdown.Option(code, i18n.language_name(code)) for code in languages])
+            lang_note = C.meta(tr("Changes apply the next time FramePort starts."))
+            controls += [lang, lang_note]
+        return ft.Column(controls, spacing=T.S2)
 
     def agent_text(self) -> str:
         """The agent version this app ships, and the one on the connected Frame (it's replaced on the next command
@@ -175,7 +185,7 @@ class SettingsView:
                                                        lambda e: app.copy(data))]), "data_folder"),
                 C.kv(tr("Catalog"), tr("{len} known-good recipes (bundled, remote and yours)").format(len=len(catalog.load())), "catalog"),
             ], spacing=T.S2))),
-            C.section(tr("Problems & feedback"), C.card(ft.Row([
+            C.section(tr("Problems and feedback"), C.card(ft.Row([
                 C.body(tr("Something not working? Collect a diagnostics zip (logs, settings, device info; personal "
                        "data removed) and attach it to a GitHub issue. For one game, use its menu instead."),
                        expand=True),

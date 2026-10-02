@@ -65,8 +65,8 @@ class WelcomeView:
             ft.Row([ft.Container(ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(30), color=T.ON_ACCENT), width=T.px(56),
                                  height=T.px(56), border_radius=T.px(16), bgcolor=T.ACCENT, alignment=ft.Alignment.CENTER),
                     ft.Column([C.title(tr("Welcome to FramePort")),
-                               C.body(tr("Play your Quest and Oculus Rift games on the Steam Frame. Three steps and "
-                                      "you're set."))], spacing=T.px(2))], spacing=T.S4),
+                               C.body(tr("Play your Quest, Android and PC VR games on the Steam Frame. Three steps "
+                                      "and you're set."))], spacing=T.px(2))], spacing=T.S4),
             ft.Container(height=T.S3),
             self.step(1, tr("Getting FramePort ready"), t_text, t_state,
                       *([C.progress_bar(tool_job.fraction)] if tool_job else []),
@@ -75,7 +75,7 @@ class WelcomeView:
             self.step(2, tr("Connect your Steam Frame"), f_text, f_state,
                       *([] if f_state == "done" else [C.secondary(tr("Set up the Frame"), ft.Icons.ARROW_FORWARD_ROUNDED,
                                                                   lambda e: app.go("frame"))])),
-            self.step(3, tr("Add your games"), tr("A folder with Quest game dumps (APK + OBB) or Oculus Rift PC games."),
+            self.step(3, tr("Add your games"), tr("A folder with Android games (APK + OBB, e.g. Quest games) or PC VR games."),
                       g_state, ft.Row([C.primary(tr("Scan a folder"), ft.Icons.FOLDER_OPEN_ROUNDED, app.pick_folder),
                                        C.ghost(tr("Add an APK file"), ft.Icons.ANDROID_ROUNDED, app.pick_apk)],
                                       spacing=T.S2)),
