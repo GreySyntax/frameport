@@ -683,7 +683,8 @@ class FramePortApp:
 
     def unfinished_installs(self) -> dict:
         """Installs that were queued/running when the app closed, or were cancelled or failed."""
-        return {p: r for p, r in self._records().items() if not self.jobs.busy_with(p) and library.game(p)}
+        known = library.load()["games"]  # one read for all records
+        return {p: r for p, r in self._records().items() if not self.jobs.busy_with(p) and p in known}
 
     def resume_installs(self) -> None:
         for pkg, r in self.unfinished_installs().items():

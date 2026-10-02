@@ -15,7 +15,6 @@ from ..core.paths import bootstrap_dir
 from .connection import app_public_key
 from .discovery import local_ip_towards
 
-
 MAX_FAILURES = 20
 LIFETIME = 30 * 60
 

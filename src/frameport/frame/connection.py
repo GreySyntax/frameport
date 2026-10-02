@@ -58,11 +58,25 @@ class FrameTarget:
         return self.name or self.host
 
 
+_saved_cache: tuple[float, list] = (-1.0, [])
+
+
 def saved_targets() -> list[FrameTarget]:
+    """The remembered Frames (read again only when frames.json changed: the sidebar asks several times a second)."""
+    global _saved_cache
     path = user_data_dir() / "frames.json"
     try:
-        return [FrameTarget(**d) for d in json.loads(path.read_text())]
-    except (OSError, ValueError, TypeError):
+        mtime = path.stat().st_mtime
+    except OSError:
+        return []
+    if mtime != _saved_cache[0]:
+        try:
+            _saved_cache = (mtime, [d for d in json.loads(path.read_text()) if isinstance(d, dict)])
+        except (OSError, ValueError):
+            return []
+    try:
+        return [FrameTarget(**d) for d in _saved_cache[1]]
+    except TypeError:
         return []
 
 

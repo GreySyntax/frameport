@@ -62,13 +62,27 @@ def pick(package: str, kinds: tuple[str, ...]) -> Path | None:
     return next((files[k] for k in kinds if k in files), None)
 
 
-def url(package: str, kinds: tuple[str, ...], width: int | None = None) -> str | None:
-    """Asset URL (for ft.Image / DecorationImage src) of the first available kind, as a thumbnail."""
+def url(package: str, kinds: tuple[str, ...], width: int | None = None, wait: bool = True) -> str | None:
+    """Asset URL (for ft.Image / DecorationImage src) of the first available kind, as a thumbnail. wait=False (render
+    paths): if the thumbnail doesn't exist yet it is made in the background and the original is used meanwhile."""
     src = pick(package, kinds)
     if not src:
         return None
-    t = thumb(src, width or WIDTHS.get(src.stem, 600), src.stem)
-    return asset_url(t)
+    width = width or WIDTHS.get(src.stem, 600)
+    if not wait:
+        ready = ready_thumb(src, width, src.stem)
+        if ready is None:
+            threading.Thread(target=thumb, args=(src, width, src.stem), daemon=True).start()
+            return asset_url(src)
+        return asset_url(ready)
+    return asset_url(thumb(src, width, src.stem))
+
+
+def ready_thumb(path: Path, width: int, kind: str | None = None) -> Path | None:
+    """The thumbnail if it already exists (no image work)."""
+    kind = kind or path.stem
+    out = path.parent / f"t_{kind}_{width}_{_digest(path)}{'.png' if kind == 'logo' else '.jpg'}"
+    return out if out.exists() else None
 
 
 def asset_url(path: Path) -> str:

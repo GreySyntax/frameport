@@ -221,9 +221,11 @@ class LibraryView:
         """Rebuild changed cards (streamed in batches), then apply filters. Call from a background thread."""
         from ...targets.pc_revive import local_installs
 
+        self._gen += 1  # before waiting for the lock: an older reload still running sees it and stops early
+        gen = self._gen
         with self._lock:
-            self._gen += 1
-            gen = self._gen
+            if gen != self._gen:
+                return  # an even newer reload is queued behind this one
             games = library.games()
             self.games = games
             pc = set(local_installs())
