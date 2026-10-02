@@ -309,11 +309,14 @@ def test_android_app_without_vr_gets_no_vr_translation():
                      has_info_category=False,
                      extra={"size": 1, "vr_kind": "none"})
     r = engine.suggest(flat)
-    assert r.as_is and not r.overport and not r.patches and not engine.warnings(r)
+    assert r.as_is and not r.overport and list(r.patches) == ["device.hide_navbar"] and not engine.warnings(r)
+    from frameport.install.installer import install_context
+
+    assert install_context(r).env["LEPTON_GFXRECON_FP_PROPS"] == "0\nqemu.hw.mainkeys=1"  # on by default
     needs_launcher = _analysis(package="org.example.info", engine="Other", xr="?", libs=[], has_info_category=True,
                                is_overport_output=False, extra={"size": 1, "vr_kind": "none"})
     r = engine.suggest(needs_launcher)
-    assert not r.as_is and not r.overport and list(r.patches) == ["frame.launcher"]
+    assert not r.as_is and not r.overport and sorted(r.patches) == ["device.hide_navbar", "frame.launcher"]
     shown, _ = engine.visible_patches(needs_launcher, r)  # VR patches can't take effect in a 2D app
     assert "frame.launcher" in {p.id for p in shown} and all(not p.needs_vr for p in shown)
     pico = _analysis(package="com.pico.game", libs=["libPvr_UnitySDK.so"], extra={"size": 1, "vr_kind": "pico_sdk"})
@@ -322,3 +325,38 @@ def test_android_app_without_vr_gets_no_vr_translation():
     assert engine.suggest(x86).status == "unsupported"
     quest = _analysis(libs=["libOVRPlugin.so"], extra={"size": 1})  # old library entries: no vr_kind = Quest
     assert engine.suggest(quest).overport and "patch_copy_libraries" in engine.suggest(quest).patches
+
+
+
+def test_patch_registry_is_complete_for_every_thread(monkeypatch):
+    """A lookup from a second thread while the first is still importing the patch modules waits for them."""
+    import threading
+    import time
+
+    from frameport.patches import base
+
+    real = dict(base.REGISTRY)
+    registry: dict = {}
+
+    def slow_import():  # registers the patches one by one, like the real module imports
+        for pid, p in real.items():
+            registry[pid] = p
+            time.sleep(0.0005)
+
+    monkeypatch.setattr(base, "_loaded", False)
+    monkeypatch.setattr(base, "REGISTRY", registry)
+    monkeypatch.setattr(base, "_import_modules", slow_import)
+    found, errors = [], []
+
+    def lookup():
+        try:
+            found.append(base.get("device.hide_navbar").id)
+        except KeyError as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=lookup) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors and found == ["device.hide_navbar"] * 4

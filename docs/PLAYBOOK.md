@@ -55,8 +55,8 @@ version is `catalog/triage.yaml` (used by `frameport test` / the Job screen); ke
 ## Picture problems (headset on)
 | Symptom | Cause | Fix |
 |---|---|---|
-| 2D Android app: Steam says it's running but nothing shows | Lepton runs apps headless unless the app folder has `lepton-show-flatscreen` | FramePort adds it for apps without VR (agent v29); reinstall apps installed before |
-| 2D Android app: back/home/recents buttons cover the app's own buttons | Android's navigation bar | launcher sets `qemu.hw.mainkeys=1` for flat apps (agent v29); reinstall to update the launcher |
+| 2D Android app: Steam says it's running but nothing shows | Lepton runs apps headless unless the app folder has `lepton-show-flatscreen` | FramePort adds it for apps without VR (agent v28+); reinstall apps installed before |
+| 2D Android app: back/home/recents buttons cover the app's own buttons | Android's navigation bar | patch `device.hide_navbar` (on by default for apps without VR) sets `qemu.hw.mainkeys=1`; reinstall to apply |
 | Black screen, audio works, GLES engine with direct VrApi | Mesa rejects Quest-style GLSL | `frame.gl_shim` (logs `GLShim: SHADER COMPILE FAILED` + source lines) |
 | Black screen, audio works, log `Unsupported VrApi layer type N` | bridge drops frames containing that layer | extend the bridge (cylinder=3 is converted to a quad already) |
 | Only some draws visible (e.g. controllers) + `glGetError 0x502` | multiview shaders used on single-view FBOs | GL shim `gl_hide_multiview=1` (default) |

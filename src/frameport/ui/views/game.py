@@ -365,7 +365,12 @@ class GameView:
             chips.append(C.with_help(C.meta(tr("+ {base_count} standard patches").format(base_count=base_count)),
                                      "standard_fixes"))
         as_is = recipe.as_is
-        if as_is and self.rift:
+        flat = library.analysis_from_dict(self.g["analysis"]).vr_kind == "none" if self.g.get("analysis") else False
+        if flat:
+            # an Android app without VR: the APK is never changed, but launch patches (e.g. the navigation bar) apply
+            lead, icon, color = tr("Android app without VR: installed unchanged and shown as a flat window"), \
+                ft.Icons.TABLET_ANDROID_ROUNDED, T.PC
+        elif as_is and self.rift:
             # a pre-patched Rift copy still needs a VR runtime on the Frame: Revive is added at launch, not to its files
             lead, icon, color = (tr("Your copy is used as it is (only the Frame's copy gets launch patches)") +
                                  (tr(" · Revive provides the Oculus runtime") if "pcvr.revive" in recipe.patches
@@ -392,8 +397,7 @@ class GameView:
                                                                      expand=True)], spacing=T.S2),
                 ft.Row(chips, spacing=T.S2, run_spacing=T.S2, wrap=True) if chips else
                 (ft.Container() if as_is else C.meta(tr("Nothing to patch: it runs as is."))),
-                ft.Divider(),
-                switch,
+                *([] if flat else [ft.Divider(), switch]),
             ], spacing=T.S3)),
             action=C.ghost(tr("Hide patches") if self.advanced else tr("Customize"), ft.Icons.TUNE_ROUNDED,
                            lambda e: self.app.open_game(self.package, advanced=not self.advanced),

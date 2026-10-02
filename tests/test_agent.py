@@ -665,20 +665,18 @@ def test_flatscreen_marker_for_android_apps_without_vr(monkeypatch, tmp_path):
     a.set_flatscreen(str(tmp_path), False)
 
 
-def test_flat_apps_hide_androids_navigation_bar(monkeypatch, tmp_path):
-    """Only apps with Lepton's flat-window marker get qemu.hw.mainkeys=1 (no back/home/recents bar over the app)."""
+
+def test_launcher_exports_multiline_env_values(monkeypatch, tmp_path):
+    """device.hide_navbar's value has a newline (a second Android property line): it must survive launch.sh."""
     import subprocess
 
+    from frameport.patches.settings import HideNavBar
+
     a = load_agent(monkeypatch, tmp_path)
-    a.write_launcher(str(tmp_path), "/b", "p", "T", 1, "/l", {})
+    a.write_launcher(str(tmp_path), "/b", "p", "T", 1, "/l", HideNavBar.ENV)
     script = (tmp_path / "launch.sh").read_text()
-    block = script[script.index("if [[ -f \"$app_dir/lepton-app/lepton-show-flatscreen\" ]]"):]
-    block = block[:block.index("fi\n") + 3]
-    for marker, expected in ((True, "0\nqemu.hw.mainkeys=1"), (False, "")):
-        app = tmp_path / ("flat" if marker else "vr")
-        (app / "lepton-app").mkdir(parents=True)
-        if marker:
-            (app / "lepton-app" / "lepton-show-flatscreen").touch()
-        out = subprocess.run(["bash", "-c", f'app_dir={app}\n{block}printf %s "${{LEPTON_GFXRECON_FP_PROPS:-}}"'],
-                             capture_output=True, text=True, check=True).stdout
-        assert out == expected
+    line = next(x for x in script.split("export ") if x.startswith("LEPTON_GFXRECON_FP_PROPS="))
+    line = line[:line.index("\n", line.index("mainkeys"))]
+    out = subprocess.run(["bash", "-c", f'export {line}\nprintf %s "$LEPTON_GFXRECON_FP_PROPS"'],
+                         capture_output=True, text=True, check=True).stdout
+    assert out == "0\nqemu.hw.mainkeys=1"

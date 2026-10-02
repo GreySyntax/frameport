@@ -173,6 +173,16 @@ def _migrate(data: dict) -> bool:
                     r.setdefault("reasons", {}).setdefault(pid, s.reason)
         done.append("quest_binary_fixes_v2")
         changed = True
+    if "flat_hide_navbar" not in done:
+        # Android apps without VR gain the default-on "Hide Android's navigation bar" patch
+        for g in (data.get("games") or {}).values():
+            a, r = g.get("analysis") or {}, g.get("recipe")
+            if isinstance(r, dict) and (a.get("extra") or {}).get("vr_kind") == "none":
+                r.setdefault("patches", {}).setdefault("device.hide_navbar", {})
+                r.setdefault("reasons", {}).setdefault(
+                    "device.hide_navbar", "2D app: Android's navigation buttons would cover the app's own controls.")
+        done.append("flat_hide_navbar")
+        changed = True
     if "rift_steamvr_tuning" not in done:
         # PC VR recipes gain automatic SteamVR performance settings (refresh rate / motion smoothing on frame drops)
         for g in (data.get("games") or {}).values():

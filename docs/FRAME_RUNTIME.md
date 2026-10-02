@@ -19,7 +19,8 @@
   contains a file `lepton-show-flatscreen` (`liblepton/app_metadata.sh`): then Android (11, Waydroid) gets a Wayland
   window shown as a flat panel in the headset. FramePort creates the file for Android apps without VR. Android's
   back/home/recents bar is drawn over the app's own controls; `qemu.hw.mainkeys=1` removes it, but it's only read at
-  boot and Lepton has no setting for extra properties, so the launcher passes it as a second line of a
+  boot and Lepton has no setting for extra properties, so patch `device.hide_navbar` (default on for apps without
+  VR) passes it as a second line of a
   `LEPTON_GFXRECON_*` value (Lepton copies those into the boot properties unescaped). Runtime alternatives didn't
   work on Android 11: `policy_control` is gone, `cmd statusbar send-disable-flag home recents` has no `back` and
   moves the back button onto the app's controls, the `sysui_nav_bar` layout and disabling SystemUI had no effect.

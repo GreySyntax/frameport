@@ -201,7 +201,33 @@ class LeptonEnv(Patch):
         ctx.env.update({k: str(v) for k, v in (ctx.params.get("env") or {}).items()})
 
 
+class HideNavBar(Patch):
+    id = "device.hide_navbar"
+    title = "Hide Android's navigation bar"
+    description = ("Removes Android's back/home/recents buttons from a 2D app's window, where they cover the app's own "
+                   "controls. Turn it off for an app that needs the on-screen back button.")
+    category = "device"
+    needs_vr = False
+    stage = "install"
+    # qemu.hw.mainkeys=1 ("this device has hardware keys") is only read at boot and Lepton has no setting for extra
+    # Android properties; it copies LEPTON_GFXRECON_* values into the boot properties unescaped, so a second line
+    # rides along (see docs/FRAME_RUNTIME.md). Harmless if a Lepton update changes that: the bar comes back.
+    ENV = {"LEPTON_GFXRECON_FP_PROPS": "0\nqemu.hw.mainkeys=1"}
+
+    def applies(self, a):
+        return a.vr_kind == "none"
+
+    def detect(self, a):
+        if a.vr_kind == "none":
+            return Suggestion(True, "2D app: Android's navigation buttons would cover the app's own controls.")
+        return None
+
+    def install(self, ctx: InstallContext) -> None:
+        ctx.env.update(self.ENV)
+
+
 for _spec in SETTINGS:
     register(AdapterSetting(*_spec))
 register(DeviceFiles)
 register(LeptonEnv)
+register(HideNavBar)

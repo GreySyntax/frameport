@@ -174,11 +174,11 @@ def _non_quest(analysis: Analysis, recipe: Recipe) -> None:
     if kind == "none":
         # an ordinary (2D) Android app: no OpenXR to translate. Install it unchanged, or with only the launcher fix
         recipe.overport = False
-        needed = {"frame.launcher"} if analysis.has_info_category else set()  # Lepton needs a LAUNCHER activity
+        needed = {"device.hide_navbar"} | ({"frame.launcher"} if analysis.has_info_category else set())  # LAUNCHER
         recipe.patches = {pid: v for pid, v in recipe.patches.items() if pid in needed}
         recipe.reasons = {pid: v for pid, v in recipe.reasons.items() if pid in recipe.patches}
         recipe.alt_patches = []
-        recipe.as_is = not recipe.patches
+        recipe.as_is = not any(base.get(pid).stage == "apk" for pid in recipe.patches)  # the APK stays unchanged
         recipe.notes = _add(recipe.notes, "Android app without VR: installed without FramePort's VR translation.")
     elif kind in ("pico_sdk", "wave"):
         recipe.status = "unsupported"

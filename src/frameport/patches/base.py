@@ -10,6 +10,7 @@ Each patch can suggest itself from an Analysis (`detect`), applies itself (`appl
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -130,13 +131,28 @@ def all_patches() -> list[Patch]:
 
 
 _loaded = False
+_load_lock = threading.Lock()
+_loading = threading.local()  # the loading thread's own lookups (from module imports) return early
 
 
 def load_all() -> None:
+    """Import every patch module once. Other threads wait until the registry is complete (a GUI background thread
+    once looked up a patch while another thread was still importing them: "unknown patch")."""
     global _loaded
-    if _loaded:
+    if _loaded or getattr(_loading, "active", False):
         return
-    _loaded = True
+    with _load_lock:
+        if _loaded:
+            return
+        _loading.active = True
+        try:
+            _import_modules()
+        finally:
+            _loading.active = False
+        _loaded = True
+
+
+def _import_modules() -> None:
     import importlib
     import pkgutil
 

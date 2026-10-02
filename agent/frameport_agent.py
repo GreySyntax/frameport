@@ -1122,12 +1122,6 @@ export LEPTON_ENV_FRAMEBRIDGE_CONFIG="$app_dir/settings.conf"
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 export IS_PARENT=true
-# Android draws its back/home/recents bar over a flat (2D) app's own controls. qemu.hw.mainkeys=1 ("this device has
-# hardware keys") removes it. Lepton has no setting for that, but it copies LEPTON_GFXRECON_* values into Android's
-# boot properties without escaping, so a second line rides along (harmless if a Lepton update changes that).
-if [[ -f "$app_dir/lepton-app/lepton-show-flatscreen" ]]; then
-    export LEPTON_GFXRECON_FP_PROPS=$'0\nqemu.hw.mainkeys=1'
-fi
 {extra_env}
 child=''
 stop() {{
