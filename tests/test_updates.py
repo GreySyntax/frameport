@@ -213,3 +213,33 @@ def test_cli_hint_once_a_day_without_waiting(monkeypatch):
     monkeypatch.setenv("FRAMEPORT_NO_UPDATE_CHECK", "1")
     library.set_setting("update.cli_hint", None)
     assert "is available" not in runner.invoke(app, ["list"]).output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX swap script")
+def test_apply_detached_checks_the_script_started(monkeypatch, tmp_path):
+    import time
+
+    up = updates.update_from_release(release(), "FramePort-linux-x64.tar.gz")
+    _fake_downloads(monkeypatch, {"FramePort-linux-x64.tar.gz": _linux_archive("9.9.9")})
+    app = updates.prepare(up, platform="linux")
+    installed = tmp_path / "apps/FramePort"
+    installed.mkdir(parents=True)
+    (installed / "FramePort").write_text("old")
+    updates.apply(app, installed, relaunch=False, pid=2 ** 22 + 2, platform="linux")  # returns once the script runs
+    log = updates.user_data_dir() / "logs/update.log"
+    for _ in range(100):
+        if "not relaunching" in log.read_text():
+            break
+        time.sleep(0.1)
+    assert (installed / "data/version.txt").read_text() == "9.9.9"
+
+
+def test_apply_reports_a_script_that_never_starts(monkeypatch, tmp_path):
+    installed = tmp_path / "FramePort"
+    installed.mkdir()
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    monkeypatch.setattr(updates, "START_TIMEOUT", 0.5)
+    monkeypatch.setattr(updates.subprocess, "Popen", lambda *a, **k: type("P", (), {"poll": lambda self: None})())
+    with pytest.raises(updates.UpdateError):
+        updates.apply(staged, installed, relaunch=False, pid=1, platform="linux")

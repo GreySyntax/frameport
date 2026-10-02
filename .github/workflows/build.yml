@@ -33,7 +33,7 @@ jobs:
             archive: FramePort-windows-x64.zip
           - os: macos-latest
             archive: FramePort-macos-arm64.zip
-          - os: ubuntu-latest
+          - os: ubuntu-22.04  # oldest supported: the bundle needs the build host's GLib/glibc or newer
             archive: FramePort-linux-x64.tar.gz
     runs-on: ${{ matrix.os }}
     steps:

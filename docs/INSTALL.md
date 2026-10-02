@@ -8,7 +8,7 @@ runtime, the OVRPort CLI and apksigner into its data folder (Settings → Tools 
 |---|---|---|
 | Windows 10/11 (x64) | `FramePort-windows-x64.zip` | `FramePort.exe` |
 | macOS (Apple Silicon) | `FramePort-macos-arm64.zip` | `FramePort.app` |
-| Linux (x64, GTK 3) | `FramePort-linux-x64.tar.gz` | `FramePort/FramePort` |
+| Linux (x64, GTK 3; Ubuntu 22.04 or newer) | `FramePort-linux-x64.tar.gz` | `FramePort/FramePort` |
 | Command line only (Python 3.11+) | `frameport-<version>-py3-none-any.whl` | `frameport --help` |
 
 The command-line version installs from the wheel's release link with `uv tool install <link>` (or pipx / pip).

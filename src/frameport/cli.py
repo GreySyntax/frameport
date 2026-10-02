@@ -121,8 +121,7 @@ def update_cmd(check: bool = typer.Option(False, "--check", help="Only say wheth
     if kind == "wheel" and sys.platform == "win32":
         # the running frameport.exe can't be replaced while it runs: finish the upgrade right after this exits
         line = " && ".join(subprocess.list2cmdline(c) for c in cmds)
-        subprocess.Popen(f'cmd /c "timeout /t 2 /nobreak >nul && {line}"', creationflags=0x00000008 | 0x00000200,
-                         close_fds=True)
+        updates.spawn_hidden(["cmd", "/c", f"ping -n 3 127.0.0.1 >nul && {line}"])
         typer.echo(f"Updating to FramePort {up.version} in the background: run `frameport --version` in a few seconds.")
         return
     for cmd in cmds:

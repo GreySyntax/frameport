@@ -14,6 +14,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -46,8 +47,14 @@ def main() -> int:
         a, b = updates._signer_thumbprint(installed / "FramePort.exe"), updates._signer_thumbprint(new / "FramePort.exe")
         print(f"signer thumbprints: installed {a} new {b}")
         assert a and a == b, "signature check failed"
-    script = updates.apply(new, installed, relaunch=False, pid=999999, platform=platform, wait=True)
-    log = (home / "data/logs/update.log").read_text()
+    # the same launch as the app (detached; apply() checks the script started), then wait for it to finish
+    script = updates.apply(new, installed, relaunch=False, pid=999999, platform=platform)
+    log_file = home / "data/logs/update.log"
+    for _ in range(240):
+        log = log_file.read_text() if log_file.exists() else ""
+        if "not relaunching" in log:
+            break
+        time.sleep(0.5)
     print(script.read_text()[:400], "...\n--- update.log ---\n" + log)
     installed_marker = installed / marker.relative_to(new)
     assert installed_marker.read_text() == "new", "the new files weren't installed"

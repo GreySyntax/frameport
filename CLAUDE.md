@@ -367,6 +367,12 @@ Installed apps find the release themselves (self-update), so the notes are what 
   powershell.exe` with `PSModulePath` removed from the environment — started under PowerShell 7 (CI's default shell,
   or a user's pwsh terminal) it couldn't run Get-AuthenticodeSignature (v0.3.0's Windows update smoke failed on it).
   `v0.3.0` is a tag without a release (that failed build); the updater shipped first in v0.3.1.
+- **Never start PowerShell with `DETACHED_PROCESS` from the packaged app**: it exits 0 without running anything (found
+  in the 0.3.1→0.3.2 end-to-end test: the app quit, nothing updated). `updates.spawn_hidden` = CREATE_NEW_CONSOLE +
+  hidden window; `apply()` waits until the script has logged that it runs and raises otherwise (the app then stays
+  open). Windows installs of 0.3.1/0.3.2 can't update themselves: they need one manual download.
+- The Linux bundle is built on ubuntu-22.04: a 24.04-built Flutter bundle needs GLib 2.80 (`undefined symbol:
+  g_once_init_enter_pointer` on 22.04).
 - **This project's GitHub identity is `spoopyghosty0`** (a dedicated account; the machine's default gh/git login is a
   different, personal account that must never touch this repo). `gh` (`~/.local/bin/gh`) uses it through
   `GH_CONFIG_DIR=~/.config/gh-spoopyghosty0` (set for Claude Code in the git-ignored `.claude/settings.local.json`);

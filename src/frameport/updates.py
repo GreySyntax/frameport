@@ -278,6 +278,20 @@ def _powershell() -> tuple[str, dict]:
     return (str(exe) if exe.exists() else "powershell"), env
 
 
+START_TIMEOUT = 15  # seconds for the swap script to log that it runs
+
+
+def spawn_hidden(cmd: list[str], env: dict | None = None) -> subprocess.Popen:
+    """Windows: start a console program in its own hidden console, independent of FramePort. DETACHED_PROCESS
+    doesn't work for PowerShell: started that way from the packaged app it exits 0 without running anything."""
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0  # SW_HIDE
+    return subprocess.Popen(cmd, creationflags=0x00000010 | 0x00000200,  # CREATE_NEW_CONSOLE, NEW_PROCESS_GROUP
+                            startupinfo=si, close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, env=env)
+
+
 def _signer_thumbprint(exe: Path) -> str | None:
     """Windows: the Authenticode signer certificate's thumbprint ('' if unsigned, None if it can't be read)."""
     ps, env = _powershell()
@@ -449,16 +463,26 @@ def apply(app: Path, target: Path | None = None, relaunch: bool = True, pid: int
     log.parent.mkdir(parents=True, exist_ok=True)
     script = updates_dir() / ("apply.ps1" if platform == "win32" else "apply.sh")
     script.write_text(swap_script(app, target, pid, platform, relaunch, log), encoding="utf-8")
+    started = log.stat().st_size if log.exists() else 0
     if platform == "win32":
         ps, env = _powershell()
-        cmd = [ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File",
-               str(script)]
-        flags = 0 if wait else (0x00000008 | 0x00000200 | 0x08000000)  # DETACHED, NEW_PROCESS_GROUP, NO_WINDOW
-        proc = subprocess.Popen(cmd, creationflags=flags, close_fds=True, stdin=subprocess.DEVNULL,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+        proc = spawn_hidden([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+                             "-File", str(script)], env=env)
     else:
         proc = subprocess.Popen(["/bin/sh", str(script)], start_new_session=not wait, close_fds=True,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if not wait:  # make sure the script really runs before FramePort quits (it logs first thing)
+        deadline = time.time() + START_TIMEOUT
+        while time.time() < deadline:
+            if log.exists() and f"(pid {pid})" in log.read_text(errors="replace")[started:]:
+                break
+            if proc.poll() not in (None, 0):
+                break
+            time.sleep(0.2)
+        else:
+            raise UpdateError(f"the update script didn't start (see {log})")
+        if proc.poll() not in (None, 0):
+            raise UpdateError(f"the update script failed to start (exit {proc.returncode})")
     if wait:
         proc.wait()
     return script
