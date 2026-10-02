@@ -161,7 +161,7 @@ Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattr
   artwork, frames.json, the app's SSH key which the dev Frame authorizes).
 - Device checks: `frameport test <pkg>` / `frameport parity-device --results <parity.json> --baseline <launch.txt>
   [--test-only]`; the pre-FramePort baseline is `PATCHED/_known-good-2026-09-28/_frame-state/baseline-launch.txt`.
-- Docs screenshots (`docs/images/`): `python scripts/scrub_library.py ~/.local/share/frameport <dir>` (copies
+- Docs screenshots (`docs/images/`): `python scripts/scrub_library.py ~/.local/share/frameport <dir> --status works,issues` (copies
   library + artwork only; titles replace folder names, local paths → `D:/Games/...`, sort by size) then
   `FRAMEPORT_HOME=<dir> python scripts/ui_smoke.py --out <shots> --docs --fake-frame --game <pkg>` (set
   FRAMEPORT_JAVA/_OVERPORT_JAR/_APKSIGNER_JAR so no tool download toast appears; `--viewport 1280x2600` + crop for the

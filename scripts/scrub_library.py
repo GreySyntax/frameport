@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make a screenshot-safe copy of a FramePort data folder (for docs/images):
 
-    python scripts/scrub_library.py <data dir> <new dir> [--sort size]
+    python scripts/scrub_library.py <data dir> <new dir> [--sort size] [--status works,issues]
 
 Copies library.json + artwork/ only (no Frame pairing, SSH key, tools, logs or builds). In the copy every game's
 folder name becomes its store title, every local path becomes D:/Games/<Quest|PC VR>/<title>/..., settings other than
@@ -66,9 +66,12 @@ def main() -> int:
     ap.add_argument("src", type=Path)
     ap.add_argument("dest", type=Path)
     ap.add_argument("--sort", default="size", choices=["name", "recent", "played", "size", "status"])
+    ap.add_argument("--status", default="", help="keep only games with these recipe statuses, e.g. works,issues")
     args = ap.parse_args()
     lib = json.loads((args.src / "library.json").read_text())
-    games = {pkg: scrub_game(g) for pkg, g in lib.get("games", {}).items()}
+    keep = {x for x in args.status.split(",") if x}
+    games = {pkg: scrub_game(g) for pkg, g in lib.get("games", {}).items()
+             if not keep or (g.get("recipe") or {}).get("status", "unknown") in keep}
     view = {**(lib.get("settings", {}).get("ui.library") or {}), "sort": args.sort, "platform": "all",
             "where": "all", "status": "all", "tags": []}
     out = {"games": games, "settings": {"ui.library": view, "migrations": lib.get("settings", {}).get("migrations", [])}}
