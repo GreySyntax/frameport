@@ -102,3 +102,10 @@ def test_menus_offer_sharing_and_diagnostics(monkeypatch):
         labels = _labels(_app(monkeypatch, g, {"installed": []}).game_actions("com.q", quick=quick))
         assert {"Share working config…", "Collect logs", "Report a problem…"} <= set(labels)
         assert labels[-1] == "Remove from library"
+
+
+def test_install_browser_explains_known_folders():
+    from frameport.ui.views.files_dialog import folder_note
+
+    assert "shader cache" in folder_note("lepton-shaders") and folder_note("lepton-data")
+    assert folder_note("lepton-app/obb") == ""  # only top-level entries

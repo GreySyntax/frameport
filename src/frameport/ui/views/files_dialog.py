@@ -30,6 +30,19 @@ class Node:
     is_dir: bool = True
 
 
+def folder_note(path: str) -> str:
+    """What a well-known entry of an install is (shown next to it, in plain words)."""
+    notes = {
+        "lepton-app": tr("the installed game (APK and its data)"),
+        "lepton-data": tr("saves and settings (the app's Android storage)"),
+        "lepton-shaders": tr("shader cache: makes later starts load faster; rebuilt if deleted"),
+        "artwork": tr("pictures for the Steam library"),
+        "previous-game.apk": tr("the previous version, kept for one rollback"),
+        "launch.log": tr("the log of the last start"),
+    }
+    return notes.get(path, "")
+
+
 def build_tree(name: str, files: list[list]) -> Node:
     """[[rel, size], ...] → a folder tree with aggregated sizes, children sorted folders-first by name."""
     root = Node(name)
@@ -118,9 +131,12 @@ def show_files_dialog(app: FramePortApp, package: str, title: str) -> None:
                               size=T.px(16), color=T.TEXT_3) if node.is_dir else ft.Container(width=T.px(16))
             info = (tr("{human} · {files} files").format(human=human(node.size), files=node.files) if node.is_dir
                     else human(node.size))
+            note = folder_note(node.path) if depth == 0 else ""
             return ft.Container(ft.Row([
                 chevron, ft.Icon(icon, size=T.px(16), color=T.ACCENT if node.is_dir else T.TEXT_3),
-                C.body(node.name, T.TEXT, expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                C.body(node.name, T.TEXT, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ft.Container(C.meta(note, T.TEXT_3, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                             tooltip=note or None, expand=True),
                 C.meta(info),
             ], spacing=T.px(6)), padding=pad, border_radius=T.px(6), ink=node.is_dir,
                 on_click=(lambda e, k=key: toggle(k)) if node.is_dir else None)

@@ -14,6 +14,9 @@
   `keyring = false` in `~/.config/containers/containers.conf`; a reboot clears already-leaked keys.
 - Picks the activity with category LAUNCHER (`APP_ACTIVITY`). Game data is visible at `/sdcard/Android/{obb,data}/<pkg>`.
 - 64-bit only (no AArch32).
+- `<install>/lepton-shaders/` holds Mesa's shader cache (Lepton sets `mesa.shader.cache.dir=/data/shaders`):
+  `foz_cache.foz` + `foz_cache_idx.foz` per graphics driver (Turnip Vulkan, zink GL), typically 4–6 files and 7–19 MB
+  per game, 2D apps included. It speeds up later starts; deleting it only costs one slower start.
 - **2D apps** (verified 2026-10-02 with an open-source 2048 game): Lepton runs every app headless
   (`lepton.headless=true`; only OpenXR output reaches the headset) unless the app folder (`STEAM_COMPAT_INSTALL_PATH`)
   contains a file `lepton-show-flatscreen` (`liblepton/app_metadata.sh`): then Android (11, Waydroid) gets a Wayland
