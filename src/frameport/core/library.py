@@ -15,6 +15,7 @@ from .paths import user_data_dir, write_atomic
 # One lock for every read-modify-write of library.json: jobs, the poll thread and the UI all change it, and a change
 # made between another thread's load() and save() would be lost. Re-entrant so edit() can call load()/save().
 _lock = threading.RLock()
+_last_retry = 0.0  # when migrations waiting for a game folder were last retried
 
 
 def _path() -> Path:
@@ -132,24 +133,25 @@ def _migrate(data: dict) -> bool:
         # Rift games get a launch mode from their files (repack with bundled Revive → run directly; SteamVR/OpenXR-
         # capable → run directly with arguments; Oculus-only → FramePort's Revive). Re-analyze (keeping the chosen
         # exe) and re-derive the recipe; a repack launched through a second Revive failed (e.g. its entitlement check).
-        from ..analysis import rift
-        from ..recommend import engine
-
-        for g in (data.get("games") or {}).values():
+        waiting = []
+        for pkg, g in (data.get("games") or {}).items():
             a = g.get("analysis") or {}
             if not (isinstance(g.get("recipe"), dict) and (a.get("extra") or {}).get("kind") == "rift"):
                 continue
-            gd = g.get("game_dir") or (a.get("extra") or {}).get("folder")
-            try:
-                if not (gd and Path(gd).is_dir()):
-                    continue
-                an = rift.analyze(Path(gd), exe=g.get("exe") or (a.get("extra") or {}).get("exe"))
-                g["analysis"] = asdict(an)
-                g["recipe"] = recipe_to_dict(engine.suggest(an))
-            except Exception:  # noqa: BLE001
-                continue
+            if not _rift_launch_mode(g):
+                waiting.append(pkg)  # game folder not reachable now (e.g. a drive not connected): retried later
+        if waiting:
+            data["settings"].setdefault("migrations_waiting", {})["rift_launch_modes"] = waiting
         done.append("rift_launch_modes")
         changed = True
+    global _last_retry
+    waiting = (data["settings"].get("migrations_waiting") or {}).get("rift_launch_modes") or []
+    if waiting and time.time() - _last_retry > 600:  # games skipped because their folder wasn't there (checked
+        _last_retry = time.time()                     # every 10 min: load() runs often, a missing drive is slow)
+        still = [p for p in waiting if p in data.get("games", {}) and not _rift_launch_mode(data["games"][p])]
+        if still != waiting:
+            data["settings"]["migrations_waiting"]["rift_launch_modes"] = still
+            changed = True
     if "quest_binary_fixes_v2" not in done:
         # Quest recipes gain the default-on binary fixes: the swapchain size guard (every overport build) and the
         # Vulkan shim (Unreal)
@@ -181,6 +183,24 @@ def _migrate(data: dict) -> bool:
         done.append("rift_steamvr_tuning")
         changed = True
     return changed
+
+
+def _rift_launch_mode(g: dict) -> bool:
+    """Re-analyze a Rift game (keeping the chosen exe) and re-derive its recipe. False if its folder isn't there."""
+    from ..analysis import rift
+    from ..recommend import engine
+
+    a = g.get("analysis") or {}
+    gd = g.get("game_dir") or (a.get("extra") or {}).get("folder")
+    if not (gd and Path(gd).is_dir()):
+        return False
+    try:
+        an = rift.analyze(Path(gd), exe=g.get("exe") or (a.get("extra") or {}).get("exe"))
+        g["analysis"] = asdict(an)
+        g["recipe"] = recipe_to_dict(engine.suggest(an))
+    except Exception:  # noqa: BLE001 - an unreadable game keeps its recipe
+        pass
+    return True
 
 
 def save(data: dict) -> None:

@@ -226,3 +226,41 @@ def test_refresh_keeps_a_working_connection_when_a_status_query_fails():
     down = app_with(Target(alive=False))
     down.refresh_frame(quiet=True, background=False)
     assert down.frame_state == "offline" and closed == [down.target]
+
+
+def test_pairing_server_needs_the_code_and_stops_after_pairing_or_guessing(monkeypatch):
+    import time
+    import urllib.error
+    import urllib.request
+
+    from frameport.frame import pairing
+
+    monkeypatch.setattr(pairing, "local_ip_towards", lambda *a: "127.0.0.1")
+    monkeypatch.setattr(pairing, "MAX_FAILURES", 3)
+
+    def get(server, path):
+        try:
+            return urllib.request.urlopen(f"http://127.0.0.1:{server.port}{path}", timeout=5).status
+        except urllib.error.HTTPError as e:
+            return e.code
+        except OSError:
+            return None
+
+    seen = []
+    s = pairing.PairingServer(on_paired=seen.append).start()
+    assert len(s.code) == 16
+    assert get(s, "/key?code=000000") == 403
+    assert get(s, f"/paired?code={s.code}&user=steamos&host=frame") == 200 and seen
+    for _ in range(50):
+        if not s.running:
+            break
+        time.sleep(0.05)
+    assert not s.running
+    g = pairing.PairingServer().start()
+    for _ in range(3):
+        get(g, "/key?code=guess")
+    for _ in range(50):
+        if not g.running:
+            break
+        time.sleep(0.05)
+    assert not g.running
