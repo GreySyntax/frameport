@@ -43,7 +43,7 @@ Releases = "https://github.com/spoopyghosty0/frameport/releases"
 dev = ["pytest>=8", "pytest-timeout>=2.3", "ruff>=0.6", "flet-web>=1.0", "flet-cli>=1.0", "playwright>=1.40"]
 
 [project.scripts]
-frameport = "frameport.cli:app"
+frameport = "frameport.cli:main"
 frameport-gui = "frameport.ui.app:main"
 
 [build-system]

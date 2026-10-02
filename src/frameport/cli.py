@@ -1,5 +1,6 @@
 """FramePort command line. Same operations as the GUI (for automation and headless use).
 Exit codes: 0 done, 1 something failed, 2 wrong usage, 10 (`update --check`) a newer version exists.
+Errors are one line on stderr; FRAMEPORT_DEBUG=1 shows the traceback.
 
     frameport tools install                      # portable Java + overport + apksigner
     frameport scan "<folder with game dumps>"    # analyze + suggest recipes
@@ -171,7 +172,10 @@ def _pkgs(package: Optional[str], all_: bool) -> list[str]:
     if package in [g["package"] for g in library.games()]:
         return [package]
     if len(matches) != 1:
-        raise typer.BadParameter(f"{package!r} matches {len(matches)} games: {matches[:5]}")
+        if not matches:
+            raise typer.BadParameter(f"no game in the library matches {package!r} (see frameport list)")
+        raise typer.BadParameter(f"{package!r} matches {len(matches)} games: {', '.join(matches[:5])}"
+                                 + (" …" if len(matches) > 5 else ""))
     return matches
 
 
@@ -697,9 +701,32 @@ def share_recipe(package: str, status: str = typer.Option("works", help="works o
     _open(pipeline.share_working_config(pkg, status, notes, info), browser)
 
 
-def main():  # pragma: no cover
-    app()
+def main() -> None:
+    """Entry point: errors end in one line on stderr and exit code 1 (FRAMEPORT_DEBUG=1 shows the traceback)."""
+    import os
+
+    try:
+        app()
+    except KeyboardInterrupt:
+        typer.echo("Cancelled.", err=True)
+        sys.exit(130)
+    except Exception as exc:  # noqa: BLE001
+        if os.environ.get("FRAMEPORT_DEBUG"):
+            raise
+        typer.echo(f"Error: {_describe(exc)}", err=True)
+        typer.echo("(set FRAMEPORT_DEBUG=1 to see the traceback)", err=True)
+        sys.exit(1)
+
+
+def _describe(exc: BaseException) -> str:
+    """A readable one-line reason, naming the error type when the message alone says little."""
+    from paramiko.ssh_exception import NoValidConnectionsError
+
+    msg = " ".join(str(exc).split()).removeprefix("[Errno None] ")
+    if isinstance(exc, (NoValidConnectionsError, TimeoutError, ConnectionError)):
+        return f"can't reach the device ({msg or type(exc).__name__}). Is it on and on the same network?"
+    return f"{type(exc).__name__}: {msg}" if msg else type(exc).__name__
 
 
 if __name__ == "__main__":  # pragma: no cover
-    sys.exit(app())
+    main()

@@ -103,7 +103,8 @@ and `frameport <command> --help` describe every option. The main ones:
 | `diag report <game>` / `share-recipe <game>` | report a problem / share a working recipe |
 | `update` | update FramePort |
 
-Exit codes: 0 done, 1 something failed, 2 wrong usage, 10 (`update --check`) a newer version exists.
+Exit codes: 0 done, 1 something failed, 2 wrong usage, 10 (`update --check`) a newer version exists. Errors are
+one line on stderr; `FRAMEPORT_DEBUG=1` shows the full traceback.
 
 ## Uninstalling
 
