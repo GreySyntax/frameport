@@ -112,7 +112,13 @@ class JobManager:
         return next((j for j in self.jobs if j.active and j.package == package), None)
 
     def recent(self, limit: int = 20) -> list[Job]:
-        return sorted(self.jobs, key=lambda j: (not j.active, -j.created))[:limit]
+        """The running job, then every waiting job in queue order, then up to `limit` finished jobs (newest first).
+        Newest-first for all of them put the running job below the whole queue (or past the limit)."""
+        jobs = list(self.jobs)
+        running = [j for j in jobs if j.state == "running"]
+        queued = sorted((j for j in jobs if j.state == "queued"), key=lambda j: j.created)
+        done = sorted((j for j in jobs if not j.active), key=lambda j: -(j.finished or j.created))
+        return running + queued + done[:limit]
 
     def clear_finished(self) -> None:
         with self._cv:

@@ -326,3 +326,26 @@ def test_closing_an_install_question_without_a_button_cancels_it(monkeypatch):
     assert not app._asking and not submitted
     app.install_many(["rift.g"], "frame")  # a later install can ask again
     assert len(dialogs) == 2
+
+
+def test_activity_pins_the_running_job_above_a_long_queue():
+    """With 40 waiting installs the running one used to be listed after all of them (or cut off at 30)."""
+    from types import SimpleNamespace
+
+    from frameport.ui.jobs import Job, JobManager
+    from frameport.ui.views.activity import ActivityPanel
+
+    jm = JobManager(save_logs=False)
+    done = [Job(f"done {i}", run=lambda j: None, state="done", created=i, finished=100 + i) for i in range(25)]
+    running = Job("running", run=lambda j: None, state="running", created=50, started=50)
+    queued = [Job(f"queued {i}", run=lambda j: None, created=60 + i) for i in range(40)]
+    jm.jobs = [*done, running, *queued]
+    order = jm.recent(20)
+    assert order[0] is running and order[1:41] == queued and len(order) == 61
+    assert [j.title for j in order[41:43]] == ["done 24", "done 23"]  # finished: newest first, at most 20
+    panel = ActivityPanel(SimpleNamespace(jobs=jm, job_followups=lambda j: [], copy=None, show_log_file=None,
+                                          show_activity=None))
+    panel.root.width = 400  # open
+    panel.refresh(update=False)
+    assert len(panel.pinned.controls) == 1  # the running job, outside the scrolling list
+    assert panel.list.controls[0].controls[0].value == "Waiting (40)"

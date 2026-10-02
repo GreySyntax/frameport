@@ -197,7 +197,8 @@ class FramePortApp:
         color = {"connected": T.OK, "connecting": T.WARN, "offline": T.ERROR}.get(st, T.TEXT_3)
         self._conn_dot.bgcolor = color
         self._conn_name.value = (self.target.label if self.target else None) or self._saved_name() or tr("Steam Frame")
-        self._conn_line.value = {"connected": "Connected", "connecting": "Connecting…", "offline": "Offline"}.get(
+        self._conn_line.value = {"connected": tr("Connected"), "connecting": tr("Connecting…"),
+                                 "offline": tr("Offline")}.get(
             st, "Not set up")
         self._conn_line.color = color
         if st == "connected" and self.frame_info:

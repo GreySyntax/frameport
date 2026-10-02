@@ -44,12 +44,14 @@ class ActivityPanel:
         self._tiles: dict[int, tuple[tuple, ft.Control]] = {}  # job id -> (state key, tile)
         self._live: dict[int, tuple] = {}  # running job id -> (progress bar, message, stage text, log text or None)
         self._lock = threading.Lock()  # refresh() runs from job threads and the UI thread
+        self.pinned = ft.Column(spacing=T.S3)  # the running job: always visible above the (scrolling) list
         self.list = ft.Column(spacing=T.S3, scroll=ft.ScrollMode.AUTO, expand=True)
         self.root = ft.Container(
             ft.Column([
                 ft.Row([C.h2(tr("Activity")), ft.Container(expand=True),
                         C.ghost(tr("Clear finished"), on_click=lambda e: (app.jobs.clear_finished(), self.refresh())),
                         C.icon_btn(ft.Icons.CLOSE_ROUNDED, tr("Close"), lambda e: app.show_activity(False))]),
+                self.pinned,
                 self.list,
             ], spacing=T.S3, expand=True),
             width=0, bgcolor=T.SIDEBAR, padding=ft.Padding(T.S4, T.S4, T.S4, T.S4),
@@ -73,8 +75,9 @@ class ActivityPanel:
             self._refresh(update)
 
     def _refresh(self, update: bool):
-        jobs = self.app.jobs.recent(30)
-        tiles = []
+        jobs = self.app.jobs.recent(20)
+        tiles, pinned = [], []
+        queued = [j for j in jobs if j.state == "queued"]
         for j in jobs:
             running = j.state == "running"
             # a running job's tile is rebuilt only when its structure changes (new stage/check, log shown); progress
@@ -92,15 +95,37 @@ class ActivityPanel:
                 meta.value = j.stage or ""
                 if log is not None:
                     log.value = "\n".join(j.log[-400:])
-            tiles.append(cached[1])
+            if running:
+                pinned.append(cached[1])
+            else:
+                if j is (queued[0] if queued else None):
+                    tiles.append(self._queue_header(queued))
+                tiles.append(cached[1])
         self._tiles = {j.id: self._tiles[j.id] for j in jobs}
-        self.list.controls = tiles or [
-            ft.Container(C.body(tr("Nothing running. Installs, launch tests and downloads show up here."),
-                                text_align=ft.TextAlign.CENTER), padding=T.S6, alignment=ft.Alignment.CENTER)]
+        self.pinned.controls = pinned
+        if not tiles and not pinned:
+            tiles = [ft.Container(C.body(tr("Nothing running. Installs, launch tests and downloads show up here."),
+                                         text_align=ft.TextAlign.CENTER), padding=T.S6, alignment=ft.Alignment.CENTER)]
+        self.list.controls = tiles
         if update:
             C.update(self.root)
 
+    def _queue_header(self, queued: list[Job]) -> ft.Control:
+        def cancel_all(e):
+            for j in list(queued):
+                self.app.jobs.cancel(j)
+            self.refresh()
+        return ft.Row([C.meta(tr("Waiting ({n})").format(n=len(queued)), T.TEXT_2), ft.Container(expand=True),
+                       C.ghost(tr("Cancel all"), ft.Icons.CLOSE_ROUNDED, cancel_all)])
+
     def tile(self, job: Job) -> ft.Control:
+        if job.state == "queued":  # compact: a long queue must not push everything else out of view
+            return ft.Container(ft.Row([
+                ft.Icon(ft.Icons.SCHEDULE_ROUNDED, color=T.TEXT_3, size=T.px(16)),
+                C.body(job.title, T.TEXT_2, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                C.icon_btn(ft.Icons.CLOSE_ROUNDED, tr("Cancel"), lambda e: self.app.jobs.cancel(job)),
+            ], spacing=T.S2, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                padding=ft.Padding(T.S3, T.px(2), T.px(4), T.px(2)), border_radius=T.RADIUS_SM, bgcolor=T.SURFACE)
         icon, color, word = STATE_STYLE[job.state]
         if job.state == "done" and (job.summary or {}).get("verdict") == "fail":
             icon, color, word = ft.Icons.WARNING_AMBER_ROUNDED, T.WARN, tr("Installed · launch test failed")
