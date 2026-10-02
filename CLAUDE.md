@@ -193,7 +193,8 @@ Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattr
 ## Round-2 polish (2026-10-02)
 - `errors.py`: `explain(exc)` (plain sentence for GUI + CLI), `is_connection_error`. Install/test jobs for the Frame
   (`Job.needs_frame`) that lose the connection go back to the queue front and the queue pauses (`jobs.paused`);
-  `app._poll` retries every 10 s and resumes. Wake lock: agent v30 `keep_awake` (systemd-inhibit idle:sleep, idle-only
+  `app._poll` retries every 10 s and resumes (owner-verified on the device 2026-10-02: the queue resumed after the
+  connection was lost). Wake lock: agent v30 `keep_awake` (systemd-inhibit idle:sleep, idle-only
   fallback because polkit `inhibit-block-sleep` is auth_admin for non-local sessions), held while Frame jobs exist.
 - **Already converted inputs** (`analysis.is_overport_output`, e.g. the owner's library points at `PATCHED/` copies)
   are not converted again: a second OVRPort run replaced libovrplatformloader.so and dropped its DT_NEEDED on
