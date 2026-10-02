@@ -10,7 +10,6 @@ Each patch can suggest itself from an Analysis (`detect`), applies itself (`appl
 """
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -144,16 +143,3 @@ def load_all() -> None:
 
     for mod in pkgutil.iter_modules(frame.__path__):
         importlib.import_module(f"{frame.__name__}.{mod.name}")
-
-
-def simple(patch_id: str, **attrs) -> Callable[[type], type]:
-    """Class decorator: set attributes and register."""
-
-    def wrap(cls):
-        cls.id = patch_id
-        for k, v in attrs.items():
-            setattr(cls, k, v)
-        register(cls)
-        return cls
-
-    return wrap

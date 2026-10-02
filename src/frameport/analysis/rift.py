@@ -356,13 +356,6 @@ def is_ambiguous(ranked: list[dict]) -> bool:
     return len(ranked) > 1 and ranked[0]["score"] < 1000 and ranked[1]["score"] >= ranked[0]["score"] - AMBIGUITY
 
 
-def find_exe(folder: Path) -> Path | None:
-    """The best program to start the game (used by callers that only need one)."""
-    tree = walk(folder)
-    ranked = rank_exes(folder, candidates(tree), tree.manifest)
-    return Path(folder) / ranked[0]["path"] if ranked else None
-
-
 # ------------------------------------------------------------------------------------------ analysis
 def fingerprint(folder: Path, exe_rel: str) -> str:
     p = Path(folder) / exe_rel

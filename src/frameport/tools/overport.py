@@ -51,11 +51,6 @@ def cli_version() -> str | None:
     return m[1] if m else None
 
 
-def runtime_versions() -> str:
-    p = toolchain.run_java(["-jar", _jar(), "install", f"--workspace={workspace()}"], timeout=300)
-    return p.stdout
-
-
 def patch(apk: Path, outdir: Path, name: str, patches: list[str], reporter: Reporter,
           version: str = "latest") -> Path:
     """Run `overport patch`; returns the output APK path. version='latest' always uses the newest runtime."""
@@ -76,11 +71,3 @@ def patch(apk: Path, outdir: Path, name: str, patches: list[str], reporter: Repo
     if p.returncode or not target.exists():
         raise RuntimeError(f"overport failed (exit {p.returncode}); see log")
     return target
-
-
-def runtime_version_used(log_lines: list[str]) -> str | None:
-    for line in log_lines:
-        m = re.search(r"(\d+\.\d+\.\d+-[0-9a-f]{7})", line)
-        if m:
-            return m[1]
-    return None

@@ -249,7 +249,8 @@ class FramePortApp:
         self.go("game", package, advanced, show_all)
 
     def navigate(self, index: int, **kw) -> None:  # older callers (scripts)
-        self.go(("library", "frame", "settings")[index] if index < 3 else "library")
+        routes = [key for key, _, _ in NAV]
+        self.go(routes[index] if 0 <= index < len(routes) else "library")
 
     def show_activity(self, on: bool) -> None:
         self.activity.set_open(on)
@@ -700,6 +701,8 @@ class FramePortApp:
         if self.jobs.busy_with(pkg):
             return None
         g = library.game(pkg)
+        if not g:
+            return None  # removed from the library meanwhile
         rift = g.get("kind") == "rift"
         where = "your Frame" if to == "frame" else "this PC"
         self._record(pkg, to=to, state="queued")
@@ -939,8 +942,12 @@ class FramePortApp:
 
         def save(e):
             vals = {k: f.value for k, f in fields.items() if f.value.strip()}
-            self.run_bg(lambda: self.toast(f"Saved: {self.target.set_settings(package, vals)['settings']}"))
             self.page.pop_dialog()
+            target = self.target
+            if target is None:
+                self.toast("Connect your Frame first", error=True)
+                return
+            self.run_bg(lambda: self.toast(f"Saved: {target.set_settings(package, vals)['settings']}"))
         self.page.show_dialog(ft.AlertDialog(
             title=ft.Text(f"Adapter settings · {self._title(package)}"), bgcolor=T.SURFACE_2,
             content=ft.Column([C.body("Only filled-in values change. Restart the game afterwards."),

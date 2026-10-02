@@ -153,13 +153,6 @@ def browse(seconds: float = 4.0, scan: bool = True) -> list[Found]:
     return sorted(out, key=lambda f: (rank.get(f.source, 9), f.name, link_label(f.host) != "network", f.host))
 
 
-def resolve_hostname(name: str = "frame.local") -> str | None:
-    try:
-        return socket.gethostbyname(name)
-    except OSError:
-        return None
-
-
 def local_ip_towards(host: str = "8.8.8.8") -> str:
     """The PC's address on the route towards host (used in the bootstrap one-liner)."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

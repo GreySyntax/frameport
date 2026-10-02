@@ -78,7 +78,8 @@ def test_cleanup_refuses_outside_paths(monkeypatch, tmp_path):
     (old / "x" / "f.apk").write_bytes(b"1234")
     r = a.cmd_cleanup({"paths": ["~/PATCHED"]})
     assert r["freed_bytes"] == 4 and not old.exists()
-    for bad in ("/etc", "~/Applications/quest-frame", "~/.."):
+    for bad in ("/etc", "~/Applications/quest-frame", "~/Applications/quest-frame/x", "~/..", "~/.ssh", "~/.steam",
+                "~/.local/share", "~"):
         with pytest.raises(a.AgentError):
             a.cmd_cleanup({"paths": [bad]})
 
@@ -589,3 +590,55 @@ def test_link_media_into_app_own_folder(monkeypatch, tmp_path):
     assert a.cmd_link_media({"package": "cn.player", "files": [str(video)]})["existing"] == ["a_360.mp4"]
     with pytest.raises(a.AgentError):  # only files from the shared folders
         a.cmd_link_media({"package": "cn.player", "files": [str(base / "deployment.json")]})
+
+
+def test_grid_files_match_exact_appids(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    grid = tmp_path / "grid"
+    grid.mkdir()
+    for n in ("123p.jpg", "123.png", "123_hero.jpg", "123_logo.png", "1234p.jpg", "12345_hero.jpg", "notes.txt"):
+        (grid / n).write_text("x")
+    assert sorted(p.rsplit("/", 1)[1] for p in a.grid_files(str(grid), 123)) == \
+        ["123.png", "123_hero.jpg", "123_logo.png", "123p.jpg"]
+
+
+def test_vdf_backups_are_capped(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    vdf = tmp_path / "shortcuts.vdf"
+    vdf.write_bytes(b"x")
+    for i in range(9):
+        (tmp_path / f"shortcuts.vdf.backup-2026010{i}-000000").write_bytes(b"old")
+    a.backup_vdf(str(vdf))
+    assert len(list(tmp_path.glob("shortcuts.vdf.backup-*"))) == a.VDF_BACKUPS
+
+
+def test_finalize_checks_the_data_before_replacing_the_game(monkeypatch, tmp_path):
+    """A failed data check must leave the installed APK and data as they were."""
+    a = load_agent(monkeypatch, tmp_path)
+    base = tmp_path / "Applications/quest-frame/com.x.y"
+    app = base / "lepton-app"
+    (app / "obb").mkdir(parents=True)
+    (app / "game.apk").write_bytes(b"OLD")
+    inc = base / "incoming"
+    (inc / "obb").mkdir(parents=True)
+    (inc / "game.apk").write_bytes(b"NEW")
+    monkeypatch.setattr(a, "cmd_prepare", lambda args: {"base": str(base), "anchor": str(base), "appid": 1,
+                                                         "incoming": str(inc), "lepton": "/lepton"})
+    with pytest.raises(a.AgentError):
+        a.cmd_finalize({"package": "com.x.y", "title": "X", "obb_manifest": {"main.obb": 10}})
+    assert (app / "game.apk").read_bytes() == b"OLD" and (inc / "game.apk").exists()
+
+
+def test_uninstall_removes_the_shortcut_with_steam_closed(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "Applications/quest-frame/com.x.y"
+    anchor.mkdir(parents=True)
+    (anchor / "deployment.json").write_text(json.dumps({"package": "com.x.y", "base": str(anchor), "appid": 7}))
+    monkeypatch.setattr(a, "container_running", lambda appid: False)
+    monkeypatch.setattr(a, "steam_users", lambda: ["1"])
+    started = []
+    monkeypatch.setattr(a, "run", lambda cmd, *k, **kw: started.append(cmd) or SimpleNamespace(returncode=0, stdout=""))
+    r = a.cmd_uninstall({"package": "com.x.y", "remove_shortcut": True})
+    assert r["shortcut_removed"] and started and started[0][0] == "systemd-run"  # the detached worker, not a live edit
+    payload = json.loads(started[0][-1])
+    assert payload["remove"] == [{"exe": f'"{anchor}/launch.sh"', "appid": 7}]

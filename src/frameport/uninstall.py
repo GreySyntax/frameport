@@ -112,6 +112,15 @@ def default_backup_dir() -> Path:
     return docs if docs.is_dir() else Path.home()
 
 
+def grid_files(grid: Path, appid) -> list[Path]:
+    """A Steam shortcut's grid artwork by exact name (<appid>p.jpg, <appid>_hero.png, …), not every file that merely
+    starts with the same digits (another game's appid can)."""
+    import re
+
+    pat = re.compile(rf"^{re.escape(str(appid))}(p|_hero|_logo|_icon)?\.[A-Za-z0-9]+$")
+    return [p for p in grid.iterdir() if pat.match(p.name)] if appid and grid.is_dir() else []
+
+
 def remove_pc_shortcuts(reporter: Reporter) -> None:
     """All PC VR shortcuts FramePort added to Windows Steam, with one Steam restart."""
     from .core import winhost
@@ -132,7 +141,7 @@ def remove_pc_shortcuts(reporter: Reporter) -> None:
         for pkg, dep in deps.items():
             exe = shortcut_fields(dep)[0]
             removed = vdf_mod.remove_shortcut(str(cfg / "shortcuts.vdf"), exe)
-            for art in (cfg / "grid").glob(f"{dep.get('appid')}*"):
+            for art in grid_files(cfg / "grid", dep.get("appid")):
                 art.unlink(missing_ok=True)
             reporter.check(f"Steam shortcut: {dep.get('title') or pkg}", True if removed else None,
                            "removed" if removed else "wasn't there")

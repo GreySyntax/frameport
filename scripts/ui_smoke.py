@@ -136,7 +136,7 @@ def main() -> int:
     vw, vh = (int(x) for x in args.viewport.split("x"))
     args.out.mkdir(parents=True, exist_ok=True)
     game = args.game or (library.games()[0]["package"] if library.games() else None)
-    steps = [("library", lambda a: a.navigate(0)), ("frame", lambda a: a.navigate(1)), ("tools", lambda a: a.navigate(2))]
+    steps = [("library", lambda a: a.navigate(0)), ("frame", lambda a: a.navigate(1)), ("files", lambda a: a.go("files")), ("tools", lambda a: a.go("settings"))]
     if game:
         steps.insert(1, ("game", lambda a: a.open_game(game)))
         steps.insert(2, ("game-customize", lambda a: a.open_game(game, advanced=True)))
@@ -161,7 +161,7 @@ def main() -> int:
                               notes="## What's new\n- Self-update test release\n- **Bold** and `code` in notes")
         steps += [("update-banner", lambda a: (a.updater._set(fake), a.navigate(0))),
                   ("update-dialog", lambda a: a.updater.show_dialog()),
-                  ("update-settings", lambda a: (a.page.pop_dialog(), a.navigate(2)))]
+                  ("update-settings", lambda a: (a.page.pop_dialog(), a.go("settings")))]
     if args.frame:
         from frameport.frame.connection import parse_target
 

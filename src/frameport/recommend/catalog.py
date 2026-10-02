@@ -9,6 +9,7 @@ Sources, highest priority first:
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -82,6 +83,9 @@ def _load_dir(path: Path, origin: str) -> dict[str, CatalogEntry]:
     return out
 
 
+PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$")
+
+
 def _load_remote() -> dict[str, CatalogEntry]:
     base = os.environ.get("FRAMEPORT_CATALOG_URL")
     if not base:
@@ -90,6 +94,8 @@ def _load_remote() -> dict[str, CatalogEntry]:
     index = cache.cached_json("catalog-index.json", base + "index.json", max_age=6 * 3600, fallback=[])
     out = {}
     for pkg in index or []:
+        if not isinstance(pkg, str) or not PACKAGE_RE.match(pkg):
+            continue  # names become cache file names and URLs: Android package / rift.<slug> ids only
         text = cache.cached_text(f"catalog-{pkg}.yaml", f"{base}{pkg}.yaml", max_age=6 * 3600)
         if text:
             try:
@@ -190,13 +196,3 @@ def source_hint_matches(hint: str, folder_name: str) -> bool:
 
 def to_yaml(entry: CatalogEntry) -> str:
     return yaml.safe_dump(entry.to_dict(), sort_keys=False, allow_unicode=True, width=110)
-
-
-def write_index(folder: Path) -> Path:
-    """Write index.json for publishing a folder of recipes as a remote catalog."""
-    import json
-
-    pkgs = sorted(f.stem for f in folder.glob("*.yaml"))
-    path = folder / "index.json"
-    path.write_text(json.dumps(pkgs, indent=1))
-    return path

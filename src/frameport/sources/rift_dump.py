@@ -25,10 +25,6 @@ def classify(path: Path, tree: rift.Tree | None = None) -> tuple[str, rift.Tree]
     return "collection", tree
 
 
-def is_game_folder(path: Path) -> bool:
-    return Path(path).is_dir() and classify(Path(path))[0] == "game"
-
-
 def scan(root: Path, depth: int = 4, trees: dict | None = None) -> list[Path]:
     """Game folders under root (root itself if it is one game). `trees` collects the walk results by folder, so the
     analysis doesn't walk again."""

@@ -33,7 +33,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 26
+AGENT_VERSION = 27
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -711,7 +711,7 @@ def upsert_shortcut(vdf_path, exe, title, start_dir, icon="", tag="Quest on Fram
                  LaunchOptions=launch_options, IsHidden=0, AllowDesktopConfig=1, AllowOverlay=1, OpenVR=1, Devkit=0,
                  DevkitGameID="", DevkitOverrideAppID=0, FlatpakAppID="")
     if data:
-        shutil.copy2(vdf_path, f"{vdf_path}.backup-{time.strftime('%Y%m%d-%H%M%S')}")
+        backup_vdf(vdf_path)
     os.makedirs(os.path.dirname(vdf_path), exist_ok=True)
     tmp = vdf_path + ".tmp"
     with open(tmp, "wb") as f:
@@ -735,11 +735,34 @@ def prune_shortcuts(vdf_path, title, keep_exe, tag):
     keep = [v for v in sc.values() if not (isinstance(v, dict) and v.get("appname") == title
             and v.get("Exe") != keep_exe and tag in (v.get("tags") or {}).values())]
     root["shortcuts"] = {str(i): v for i, v in enumerate(keep)}
-    shutil.copy2(vdf_path, f"{vdf_path}.backup-{time.strftime('%Y%m%d-%H%M%S')}")
+    backup_vdf(vdf_path)
     with open(vdf_path + ".tmp", "wb") as f:
         f.write(vdf_encode(root))
     os.replace(vdf_path + ".tmp", vdf_path)
     return removed
+
+
+VDF_BACKUPS = 5
+
+
+def backup_vdf(vdf_path):
+    """Keep a copy before changing shortcuts.vdf (the last VDF_BACKUPS are kept)."""
+    shutil.copy2(vdf_path, f"{vdf_path}.backup-{time.strftime('%Y%m%d-%H%M%S')}")
+    for old in sorted(glob.glob(f"{vdf_path}.backup-*"))[:-VDF_BACKUPS]:
+        try:
+            os.remove(old)
+        except OSError:
+            pass
+
+
+def grid_files(grid, appid):
+    """A shortcut's grid artwork (<appid>p.jpg, <appid>_hero.png, …): exact names, never another appid that merely
+    starts with the same digits."""
+    pat = re.compile(rf"^{re.escape(str(appid))}(p|_hero|_logo|_icon)?\.[A-Za-z0-9]+$")
+    try:
+        return [os.path.join(grid, n) for n in os.listdir(grid) if pat.match(n)]
+    except OSError:
+        return []
 
 
 def remove_shortcut(vdf_path, exe):
@@ -751,7 +774,7 @@ def remove_shortcut(vdf_path, exe):
     if len(keep) == len(sc):
         return False
     root["shortcuts"] = {str(i): v for i, v in enumerate(keep)}
-    shutil.copy2(vdf_path, f"{vdf_path}.backup-{time.strftime('%Y%m%d-%H%M%S')}")
+    backup_vdf(vdf_path)
     with open(vdf_path + ".tmp", "wb") as f:
         f.write(vdf_encode(root))
     os.replace(vdf_path + ".tmp", vdf_path)
@@ -766,13 +789,14 @@ def cmd_shortcuts(args):
     rewritten, so the work runs in a detached systemd unit (terminals/SSH sessions started from Steam live in
     steam.service's cgroup and would be killed with it). Poll shortcut_status for the result."""
     packages = [check_pkg(p) for p in args.get("packages", [])]
-    if not packages:
+    remove = [r for r in args.get("remove", []) if isinstance(r, dict) and str(r.get("exe", "")).startswith('"' + ANCHORS)]
+    if not packages and not remove:
         return {"started": False}
     os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
     with open(STATUS_FILE, "w") as f:
         json.dump({"state": "running", "packages": packages, "started": time.time()}, f)
     unit = f"frameport-shortcuts-{int(time.time())}"
-    payload = json.dumps({"packages": packages, "restart": args.get("restart", True)})
+    payload = json.dumps({"packages": packages, "remove": remove, "restart": args.get("restart", True)})
     run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={unit}", "--setenv=HOME=" + HOME,
          sys.executable, os.path.abspath(__file__), "_shortcuts_worker", payload])
     return {"started": True, "unit": unit}
@@ -792,6 +816,14 @@ def shortcuts_worker(payload):
             raise AgentError("Steam did not close; library not modified") from None
         grid = os.path.join(os.path.dirname(vdf), "grid")
         os.makedirs(grid, exist_ok=True)
+        for r in args.get("remove", []):  # uninstalled games
+            try:
+                if remove_shortcut(vdf, r["exe"]):
+                    result.setdefault("removed", []).append(r["exe"])
+                for art in grid_files(grid, r.get("appid") or ""):
+                    os.remove(art)
+            except Exception as exc:  # noqa: BLE001
+                result["errors"].append(f"{r.get('exe')}: {exc}")
         for pkg in args["packages"]:
             try:
                 anchor = os.path.join(ANCHORS, pkg)
@@ -1123,6 +1155,19 @@ def cmd_finalize(args):
     os.makedirs(os.path.join(app, "obb"), exist_ok=True)
     os.makedirs(anchor, exist_ok=True)
     new_apk = os.path.join(incoming, "game.apk")
+    inc_obb = os.path.join(incoming, "obb")
+    expected = args.get("obb_manifest")  # rel path -> size
+    if expected:  # check the data as it will be after the move, before replacing anything (a failure keeps the old)
+        have = {}
+        for top in (os.path.join(app, "obb"), inc_obb):
+            for root, _, files in os.walk(top):
+                for name in files:
+                    if not name.endswith(".part"):
+                        p = os.path.join(root, name)
+                        have[os.path.relpath(p, top)] = os.path.getsize(p)
+        bad = [k for k, v in expected.items() if have.get(k) != v]
+        if bad:
+            raise AgentError(f"{len(bad)} data file(s) missing or incomplete, e.g. {bad[0]}")
     if os.path.exists(new_apk):
         if args.get("apk_sha256") and sha256_file(new_apk) != args["apk_sha256"]:
             raise AgentError("uploaded APK checksum mismatch (transfer corrupted?)")
@@ -1133,7 +1178,6 @@ def cmd_finalize(args):
     elif not os.path.exists(os.path.join(app, "game.apk")):
         raise AgentError("no APK uploaded and none installed")
     moved = 0
-    inc_obb = os.path.join(incoming, "obb")
     for root, _, files in os.walk(inc_obb):
         for name in files:
             if name.endswith(".part"):
@@ -1143,16 +1187,6 @@ def cmd_finalize(args):
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             os.replace(src, dst)
             moved += 1
-    expected = args.get("obb_manifest")  # rel path -> size
-    if expected:
-        have = {}
-        for root, _, files in os.walk(os.path.join(app, "obb")):
-            for name in files:
-                p = os.path.join(root, name)
-                have[os.path.relpath(p, os.path.join(app, "obb"))] = os.path.getsize(p)
-        bad = [k for k, v in expected.items() if have.get(k) != v]
-        if bad:
-            raise AgentError(f"{len(bad)} data file(s) missing or incomplete, e.g. {bad[0]}")
     shutil.rmtree(incoming, ignore_errors=True)
     # settings: settings.conf (read by the adapter via LEPTON_ENV_FRAMEBRIDGE_CONFIG) + framebridge.conf copy
     files_dir = data_files_dir(base, pkg)
@@ -1808,11 +1842,10 @@ def cmd_uninstall(args):
     if not keep_data:
         shutil.rmtree(base, ignore_errors=True)
     anchor = os.path.join(ANCHORS, pkg)
-    users = steam_users()
     removed_sc = False
-    if len(users) == 1 and args.get("remove_shortcut"):
-        removed_sc = remove_shortcut(os.path.join(STEAM, "userdata", users[0], "config/shortcuts.vdf"),
-                                     f'"{anchor}/launch.sh"')  # takes effect after the next Steam restart
+    if args.get("remove_shortcut") and len(steam_users()) == 1:
+        # Steam keeps its own copy of shortcuts.vdf and writes it back: change it only with Steam closed (worker)
+        removed_sc = cmd_shortcuts({"remove": [{"exe": f'"{anchor}/launch.sh"', "appid": dep.get("appid")}]})["started"]
     if not keep_data or base != anchor:
         shutil.rmtree(anchor, ignore_errors=True)
     else:  # saves live next to the launcher (Quest games): keep them, drop what marks the game as installed
@@ -2093,7 +2126,7 @@ def purge_worker(payload):
                 try:
                     if remove_shortcut(vdf, f'"{os.path.join(ANCHORS, d["package"])}/launch.sh"'):
                         result["removed"].append(f"Steam shortcut: {d.get('title')}")
-                    for art in glob.glob(os.path.join(grid, f"{d['appid']}*")):
+                    for art in grid_files(grid, d["appid"]):
                         os.remove(art)
                 except Exception as exc:  # noqa: BLE001
                     result["errors"].append(f"{d.get('title')}: {exc}")
@@ -2157,7 +2190,9 @@ def cmd_cleanup(args):
                 removed.append(p)
     for extra in args.get("paths", []):
         p = os.path.realpath(os.path.expanduser(extra))
-        if not p.startswith(HOME + os.sep) or p.startswith(ANCHORS) or p == os.path.join(HOME, ".local"):
+        first = os.path.relpath(p, HOME).split(os.sep)[0] if p.startswith(HOME + os.sep) else ""
+        if not first or first.startswith(".") or p == ANCHORS or p.startswith(ANCHORS + os.sep):
+            # only ordinary folders in the home folder: never dot folders (.ssh, .steam, .local, .config…)
             raise AgentError(f"refusing to remove {extra}")
         if os.path.exists(p):
             freed += sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(p) for f in fs) if os.path.isdir(p) else os.path.getsize(p)

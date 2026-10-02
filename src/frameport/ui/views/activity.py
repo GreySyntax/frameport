@@ -1,6 +1,7 @@
 """Activity panel (right side): running, queued and finished background jobs with steps, checks and the log."""
 from __future__ import annotations
 
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -40,7 +41,8 @@ class ActivityPanel:
         self.expanded: set[int] = set()
         self.logs: set[int] = set()
         self._tiles: dict[int, tuple[tuple, ft.Control]] = {}  # job id -> (state key, tile)
-        self._live: dict[int, tuple] = {}  # running job id -> (progress bar, message, stage text)
+        self._live: dict[int, tuple] = {}  # running job id -> (progress bar, message, stage text, log text or None)
+        self._lock = threading.Lock()  # refresh() runs from job threads and the UI thread
         self.list = ft.Column(spacing=T.S3, scroll=ft.ScrollMode.AUTO, expand=True)
         self.root = ft.Container(
             ft.Column([
@@ -65,24 +67,29 @@ class ActivityPanel:
     def refresh(self, update: bool = True):
         if not self.open:
             return
+        with self._lock:
+            self._refresh(update)
+
+    def _refresh(self, update: bool):
         jobs = self.app.jobs.recent(30)
         tiles = []
         for j in jobs:
             running = j.state == "running"
             # a running job's tile is rebuilt only when its structure changes (new stage/check, log shown); progress
-            # updates go to its live controls — rebuilding on every tick swallowed clicks on Cancel
-            key = (j.state, len(j.stages), len(j.checks), j.id in self.expanded, j.id in self.logs,
-                   len(j.log) if j.id in self.logs else 0) if running else \
+            # and new log lines go to its live controls — rebuilding on every tick swallowed clicks on Cancel
+            key = (j.state, len(j.stages), len(j.checks), j.id in self.expanded, j.id in self.logs) if running else \
                 (j.version, j.id in self.expanded, j.id in self.logs)
             cached = self._tiles.get(j.id)
             if not cached or cached[0] != key:  # unchanged tiles are reused, so text selections survive refreshes
                 cached = (key, self.tile(j))
                 self._tiles[j.id] = cached
             elif running and j.id in self._live:
-                bar, msg, meta = self._live[j.id]
+                bar, msg, meta, log = self._live[j.id]
                 bar.value = j.fraction
                 msg.value = _progress_text(j)
                 meta.value = j.stage or ""
+                if log is not None:
+                    log.value = "\n".join(j.log[-400:])
             tiles.append(cached[1])
         self._tiles = {j.id: self._tiles[j.id] for j in jobs}
         self.list.controls = tiles or [
@@ -113,7 +120,7 @@ class ActivityPanel:
             bar = C.progress_bar(job.fraction)
             msg = C.meta(_progress_text(job), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
             parts += [bar, msg]
-            self._live[job.id] = (bar, msg, meta)
+            self._live[job.id] = (bar, msg, meta, None)
         if expanded:
             if job.stages:
                 parts.append(ft.Column([
@@ -141,10 +148,12 @@ class ActivityPanel:
                            lambda e: self.app.show_log_file(job.log_path, job.title))] if job.log_path else []),
             ], spacing=0, wrap=True))
             if show_log:
-                parts.append(ft.Container(ft.Column([ft.Text(
-                    "\n".join(job.log[-400:]), size=T.px(11), font_family="monospace", color=T.TEXT_2, selectable=True)],
-                    scroll=ft.ScrollMode.AUTO, auto_scroll=job.state == "running"),
-                    bgcolor=T.BG, border_radius=T.RADIUS_SM, padding=T.S2, height=T.px(240)))
+                log = ft.Text("\n".join(job.log[-400:]), size=T.px(11), font_family="monospace", color=T.TEXT_2,
+                              selectable=True)
+                if running:
+                    self._live[job.id] = (*self._live[job.id][:3], log)
+                parts.append(ft.Container(ft.Column([log], scroll=ft.ScrollMode.AUTO, auto_scroll=running),
+                                          bgcolor=T.BG, border_radius=T.RADIUS_SM, padding=T.S2, height=T.px(240)))
         return ft.Container(ft.Column(parts, spacing=T.S2), bgcolor=T.SURFACE, border_radius=T.RADIUS,
                             border=ft.Border.all(1, T.ACCENT if running else T.BORDER), padding=T.S3,
                             on_click=None if running else lambda e: self._toggle(self.expanded, job.id))

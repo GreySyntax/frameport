@@ -12,7 +12,6 @@ import posixpath
 import re
 import stat
 import threading
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,12 +29,11 @@ def app_key() -> paramiko.Ed25519Key:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
         key = Ed25519PrivateKey.generate()
-        path.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.OpenSSH,
-                                           serialization.NoEncryption()))
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
+        data = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.OpenSSH,
+                                 serialization.NoEncryption())
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)  # private from the first byte
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
         pub = key.public_key().public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH)
         (ssh_dir() / "id_ed25519.pub").write_text(pub.decode() + " frameport\n")
     return paramiko.Ed25519Key.from_private_key_file(str(path))
@@ -352,15 +350,6 @@ class Frame:
 
 def sh_quote(s: str) -> str:
     return "'" + s.replace("'", "'\"'\"'") + "'"
-
-
-def wait_for(predicate, timeout: float, interval: float = 2.0) -> bool:
-    end = time.time() + timeout
-    while time.time() < end:
-        if predicate():
-            return True
-        time.sleep(interval)
-    return False
 
 
 def parse_target(text: str) -> FrameTarget:

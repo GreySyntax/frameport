@@ -205,7 +205,9 @@ class PcReviveTarget(Target):
                         artwork.fetch(pkg, lookup=dep.get("art_lookup"))
                     art = steam_set(pkg)
                     for stale in vdf_mod.prune_shortcuts(str(vdf), dep["title"], exe, TAG):
-                        for old in grid.glob(f"{stale}*"):
+                        from ..uninstall import grid_files
+
+                        for old in grid_files(grid, stale):
                             old.unlink(missing_ok=True)
                         reporter.log(f"removed the old Steam entry for {dep['title']} (its launch command changed)")
                     ident = vdf_mod.shortcut_appid(exe, dep["title"])

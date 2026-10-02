@@ -59,10 +59,6 @@ def tools_dir() -> Path:
     return _sub("tools")
 
 
-def keystore_dir() -> Path:
-    return _sub("keystores")
-
-
 def work_dir() -> Path:
     return _sub("work")
 
