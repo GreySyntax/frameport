@@ -43,8 +43,9 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
   - **PC VR repacks are pre-patched to run directly** (proven: Rick and Morty, Vader Immortal run when the exe is
     launched directly; Revive breaks them). So Rift games default to `as_is` = install the copy unchanged and launch
     the exe directly (`pcvr.xr_timefix` for the Frame OpenXR-1.1→1.0 fix, `pcvr.no_crash_reporter` for Unreal).
-    **Revive is off by default, opt-in** (`pcvr.revive`, and `pcvr.oculus_unreal`): only for an un-cracked Oculus game
-    that fails at "Initializing OVR session". Those (Lone Echo, Robo Recall, Lies Beneath: crack .7z not extracted /
+    **Revive is only suggested for games with Oculus (LibOVR) code** (`pcvr.revive`, and `pcvr.oculus_unreal`; repacks
+    with a bundled Revive and SteamVR/OpenXR games run directly): needed by an un-cracked Oculus game that fails at
+    "Initializing OVR session". Those (Lone Echo, Robo Recall, Lies Beneath: crack .7z not extracted /
     Platform SDK) hit Revive's Oculus-runtime **signature check** under Proton-arm64 — Revive's LoadLibrary/WinVerifyTrust
     hooks don't install (ARM64EC), and the game's Oculus SDK shim rejects the unsigned Revive runtime (wintrust +
     crypt32 signer "Oculus VR") — so they don't run on the Frame without extracting the repack's crack (which FramePort
@@ -145,7 +146,8 @@ Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
 - `agent/frameport_agent.py` — runs **on the Frame** (python3 stdlib only), JSON over SSH. Owns the install layout,
   launch.sh template, Steam shortcuts (binary VDF), launch tests. Bump `AGENT_VERSION` when changing it.
 - `bootstrap/bootstrap.sh` — one-time Frame setup served by the pairing server (sshd, app key, avahi service, Lepton).
-- `catalog/games/<package>.yaml` — 34 recipes verified 2026-09-28 + Deadpool VR (2026-10-01, owner-confirmed); `catalog/triage.yaml` — log signatures → fixes.
+- `catalog/games/<package>.yaml` — 38 recipes (34 verified 2026-09-28; Deadpool VR, 4XVR, NEX Player and AC Nexus's
+  90 Hz default confirmed later by the owner); `catalog/triage.yaml` — log signatures → fixes.
 - `native/` — sources of the prebuilt binaries in `artifacts/` (adapter, VrApi bridge patches, GL shim, stubs).
   `native/build.py` rebuilds them with NDK r27c (downloaded on demand into `native/.cache`, git-ignored; uses
   `-ffile-prefix-map` so no local paths get embedded; zip symlinks are restored as copies). Users never need the NDK.
@@ -160,7 +162,7 @@ uv run pytest                # unit tests (no device, no game files)
 uv run frameport --help      # CLI;  uv run frameport-gui  for the GUI
 uv run frameport parity --known-good <PATCHED/_known-good-*> --sources "<VR CyberDeck downloads>"
 ```
-Games/device tests: `pytest -m games` (FRAMEPORT_GAMES=<downloads dir>), `pytest -m device` (FRAMEPORT_FRAME=steamos@host);
+Games tests: `pytest -m games` (FRAMEPORT_GAMES=<downloads dir>); on-device checks are CLI commands (below);
 native layer test: `FRAMEPORT_NATIVE_TESTS=1 pytest -m native` (compiles with the NDK, ~2 min on NTFS).
 Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattributes`).
 - `FRAMEPORT_HOME=<dir>` isolates all app data (tests use it); `FRAMEPORT_JAVA/_OVERPORT_JAR/_APKSIGNER_JAR` override
@@ -350,7 +352,7 @@ swapchain was halved (1536/eye) in case memory is the limit (unverified). Frame 
 (SteamVR runtimes, Lepton scripts, logs; never commit Valve binaries): `~/frameport-research/frame-data-2026-09-30/`.
 Not yet verified in the headset.
 
-**Lepton storage (2026-09-30):** each app's /sdcard (= /storage/emulated/0 → `<base>/lepton-data/external`) has `Movies`/`Download`/`Documents` symlinked to the Frame's `~/Videos`/`~/Downloads`/`~/Documents` (liblepton/mounting.sh, only if they exist at start); agent v24 `storage_targets` reads that mapping. Android's MediaProvider canonicalises paths to /home/steamos/... and rejects every file ("doesn't appear under [/system/media...]"), `sm list-volumes` is empty: the media index never works, apps must browse folders. Lepton installs with `adb install -g` (runtime permissions granted, MANAGE_EXTERNAL_STORAGE too). Send files: `install/files.py`, `frameport frame send|storage`, GUI Frame → Send files.
+**Lepton storage (2026-09-30):** each app's /sdcard (= /storage/emulated/0 → `<base>/lepton-data/external`) has `Movies`/`Download`/`Documents` symlinked to the Frame's `~/Videos`/`~/Downloads`/`~/Documents` (liblepton/mounting.sh, only if they exist at start); agent v24 `storage_targets` reads that mapping. Android's MediaProvider canonicalises paths to /home/steamos/... and rejects every file ("doesn't appear under [/system/media...]"), `sm list-volumes` is empty: the media index never works, apps must browse folders. Lepton installs with `adb install -g` (runtime permissions granted, MANAGE_EXTERNAL_STORAGE too). Files: `install/files.py`, `frameport frame send|storage`, GUI Files tab (formerly Frame → Send files).
 **SteamVR per-app settings (2026-09-30):** editing steamvr.vrsettings while SteamVR runs is lost; the web API (127.0.0.1:27062 /app/setsettings) needs `x-steamvr-secret`. `native/vrsettings` = `fp_vrsettings.exe` (freestanding, OpenVR `FnTable:IVRSettings_003` as a Utility app, loads SteamVR's bin/win64/openvr_api.dll) sets them live and SteamVR persists them: section `steam.app.<shortcut appid>`, keys `preferredRefreshRate` (float) and `motionSmoothingOverride` (0 global, 1 on, 2 off, 3 always). Steam Link (vrlink) lists the Frame's rates 72/80/90/96/108/120/144 in vrserver.txt and follows the per-app preference ("host preferred N Hz"; whether the key is honoured is unverified in-headset yet). Judder metric: vrcompositor.txt session summary dropped + "Timed out. N total" (Stormland: 0 dropped but 313 timeouts in 2 min); fpsVR (`%LOCALAPPDATA%\fpsVR\*.json`, 0.1 ms histograms) gives p99 CPU/GPU ms. `pcvr.steamvr_tuning` (default on, PC only) applies on Play: highest rate whose budget ≥ p99×1.05, at least one step down, smoothing on.
 
 **Unresolved (as of 2026-09-28):** Arcsmith (right-eye distortion) and Time Stall (both eyes) — swap, tracking, Valve
@@ -358,6 +360,7 @@ layers, depth, pacing ruled out. Sniper Elite VR (DEVICE LOST), Espire 1 (Mesa G
 crash): use PC versions.
 
 ## Releases, CI, GitHub
+Maintainer-only notes (accounts, credentials, key locations) live in the git-ignored `CLAUDE.local.md`.
 Public repo `github.com/spoopyghosty0/frameport` (branch `main`). Push a `v*` tag → CI (`.github/workflows/build.yml`)
 tests, builds Windows x64 / macOS arm64 / Linux x64 bundles, signs, attests and publishes a GitHub Release
 (`FramePort-*.zip/.tar.gz`, the CLI wheel `frameport-<ver>-py3-none-any.whl`, `SHA256SUMS.txt`,
@@ -370,8 +373,8 @@ Installed apps find the release themselves (self-update), so the notes are what 
 - Signing is **free/self-signed by the owner's choice** (no paid certs, no SignPath): Windows binaries are signed with
   a self-signed "FramePort (self-signed)" code-signing cert (RSA 3072, valid to 2031, SHA-256
   `4E:12:98:91:62:C0:E4:50:FB:65:1D:34:BB:73:00:09:7B:78:BE:88:5C:A7:6C:42:23:46:9B:92:A1:59:A7:6E`); secrets
-  `WINDOWS_CODESIGN_PFX` (base64) + `WINDOWS_CODESIGN_PASSWORD`. Private key: `~/.config/frameport-signing/` (WSL) and
-  the backup `PATCHED/_signing-keys/frameport-app-codesign/` — never commit it. macOS is ad-hoc signed only (Gatekeeper
+  `WINDOWS_CODESIGN_PFX` (base64) + `WINDOWS_CODESIGN_PASSWORD`. The private key is never committed (its
+  location is in `CLAUDE.local.md`). macOS is ad-hoc signed only (Gatekeeper
   needs right-click → Open; notarization would need the paid Apple program). Users still see SmartScreen unless they
   import the .cer into Trusted Root.
 - CI gotchas: `flet build` needs `--yes --no-rich-output` (it prompts to install Flutter; rich output crashes the
@@ -391,14 +394,6 @@ Installed apps find the release themselves (self-update), so the notes are what 
   open). Windows installs of 0.3.1/0.3.2 can't update themselves: they need one manual download.
 - The Linux bundle is built on ubuntu-22.04: a 24.04-built Flutter bundle needs GLib 2.80 (`undefined symbol:
   g_once_init_enter_pointer` on 22.04).
-- **This project's GitHub identity is `spoopyghosty0`** (a dedicated account; the machine's default gh/git login is a
-  different, personal account that must never touch this repo). `gh` (`~/.local/bin/gh`) uses it through
-  `GH_CONFIG_DIR=~/.config/gh-spoopyghosty0` (set for Claude Code in the git-ignored `.claude/settings.local.json`);
-  git pushes from this folder authenticate as it through a repo-local credential helper, and commits use the repo-local
-  identity `spoopyghosty0 <336754034+spoopyghosty0@users.noreply.github.com>`. Check with `gh api user --jq .login`
-  before any GitHub action.
-- **No Claude trailers** (`Co-Authored-By: Claude …`, `Claude-Session: …`) in commits or PR descriptions — the owner's
-  rule; history was rewritten to remove them.
 - **The repo is public: never commit personal data** — the Frame's IP address, the Steam user id, the owner's email,
   local home paths (native builds use `-ffile-prefix-map`). History was rewritten once to remove them.
 
@@ -421,11 +416,14 @@ GLAD/GLES); Unreal → alternate no-ForceQuit build. Score changes with
 - Reinstalls keep one rollback copy (`<base>/previous-game.apk`, `settings.conf.previous`); `frameport frame cleanup`
   removes them (and `--path ~/X` extra folders under home).
 
-## Project status (2026-09-29)
+## Project status (2026-10-02)
+Self-update, the Files tab, OVRPort 1.2.5, non-Quest Android apps (vr_kind) and GUI localisation (tr(), 0.3.x) are
+in; see the sections above. Earlier state (2026-09-29):
 34 Quest games ported; the owner confirmed in the headset that all FramePort-rebuilt games work: 23 work, 5 work with
 issues (Arcsmith/Time Stall eye distortion, AC Nexus some flipped launch text, Phantom DLC button, Silhouette hands),
 6 can't run (Sniper Elite VR, Espire 1, HITMAN, and the 32-bit Journey of the Gods / Shadow Point / Sports Scramble).
-Parity: all 34 rebuilt from the dumps match the known-good builds (`docs/parity-report.md`) and were reinstalled +
+Parity: all 34 rebuilt from the dumps match the known-good builds (`docs/parity-report.md`, generated locally and
+git-ignored; 34/34 again with OVRPort 1.2.5 on 2026-10-02) and were reinstalled +
 launch-tested with 0 regressions (`docs/parity-device-report.md`). `PATCHED/` holds exactly the installed builds.
 Owner preferences: manual installs (no third-party installer apps), Python + Flet, dynamic data over hardcoding,
 free tooling only, public repo scrubbed of personal data, keep the known-good backups.

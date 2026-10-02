@@ -18,7 +18,8 @@ class ApkWorkspace:
         self.add: dict[str, bytes] = {}
         self.rename: dict[str, str] = {}  # old name -> new name (content unchanged unless replaced)
         self.remove: set[str] = set()
-        abi = next((a for a in ("arm64-v8a", "armeabi-v7a") if any(n.startswith(f"lib/{a}/") for n in self.infos)), None)
+        abi = next((a for a in ("arm64-v8a", "armeabi-v7a")
+                    if any(n.startswith(f"lib/{a}/") for n in self.infos)), None)
         self.abi = abi
         self.libdir = f"lib/{abi}/" if abi else ""
 
@@ -89,7 +90,8 @@ class ApkWorkspace:
                 if name in self.replace:
                     dst.writestr(zi, self.replace[name])
                 else:
-                    with self._zip.open(info) as fin, dst.open(zi, "w", force_zip64=info.file_size > 0x7FFFFFFF) as fout:
+                    with (self._zip.open(info) as fin,
+                          dst.open(zi, "w", force_zip64=info.file_size > 0x7FFFFFFF) as fout):
                         shutil.copyfileobj(fin, fout, 1 << 22)
             for name, data in self.add.items():
                 zi = zipfile.ZipInfo(name, date_time=(2020, 1, 1, 0, 0, 0))

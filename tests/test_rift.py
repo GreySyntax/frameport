@@ -99,8 +99,9 @@ def test_unreal_layout_picks_shipping_exe(tmp_path):
     assert a.engine == "Unreal" and a.xr == "LibOVR"
     assert a.extra["exe"] == "Climb/Binaries/Win64/Climb-Win64-Shipping.exe"
     r = engine.suggest(a)  # Oculus/LibOVR Unreal: Revive on (PC OpenVR backend), files unchanged, crash reporter off
-    assert r.as_is and set(r.patches) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.libovr_redirect", "pcvr.steamvr_tuning",
-                                          "pcvr.no_crash_reporter", "pcvr.oculus_unreal", "pcvr.xr_timefix"}
+    assert r.as_is and set(r.patches) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.libovr_redirect",
+                                          "pcvr.steamvr_tuning", "pcvr.no_crash_reporter", "pcvr.oculus_unreal",
+                                          "pcvr.xr_timefix"}
 
 
 def test_scan_finds_rift_games_not_parents_or_quest(tmp_path):
@@ -290,7 +291,8 @@ def test_system_revive_preferred(tmp_path, monkeypatch):
     # not in the default folder: found through the registry (HKLM\Software\Revive default value)
     other = fake_revive(tmp_path / "D" / "Tools" / "Revive")
     monkeypatch.setattr(winhost, "to_local", lambda p: other if p.startswith("D:") else tmp_path / "nope")
-    monkeypatch.setattr(winhost, "reg_query", lambda key, value: "D:\\Tools\\Revive" if key.startswith("HKLM") else None)
+    monkeypatch.setattr(winhost, "reg_query",
+                        lambda key, value: "D:\\Tools\\Revive" if key.startswith("HKLM") else None)
     monkeypatch.setattr(revive, "_system_cache", None)
     assert revive.revive_dir() == other
     # nothing installed on the system: FramePort's copy
@@ -516,7 +518,8 @@ def test_platform_sdk_delay_loaded(tmp_path):
 
 def test_openvr_native_routing(tmp_path):
     """A game that links OpenVR (openvr_api) and has no Oculus/LibOVR code is Frame-native (no Revive). A game that
-    also has LibOVR is treated as Oculus (needs Revive) — static analysis can't tell which runtime a dual build picks."""
+    also has LibOVR is treated as Oculus (needs Revive) — static analysis can't tell which runtime a dual build
+    picks."""
     g = tmp_path / "SteamVR Game"
     (g / f"{g.name}_Data").mkdir(parents=True)
     (g / "SteamVR Game.exe").write_bytes(make_pe(imports=("openvr_api64.dll", "kernel32.dll")))

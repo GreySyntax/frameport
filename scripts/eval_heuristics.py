@@ -23,7 +23,8 @@ def signature(recipe) -> dict:
     pats = recipe.patches
     return {
         "overport": sorted(p for p in pats if base.get(p).category == "overport" and not base.get(p).default_on),
-        "overport_removed": sorted(p for p in (x.id for x in base.all_patches() if x.category == "overport" and x.default_on)
+        "overport_removed": sorted(p for p in (x.id for x in base.all_patches()
+                                               if x.category == "overport" and x.default_on)
                                    if p not in pats),
         "frame": sorted(p for p in pats if base.get(p).category == "frame" and not base.get(p).default_on),
         "adapter": {p.split(".", 1)[1]: v.get("value") for p, v in sorted(pats.items()) if p.startswith("adapter.")},
@@ -47,7 +48,8 @@ def main() -> int:
         if not catalog.lookup(a.package):
             continue
         want = signature(engine.suggest(a, use_catalog=True))
-        want["status_unsupported"] = catalog.lookup(a.package).status == "unsupported" and "32-bit" in catalog.lookup(a.package).notes
+        want["status_unsupported"] = (catalog.lookup(a.package).status == "unsupported"
+                                      and "32-bit" in catalog.lookup(a.package).notes)
         got = signature(engine.suggest(a, use_catalog=False))
         diffs = {k: (want[k], got[k]) for k in want if want[k] != got[k]}
         total += len(want)

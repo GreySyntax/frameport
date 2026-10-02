@@ -90,12 +90,12 @@ class OculusOsStubs(Patch):
             return Suggestion(True, "The Unreal build of Meta XR Audio looks up com.oculus.os.AnalyticsEvent and "
                                     "aborts without it (e.g. NOPE Challenge).")
         if len(refs) >= 2:
-            return Suggestion(True, f"Several Meta SDK libraries look up com.oculus.os.AnalyticsEvent ({', '.join(refs)}); "
-                                    "games like this abort without the stub (e.g. Nano).")
+            return Suggestion(True, "Several Meta SDK libraries look up com.oculus.os.AnalyticsEvent "
+                                    f"({', '.join(refs)}); games like this abort without the stub (e.g. Nano).")
         if a.oculus_os_classes:
-            return Suggestion(False, f"{', '.join(refs) or 'Native code'} references com.oculus.os.AnalyticsEvent; usually "
-                                     "harmless (e.g. Batman: Arkham Shadow and LEGO Bricktales run without it). Enable "
-                                     "if the game aborts with ClassNotFoundException.")
+            return Suggestion(False, f"{', '.join(refs) or 'Native code'} references com.oculus.os.AnalyticsEvent; "
+                                     "usually harmless (e.g. Batman: Arkham Shadow and LEGO Bricktales run without "
+                                     "it). Enable if the game aborts with ClassNotFoundException.")
         return None
 
     def applies(self, a):

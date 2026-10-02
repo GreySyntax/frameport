@@ -49,7 +49,8 @@ def test_adapter_and_launcher(tmp_path, quest_manifest):
         names = z.namelist()
         assert z.read("lib/arm64-v8a/libopenxr_loader_original.so") == b"\x7fELF-original-loader"
         assert z.read("lib/arm64-v8a/libopenxr_loader_generic.so").startswith(b"\x7fELF")
-        assert z.read("lib/arm64-v8a/libframe_settings.so") == b"scale=1.0\nfoveation_fix=1\ncontroller_fix=1\nscene_emul=1\n"
+        assert (z.read("lib/arm64-v8a/libframe_settings.so")
+                == b"scale=1.0\nfoveation_fix=1\ncontroller_fix=1\nscene_emul=1\n")
         assert names.count("lib/arm64-v8a/libopenxr_loader_generic.so") == 1
 
 
@@ -58,7 +59,8 @@ def test_controller_models_adds_xrshim(tmp_path, quest_manifest):
 
     from frameport.analysis import elf
 
-    # like Meta's OVRPlugin: DT_NEEDED libopenxr_loader.so + dlopen("libopenxr_loader.so") / dlsym(xrGetInstanceProcAddr)
+    # like Meta's OVRPlugin: DT_NEEDED libopenxr_loader.so + dlopen("libopenxr_loader.so") /
+    # dlsym(xrGetInstanceProcAddr)
     plugin = (Path(__file__).with_name("fixtures") / "libfakeovrplugin_arm64.so").read_bytes()
     for enabled in (True, False):
         apk = _apk(tmp_path, quest_manifest)
@@ -118,7 +120,8 @@ def test_equirect_emul_setting():
     assert not patch.applies(vulkan_360) and patch.detect(vulkan_360) is None  # never offered for Vulkan games
     plain = _analysis(**gles, extra={"xr_layer_exts": ["XR_KHR_composition_layer_cylinder"]})
     assert patch.applies(plain) and patch.detect(plain) is None  # GLES but no 360 layers requested
-    player = _analysis(**gles, extra={"xr_layer_exts": ["XR_KHR_composition_layer_cylinder", "XR_KHR_composition_layer_equirect2"]})
+    player = _analysis(**gles, extra={"xr_layer_exts": ["XR_KHR_composition_layer_cylinder",
+                                                        "XR_KHR_composition_layer_equirect2"]})
     s = patch.detect(player)
     assert s.recommended and s.params == {"value": 1}
     for key in ("equirect_face", "equirect_res", "equirect_flip", "equirect_fps", "equirect_stereo"):
@@ -222,7 +225,8 @@ def test_vk_sanitize_routes_engine_vulkan_through_shim(tmp_path, quest_manifest)
     # a game without the dlopen string is left alone
     apk2 = _apk(tmp_path, quest_manifest)
     with ApkWorkspace(apk2) as ws:
-        assert not base.get("frame.vk_sanitize").apply(base.ApkContext(ws, _analysis(engine="Unreal"), {}, Reporter(), {}))
+        ctx = base.ApkContext(ws, _analysis(engine="Unreal"), {}, Reporter(), {})
+        assert not base.get("frame.vk_sanitize").apply(ctx)
 
 
 def test_source_hints_are_generic_and_match_loosely():
@@ -231,7 +235,8 @@ def test_source_hints_are_generic_and_match_loosely():
     assert generic_source_hint("4XVR Video Player (Pro + Trial Bypass) v20022+2.0.22 -JF") == "4XVR Video Player"
     assert generic_source_hint("Marvels Deadpool VR (English Only) v8742+1.0.40.356975.Quest") == "Marvels Deadpool VR"
     assert generic_source_hint("Batman- Arkham Shadow (Inc Lang Packs) v350961+1.4.1-350961") == "Batman- Arkham Shadow"
-    assert source_hint_matches("Marvels Deadpool VR", "Marvel's Deadpool VR v9000+1.1 -XYZ")  # other release, other name
+    # other release, other name
+    assert source_hint_matches("Marvels Deadpool VR", "Marvel's Deadpool VR v9000+1.1 -XYZ")
     assert source_hint_matches("The Climb 2 v974+2.2", "the climb 2 (quest) v1000")
     assert not source_hint_matches("The Climb 2", "The Climb v100")
 
@@ -254,8 +259,9 @@ def test_ovrport_125_patches():
     from frameport.recommend import engine as eng
     assert "patch_ac_nexus_no_appsw_90" in eng.suggest(nexus).patches  # catalog default (owner, 2026-10-02)
     assert "patch_ac_nexus_no_appsw_90" not in eng.suggest(other_nexus).patches  # other builds would fail to patch
-    recipe = Recipe(package="com.Ubisoft.ACNexusVR", patches=["patch_copy_libraries", "frame.adapter",
-                                                              "patch_ac_nexus_no_appsw_72", "patch_ac_nexus_no_appsw_90"])
+    recipe = Recipe(package="com.Ubisoft.ACNexusVR",
+                    patches=["patch_copy_libraries", "frame.adapter",
+                             "patch_ac_nexus_no_appsw_72", "patch_ac_nexus_no_appsw_90"])
     assert any("conflicts" in w for w in engine.warnings(recipe))
 
 

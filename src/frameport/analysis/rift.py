@@ -40,7 +40,8 @@ PLATFORM_DLLS = ("libovrplatform64_1.dll", "libovrplatform32_1.dll")
 PLATFORM_WRAPPERS = ("pnsovr.dll",)
 GRAPHICS = (("d3d12.dll", "D3D12"), ("d3d11.dll", "D3D11"), ("vulkan-1.dll", "Vulkan"), ("opengl32.dll", "OpenGL"))
 AMBIGUITY = 15  # a runner-up within this many points means "ask the user"
-# repacks start their bundled Revive through a proxy DLL next to the exe (Windows loads DLLs from the exe's folder first)
+# repacks start their bundled Revive through a proxy DLL next to the exe (Windows loads DLLs from the exe's folder
+# first)
 LOADER_DLLS = ("xinput1_3.dll", "xinput1_4.dll", "xinput9_1_0.dll", "dinput8.dll", "version.dll", "winmm.dll")
 REVIVE_DLLS = ("librevive64.dll", "librevive32.dll", "librevivexr64.dll", "librevivexr32.dll")
 
@@ -425,8 +426,9 @@ def analyze(folder: Path, exe: str | None = None, tree: Tree | None = None) -> A
                 platform_imports |= set(sub.imports + sub.delay_imports)
             except (PEError, OSError, struct.error):
                 pass
-    platform_sdk = any(n in names for n in PLATFORM_DLLS + PLATFORM_WRAPPERS) or bool(platform_imports & set(PLATFORM_DLLS)) or \
-        b"ovr_PlatformInitializeWindows" in blob or b"ovr_Entitlement_GetIsViewerEntitled" in blob
+    platform_sdk = (any(n in names for n in PLATFORM_DLLS + PLATFORM_WRAPPERS)
+                    or bool(platform_imports & set(PLATFORM_DLLS))
+                    or b"ovr_PlatformInitializeWindows" in blob or b"ovr_Entitlement_GetIsViewerEntitled" in blob)
     # how to start it with VR on SteamVR / the Frame (see launch_mode())
     try:
         exe_dir = {p.name.lower() for p in exe_path.parent.iterdir()}

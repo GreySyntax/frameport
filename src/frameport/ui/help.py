@@ -87,8 +87,9 @@ HELP: dict[str, str] = _Translated({
     "kernel_keys": "Every game start on the Frame used to leak one kernel key, and after about 200 launches every game "
                    "fails to start. FramePort switches that leak off, but keys already used only come back after a "
                    "restart of the Frame.",
-    "ui_scale": "Size of text and layout. Automatic follows Windows' display scaling halfway (150 % in Windows → 125 %) "
-                "when FramePort runs under WSL, where the window doesn't get it from Windows itself.",
+    "ui_scale": "Size of text and layout. Automatic follows Windows' display scaling halfway "
+                "(150 % in Windows → 125 %) when FramePort runs under WSL, where the window doesn't get it from "
+                "Windows itself.",
     "app_updates": "FramePort checks GitHub for a new release every few hours and shows it in the sidebar and the "
                    "Library. \"Update now\" downloads it, checks its checksum (and on Windows its signature), closes "
                    "FramePort and opens the new version; your games, settings and Frame connection are kept. With "

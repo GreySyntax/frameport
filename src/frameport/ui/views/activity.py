@@ -53,7 +53,8 @@ class ActivityPanel:
                 self.list,
             ], spacing=T.S3, expand=True),
             width=0, bgcolor=T.SIDEBAR, padding=ft.Padding(T.S4, T.S4, T.S4, T.S4),
-            border=ft.Border(left=ft.BorderSide(1, T.BORDER)), animate_size=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
+            border=ft.Border(left=ft.BorderSide(1, T.BORDER)),
+            animate_size=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
             clip_behavior=ft.ClipBehavior.HARD_EDGE)
 
     @property
@@ -114,7 +115,8 @@ class ActivityPanel:
             ft.Column([C.body(job.title, T.TEXT, weight=ft.FontWeight.W_600, max_lines=2,
                               overflow=ft.TextOverflow.ELLIPSIS), meta],
                       spacing=T.px(2), expand=True),
-            *([C.icon_btn(ft.Icons.CLOSE_ROUNDED, tr("Cancel"), lambda e: self.app.jobs.cancel(job))] if job.active else []),
+            *([C.icon_btn(ft.Icons.CLOSE_ROUNDED, tr("Cancel"), lambda e: self.app.jobs.cancel(job))]
+              if job.active else []),
         ], vertical_alignment=ft.CrossAxisAlignment.START, spacing=T.S3)
         parts: list[ft.Control] = [head]
         if running:

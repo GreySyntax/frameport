@@ -19,9 +19,12 @@ SETTINGS = [
     ("controller_fix", "int", 1, "Report Touch controllers",
      "Reports Frame controllers as Oculus Touch and hides synthetic hand tracking. Set 0 for games that require hand "
      "tracking (e.g. Silhouette)."),
-    ("swapchain_fix", "int", 1, "Swapchain format fallback", "Retry rejected GLES formats/MSAA with sRGB, samples=1."),
-    ("layer_fix", "int", 1, "Drop invalid layers", "Drop layers whose swapchain failed or whose extension isn't enabled."),
-    ("passthrough_emul", "int", 1, "Emulate passthrough", "XR_FB_passthrough via ALPHA_BLEND (Frame greyscale cameras)."),
+    ("swapchain_fix", "int", 1, "Swapchain format fallback",
+     "Retry rejected GLES formats/MSAA with sRGB, samples=1."),
+    ("layer_fix", "int", 1, "Drop invalid layers",
+     "Drop layers whose swapchain failed or whose extension isn't enabled."),
+    ("passthrough_emul", "int", 1, "Emulate passthrough",
+     "XR_FB_passthrough via ALPHA_BLEND (Frame greyscale cameras)."),
     ("flip_emul", "int", 1, "Emulate flipped quads",
      "Blit quads flagged XrCompositionLayerImageLayoutFB VERTICAL_FLIP upside down (Vulkan). Fixes UI panels and "
      "text that show upside down (e.g. Assassin's Creed Nexus)."),
@@ -31,8 +34,8 @@ SETTINGS = [
     ("equirect_emul", "int", 0, "Show 360° layers",
      "360° (equirect) layers, e.g. a video player's virtual theatre or 360° videos (e.g. 4XVR), which the Frame's "
      "runtime lacks, are drawn by a background thread into a layer behind the game's own picture: the 360° image is "
-     "converted only when it changes (a theatre once, a 360° video once per video frame) and the view is drawn for each "
-     "frame's head pose. GLES games only; without it these layers are missing (black)."),
+     "converted only when it changes (a theatre once, a 360° video once per video frame) and the view is drawn for "
+     "each frame's head pose. GLES games only; without it these layers are missing (black)."),
     ("equirect_face", "int", 1536, "360° detail",
      "Maximum size in pixels of each face of the cube the 360° image is converted to (256–2730). Higher is sharper "
      "but uses more GPU memory."),
@@ -55,7 +58,8 @@ SETTINGS = [
     ("aim_pitch", "float", 0.0, "Pointer tilt (degrees)",
      "Tilts the controllers' pointing ray up (+) or down (−), for games whose pointer doesn't hit what you aim at."),
     ("aim_yaw", "float", 0.0, "Pointer turn (degrees)", "Turns the controllers' pointing ray left (+) or right (−)."),
-    ("aim_forward", "float", 0.0, "Pointer origin forward (m)", "Moves where the pointing ray starts forward (+) or back (−)."),
+    ("aim_forward", "float", 0.0, "Pointer origin forward (m)",
+     "Moves where the pointing ray starts forward (+) or back (−)."),
     ("refresh_rate", "float", 0.0, "Refresh rate (Hz)",
      "Display refresh rate for this game (72, 80, 90, 96, 108, 120 or 144; 0 = the game's choice). A video's frame "
      "rate that divides the refresh rate plays smoothest (e.g. 30 fps at 90 Hz, 24 fps at 72 Hz)."),
@@ -71,14 +75,16 @@ SETTINGS = [
      "are converted on the Frame at install time. Games that ship their own controller meshes aren't affected. Turning "
      "it on needs a rebuild (it adds a small library in front of overport's loader)."),
     ("scene_height", "float", 2.5, "Emulated room height (m)", "Ceiling height for scene_emul."),
-    ("scene_width", "float", 0.0, "Emulated room width (m)", "Override the guardian width (0 = use guardian, min 1.5 m)."),
-    ("scene_depth", "float", 0.0, "Emulated room depth (m)", "Override the guardian depth (0 = use guardian, min 1.5 m)."),
+    ("scene_width", "float", 0.0, "Emulated room width (m)",
+     "Override the guardian width (0 = use guardian, min 1.5 m)."),
+    ("scene_depth", "float", 0.0, "Emulated room depth (m)",
+     "Override the guardian depth (0 = use guardian, min 1.5 m)."),
     ("swap_eyes", "int", 0, "Swap eyes", "Swap left/right views (diagnostic)."),
     ("strip_depth", "int", 0, "Strip depth layers", "Remove XR_KHR_composition_layer_depth chains (diagnostic)."),
     ("mutable_fix", "int", 0, "Mutable swapchain fix", "Experimental Vulkan mutable-format workaround."),
     ("respace_kick", "int", 0, "Re-create reference space", "Recreate spaces after the first frames (diagnostic)."),
-    ("flip_quads", "int", 0, "Rotate quads 180°", "Older workaround for upside-down quads: rotates them 180° (quads are single-sided; prefer "
-     "flip_emul)."),
+    ("flip_quads", "int", 0, "Rotate quads 180°",
+     "Older workaround for upside-down quads: rotates them 180° (quads are single-sided; prefer flip_emul)."),
     ("gl_hide_multiview", "int", 1, "GL shim: hide multiview",
      "GL shim only: hide GL_OVR_multiview so all passes use single-view shaders. For GLES games whose multiview "
      "shaders fail on single-view render targets (e.g. Path of the Warrior)."),
@@ -122,15 +128,16 @@ class AdapterSetting(Patch):
             "scene_height": lambda a: ap.uses_scene(a) or a.extra.get("mr_only"),
             "scene_width": lambda a: ap.uses_scene(a) or a.extra.get("mr_only"),
             "scene_depth": lambda a: ap.uses_scene(a) or a.extra.get("mr_only"),
-            "passthrough_emul": lambda a: a.extra.get("mr_only") or "com.oculus.feature.PASSTHROUGH" in (a.extra.get("features") or {}),
+            "passthrough_emul": lambda a: (a.extra.get("mr_only")
+                                           or "com.oculus.feature.PASSTHROUGH" in (a.extra.get("features") or {})),
             "flip_emul": ap.is_vulkan,
             "flip_quads": ap.is_vulkan,
             "mutable_fix": ap.is_vulkan,
             "swapchain_fix": ap.is_gles,
             "gl_hide_multiview": lambda a: a.direct_vrapi and ap.is_gles(a),
             "controller_models": ap.may_use_render_models,
-            **{k: ap.is_gles for k in ("equirect_emul", "equirect_face", "equirect_res", "equirect_flip", "equirect_fps",
-                                       "equirect_stereo")},
+            **{k: ap.is_gles for k in ("equirect_emul", "equirect_face", "equirect_res", "equirect_flip",
+                                       "equirect_fps", "equirect_stereo")},
         }
         rule = rules.get(self.key)
         return bool(rule(a)) if rule else True
@@ -167,7 +174,8 @@ class DeviceFiles(Patch):
     params = [Param("files", "text", {}, "path relative to files/ -> content")]
 
     def detect(self, a):
-        if a.engine == "CryEngine" and a.graphics.startswith("Vulkan") or (a.engine == "CryEngine" and "libCryRenderVulkan.so" in a.libs):
+        if (a.engine == "CryEngine" and a.graphics.startswith("Vulkan")
+                or (a.engine == "CryEngine" and "libCryRenderVulkan.so" in a.libs)):
             return Suggestion(True, "CryEngine: variable-rate shading isn't supported on the Frame, so user.cfg turns "
                                     "it off (r_variable_rate_shading = 0; e.g. The Climb 2).",
                               {"files": {"user.cfg": "r_variable_rate_shading = 0\n"}})
@@ -181,7 +189,8 @@ class DeviceFiles(Patch):
 class LeptonEnv(Patch):
     id = "device.lepton_env"
     title = "Extra Lepton environment"
-    description = "Environment variables exported by the launcher (e.g. VK_INSTANCE_LAYERS=\"\" to test without Valve's layers)."
+    description = ("Environment variables exported by the launcher (e.g. VK_INSTANCE_LAYERS=\"\" to test without "
+                   "Valve's layers).")
     category = "device"
     stage = "install"
     params = [Param("env", "text", {}, "NAME -> value")]

@@ -22,7 +22,7 @@ MAX_TOTAL = 24 << 20  # GitHub's attachment limit is 25 MB
 ENTRY_DROP = ("details", "art_source", "artwork", "art")  # store metadata: public, big, no debug value
 ELF_SYMBOL_PREFIXES = ("ovr", "xr", "vrapi_", "OVR", "Java_", "JNI_", "eglGetProcAddress", "gl")
 
-README = """# FramePort diagnostics bundle
+README = ("""# FramePort diagnostics bundle
 
 Created by FramePort {version} on {created}. Personal data was replaced by placeholders such as `<ip>`, `<home>`,
 `<user>`, `<data>` (FramePort's data folder), `<frame>` and `<steam-id>` (counts in manifest.json → redactions).
@@ -32,20 +32,22 @@ Created by FramePort {version} on {created}. Personal data was replaced by place
 | manifest.json | app / agent / tool versions, OS, which games are included, warnings |
 | app/app.log, app/jobs/*.log | the app's log and recent GUI job logs (build, install, launch test, ...) |
 | app/settings.json | library settings and catalog sources |
-| frame/info.json, frame/host.json | the Frame: SteamOS build, Lepton/Proton, OpenXR runtime + layers, podman, kernel keys |
+| frame/info.json, frame/host.json | the Frame: SteamOS build, Lepton/Proton, OpenXR runtime + layers, podman, kernel"""
+""" keys |
 | games/<pkg>/entry.json | the library entry: analysis, recipe, build checks, installs, last launch test |
 | games/<pkg>/recipe.yaml | the recipe in catalog form (catalog/games/<pkg>.yaml) |
 | games/<pkg>/triage.json | the newest launch log re-triaged with the triage signatures of this app version |
 | games/<pkg>/package/ | stand-in for the game files: file list, AndroidManifest.xml, ELF imports/exports / PE imports |
 | games/<pkg>/logs/ | launch-test logs saved on the PC |
-| games/<pkg>/target/ | from the Frame (or PC): launch.sh, settings.conf, deployment.json, launch/logcat/Proton/game logs, file list |
+| games/<pkg>/target/ | from the Frame (or PC): launch.sh, settings.conf, deployment.json, launch/logcat/Proton/game"""
+""" logs, file list |
 
 ## Debugging from this bundle
 1. `frameport diag inspect <this zip>` re-runs triage with the current signatures (catalog/triage.yaml).
 2. Look up symptoms in docs/PLAYBOOK.md; runtime facts are in docs/FRAME_RUNTIME.md.
 3. Compare `recipe.yaml` with `catalog/games/` recipes of games using the same engine / XR API (entry.json → analysis).
 4. Headless launch tests can't show the picture: "RUNNING" only proves startup (see FRAME_RUNTIME.md).
-"""
+""")
 
 
 def _tail(text: str, limit: int = MAX_LOG) -> str:
@@ -100,7 +102,8 @@ class _Writer:
             if not logs:
                 break
             n = logs[0]
-            self.files[n] = b"[... cut to fit the 25 MB attachment limit ...]\n" + self.files[n][-(len(self.files[n]) // 4):]
+            tail = self.files[n][-(len(self.files[n]) // 4):]
+            self.files[n] = b"[... cut to fit the 25 MB attachment limit ...]\n" + tail
             self.warnings.append(f"{n} was cut to fit the size limit")
             size = zipped()
 
@@ -135,7 +138,8 @@ def env_info(target_info: dict | None = None) -> dict:
         proton = target_info.get("proton") or {}
         if isinstance(proton, dict):
             ready = proton.get("ready")
-            out["frame"]["proton"] = ready.get("display_name") or ready.get("name") if isinstance(ready, dict) else ready
+            out["frame"]["proton"] = (ready.get("display_name") or ready.get("name")
+                                      if isinstance(ready, dict) else ready)
     return out
 
 
@@ -370,7 +374,8 @@ def collect(packages: list[str] | None, target=None, reporter: Reporter | None =
         tag = packages[0] if packages and len(packages) == 1 else ("games" if packages else "app")
         dest = dest / f"FramePort-diag-{tag}-{time.strftime('%Y%m%d-%H%M%S')}.zip"
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
-        for name in ["README.md", "manifest.json"] + sorted(n for n in w.files if n not in ("README.md", "manifest.json")):
+        rest = sorted(n for n in w.files if n not in ("README.md", "manifest.json"))
+        for name in ["README.md", "manifest.json"] + rest:
             z.writestr(name, w.files[name])
     reporter.check("Diagnostics bundle", True, f"{dest.name} ({dest.stat().st_size / 2**20:.1f} MB)")
     applog.log.info("diagnostics bundle %s", dest)

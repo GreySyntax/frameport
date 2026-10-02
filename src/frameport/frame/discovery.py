@@ -65,7 +65,8 @@ def _mdns(seconds: float) -> dict[str, Found]:
             info = zc.get_service_info(type_, name, timeout=2000)
             if not info:
                 return
-            props = {k.decode(): (v.decode() if isinstance(v, bytes) else v) for k, v in (info.properties or {}).items()}
+            props = {k.decode(): (v.decode() if isinstance(v, bytes) else v)
+                     for k, v in (info.properties or {}).items()}
             dev = (info.server or name).split(".")[0]
             f = found.setdefault(dev, Found(dev, "", source="devkit" if "devkit" in type_ else "frameport"))
             if "frameport" in type_:
@@ -107,7 +108,8 @@ def local_subnets() -> list[ipaddress.IPv4Network]:
     nets = set()
     stats = psutil.net_if_stats()
     for nic, addrs in psutil.net_if_addrs().items():
-        if not stats.get(nic) or not stats[nic].isup or any(v in nic.lower() for v in ("vethernet", "docker", "virbr", "vmnet", "wsl")):
+        virtual = any(v in nic.lower() for v in ("vethernet", "docker", "virbr", "vmnet", "wsl"))
+        if not stats.get(nic) or not stats[nic].isup or virtual:
             continue
         for a in addrs:
             if a.family == socket.AF_INET and not a.address.startswith(("127.", "169.254.", "172.")):
@@ -119,7 +121,8 @@ def _scan(nets: list[ipaddress.IPv4Network], skip: set[str]) -> list[str]:
     own = local_addresses()
     hosts = [str(h) for n in nets for h in n.hosts() if str(h) not in skip and str(h) not in own]
     with ThreadPoolExecutor(128) as pool:
-        return [h for h, ok in zip(hosts, pool.map(lambda h: ssh_open(h, timeout=0.4), hosts), strict=True) if ok and h not in own]
+        results = pool.map(lambda h: ssh_open(h, timeout=0.4), hosts)
+        return [h for h, ok in zip(hosts, results, strict=True) if ok and h not in own]
 
 
 def browse(seconds: float = 4.0, scan: bool = True) -> list[Found]:

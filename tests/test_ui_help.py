@@ -57,9 +57,11 @@ def _labels(actions):
 
 def test_right_click_menu_follows_install_state(monkeypatch):
     g = {"package": "com.q", "title": "Q", "recipe": {"status": "works"}, "build": {"sha256": "new"}}
-    installed = _labels(_app(monkeypatch, g, {"installed": [{"package": "com.q", "sha256": "old"}]}).game_actions("com.q"))
+    app = _app(monkeypatch, g, {"installed": [{"package": "com.q", "sha256": "old"}]})
+    installed = _labels(app.game_actions("com.q"))
     assert installed[:3] == ["Open", "Play on Frame", "Update on Frame"]
-    assert {"Launch test on Frame", "Adapter settings…", "Uninstall from Frame", "Remove from library"} <= set(installed)
+    expected = {"Launch test on Frame", "Adapter settings…", "Uninstall from Frame", "Remove from library"}
+    assert expected <= set(installed)
 
     missing = _labels(_app(monkeypatch, g, {"installed": []}).game_actions("com.q"))
     assert "Install on Frame" in missing and "Uninstall from Frame" not in missing and "Play on Frame" not in missing
@@ -86,7 +88,8 @@ def test_play_is_the_quick_action_when_installed(monkeypatch):
     assert old.quick_action(g) == ("Play on Frame", "play")  # installed (even outdated): playing comes first
     assert _app(monkeypatch, g).quick_action(g) == (None, None)  # no Frame: "Connect" isn't a quick action
     r = {"package": "rift.r", "kind": "rift", "title": "R", "recipe": {}}
-    assert [o[0] for o in _app(monkeypatch, r, {"installed": []}, pc=("rift.r",)).play_options(r)] == ["Play on this PC"]
+    app = _app(monkeypatch, r, {"installed": []}, pc=("rift.r",))
+    assert [o[0] for o in app.play_options(r)] == ["Play on this PC"]
 
 
 def test_menus_offer_sharing_and_diagnostics(monkeypatch):

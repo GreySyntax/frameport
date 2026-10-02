@@ -2,8 +2,9 @@
 github.com/Android-XR-Bridge/OVRPort (1.2.5+), originally github.com/ovrport/app.
 
 The patch list is discovered dynamically (`overport patches`), and titles are fetched from ovrport/app's
-strings.xml on GitHub (both cached; the fork dropped that file, so its new patches are described here). The table below is the offline fallback and adds what we learned on the
-Steam Frame; `default` mirrors overport's recommended set (Patch(..., true) in its sources).
+strings.xml on GitHub (both cached; the fork dropped that file, so its new patches are described here). The table
+below is the offline fallback and adds what we learned on the Steam Frame; `default` mirrors overport's recommended
+set (Patch(..., true) in its sources).
 """
 from __future__ import annotations
 
@@ -22,8 +23,10 @@ OVERPORT_PATCHES = [
     ("patch_generate_config", "Generate overport config", True, "Writes liboverport.config.so with runtime options."),
     ("patch_remove_localized_names", "Remove localized app names", True, "Keeps one label so the title is stable."),
     ("patch_clean_up_frida", "Clean up Frida leftovers in smali", True, "Removes leftovers from dumped/modded APKs."),
-    ("patch_oculus_unity", "Patch Oculus detection for Unity", True, "Makes Unity's Oculus checks pass on other runtimes."),
-    ("patch_oculus_unreal", "Patch Oculus detection for Unreal", True, "Makes Unreal's Oculus checks pass on other runtimes."),
+    ("patch_oculus_unity", "Patch Oculus detection for Unity", True,
+     "Makes Unity's Oculus checks pass on other runtimes."),
+    ("patch_oculus_unreal", "Patch Oculus detection for Unreal", True,
+     "Makes Unreal's Oculus checks pass on other runtimes."),
     ("patch_vr_metadata", "Pico/YVR/Quest metadata", True, "Adds the VR app metadata other launchers expect."),
     ("patch_launcher_entry", "Fix launcher icon entry", True, "Adds a launcher entry point (Lepton additionally needs "
      "category LAUNCHER, see the Frame 'launcher' fix)."),
@@ -31,12 +34,15 @@ OVERPORT_PATCHES = [
     ("patch_fix_unreal_crash", "Fix UE4 crash with Unity stub", True, "Works around a UE4 startup crash."),
     ("patch_meta_xr_audio", "Patch Meta XR Audio", True, "Neutralises Meta XR Audio's Quest-only calls (Unity/Wwise)."),
     ("patch_mark_as_debuggable", "Mark application as debuggable", True,
-     "Lets you read logs/attach. Some Unreal games abort under CheckJNI when debuggable; the Frame 'nodebug' fix undoes it."),
+     "Lets you read logs/attach. Some Unreal games abort under CheckJNI when debuggable; the Frame 'nodebug' fix "
+     "undoes it."),
     ("patch_mark_allow_backup", "Mark application to allow backup", True, "Allows data backup."),
     ("patch_remove_unreal_force_quit", "Remove Unreal's ForceQuit", False,
-     "For Unreal games that close themselves right after starting (e.g. Phantom: Covert Ops). Also disables the in-game Quit."),
+     "For Unreal games that close themselves right after starting (e.g. Phantom: Covert Ops). Also disables the "
+     "in-game Quit."),
     ("patch_force_passthrough", "Force enable passthrough", False,
-     "For mixed-reality-only games. On the Frame, passthrough is emulated by the FrameBridge adapter (greyscale cameras)."),
+     "For mixed-reality-only games. On the Frame, passthrough is emulated by the FrameBridge adapter "
+     "(greyscale cameras)."),
     ("patch_disable_space_warp", "Disable application space warp if used", False,
      "For heavy games that use application space warp: it causes artifacts or hangs on non-Quest runtimes "
      "(e.g. Asgard's Wrath 2, Batman: Arkham Shadow)."),
@@ -46,8 +52,8 @@ OVERPORT_PATCHES = [
      "Not recommended: breaks games that load VrApi through OVRPlugin."),
     ("patch_vrapi_openxr", "VrApi → OpenXR adapter (OVRPort)", False,
      "OVRPort's own VrApi→OpenXR adapter for engines that call libvrapi.so directly: the same upstream code as "
-     "FramePort's 'VrApi → OpenXR bridge' without its Frame-specific changes. Only in OVRPort's experimental CLI builds "
-     "(the stable CLI lists it but can't apply it)."),
+     "FramePort's 'VrApi → OpenXR bridge' without its Frame-specific changes. Only in OVRPort's experimental CLI "
+     "builds (the stable CLI lists it but can't apply it)."),
     ("patch_disable_meta_xr_audio_telemetry", "Disable Meta XR Audio telemetry", False,
      "Skips Meta XR Audio's telemetry under x86_64 ARM translation (emulators). Not needed on the Frame, which runs "
      "games natively."),
@@ -83,7 +89,8 @@ class OverportPatch(Patch):
         if self.default_on:
             return Suggestion(True, "overport default.")
         if self.id == "patch_force_passthrough" and a.extra.get("mr_only"):
-            return Suggestion(True, "Mixed-reality-only game (passthrough required, no guardian): force passthrough on.")
+            return Suggestion(True, "Mixed-reality-only game (passthrough required, no guardian): force "
+                                    "passthrough on.")
         if self.id == "patch_disable_space_warp" and "libOVRPlugin.so" in a.libs:
             total = a.extra.get("data_bytes", 0) + a.extra.get("size", 0)
             if total >= 20 * 2**30:

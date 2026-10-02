@@ -14,8 +14,9 @@ from frameport import __version__, updates
 from frameport.core import cache, library
 
 
-def release(tag="v9.9.9", assets=("FramePort-windows-x64.zip", "FramePort-macos-arm64.zip", "FramePort-linux-x64.tar.gz",
-                                    "SHA256SUMS.txt", "frameport-9.9.9-py3-none-any.whl"), **kw):
+def release(tag="v9.9.9", assets=("FramePort-windows-x64.zip", "FramePort-macos-arm64.zip",
+                                  "FramePort-linux-x64.tar.gz", "SHA256SUMS.txt", "frameport-9.9.9-py3-none-any.whl"),
+            **kw):
     return {"tag_name": tag, "body": "What's new: things", "html_url": f"https://example.invalid/releases/{tag}",
             "draft": False, "prerelease": False, "published_at": "2026-10-02T00:00:00Z",
             "assets": [{"name": n, "browser_download_url": f"https://example.invalid/dl/{n}"} for n in assets], **kw}
@@ -30,7 +31,8 @@ def test_versions():
 
 def test_release_parsing_picks_this_platform_and_skips_drafts():
     up = updates.update_from_release(release(), "FramePort-linux-x64.tar.gz")
-    assert up.version == "9.9.9" and up.asset_url.endswith("linux-x64.tar.gz") and up.sums_url.endswith("SHA256SUMS.txt")
+    assert (up.version == "9.9.9" and up.asset_url.endswith("linux-x64.tar.gz")
+            and up.sums_url.endswith("SHA256SUMS.txt"))
     assert up.wheel_url.endswith(".whl") and "What's new" in up.notes
     assert updates.update_from_release(release(draft=True)) is None
     assert updates.update_from_release(release(prerelease=True)) is None
@@ -83,7 +85,8 @@ def test_wheel_commands(monkeypatch):
 
 
 def test_sums_parsing():
-    sums = updates.parse_sums("a" * 64 + "  FramePort-linux-x64.tar.gz\n" + "B" * 64 + " *FramePort-windows-x64.zip\njunk\n")
+    sums = updates.parse_sums("a" * 64 + "  FramePort-linux-x64.tar.gz\n"
+                              + "B" * 64 + " *FramePort-windows-x64.zip\njunk\n")
     assert sums == {"FramePort-linux-x64.tar.gz": "a" * 64, "FramePort-windows-x64.zip": "b" * 64}
 
 

@@ -62,7 +62,8 @@ def suggest(analysis: Analysis, use_catalog: bool = True) -> Recipe:
             recipe.alt_patches = ["patch_remove_unreal_force_quit"]  # build a fallback in case it quits itself
         if analysis.only_32bit:
             recipe.status = "unsupported"
-            recipe.notes = "32-bit only: the Steam Frame has no AArch32 support. Consider the PC (Rift) version via Revive."
+            recipe.notes = ("32-bit only: the Steam Frame has no AArch32 support. Consider the PC (Rift) version "
+                            "via Revive.")
         elif analysis.no_arm64:
             recipe.status = "unsupported"
             recipe.notes = f"No 64-bit ARM code ({', '.join(analysis.abis)}): the Steam Frame can't run it."

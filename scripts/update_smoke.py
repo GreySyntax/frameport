@@ -44,7 +44,8 @@ def main() -> int:
     nested = sub / "new-version.txt"  # files in existing subfolders must be replaced too (Windows merges folders)
     nested.write_text("new")
     if platform == "win32" and os.environ.get("HAS_CERT") == "true":
-        a, b = updates._signer_thumbprint(installed / "FramePort.exe"), updates._signer_thumbprint(new / "FramePort.exe")
+        a = updates._signer_thumbprint(installed / "FramePort.exe")
+        b = updates._signer_thumbprint(new / "FramePort.exe")
         print(f"signer thumbprints: installed {a} new {b}")
         assert a and a == b, "signature check failed"
     # the same launch as the app (detached; apply() checks the script started), then wait for it to finish

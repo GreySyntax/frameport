@@ -47,11 +47,12 @@ update log is `logs/update.log` in the data folder.
 Command line: `frameport update` (`--check` only checks, exit code 10 = update available; `--yes` doesn't ask).
 `FRAMEPORT_NO_UPDATE_CHECK=1` turns all checks off.
 
-## Oculus Rift (PC VR) games
+## PC VR games
 
-Scan a folder of Rift games (one folder per game) or use **Add games → Add one game folder…**. FramePort finds the
-game's program and asks when there is more than one candidate. **Already patched** on a game page installs a copy
-unchanged. FramePort uses an installed Revive, or downloads a portable copy.
+PC VR games are Windows VR games (OpenXR, SteamVR or Oculus). Scan a folder of them (one folder per game) or use
+**Add games → Add one game folder…**. FramePort finds the game's program and asks when there is more than one
+candidate. **Already patched** on a game page installs a copy unchanged. Oculus-only games need Revive: FramePort uses
+an installed Revive, or downloads a portable copy.
 
 - **Play from this PC:** Windows with Steam and SteamVR. **Install on this PC** adds the game to Steam; stream it to the
   Frame with Steam Link. If a game can't keep up with the refresh rate, FramePort lowers the rate and enables motion
@@ -71,9 +72,9 @@ skip files that are already there.
 
 - **Videos**, **Downloads** and **Documents** appear inside every Quest game as `/sdcard/Movies`, `/sdcard/Download`
   and `/sdcard/Documents`. Apps find files by browsing folders; Android's media index doesn't work on the Frame.
-- **Game storage** is one game's own `/sdcard` (mods, saves). A game's menu → **Add videos & files…** opens it.
-  Video players that list only their own folder (e.g. 4XVR's "Internal Storage" = `4XPlayer`) find videos uploaded
-  into that folder.
+- Under **Game storage**, each installed game has its own `/sdcard` (mods, saves). A game's menu → **Add videos and
+  files…** opens it. Video players that list only their own folder (e.g. 4XVR's "Internal Storage" = `4XPlayer`) find
+  videos uploaded into that folder.
 - **Home folder** shows everything in the Frame's home folder (hidden files with **Show hidden files**).
 
 Command line: `frameport frame send <files> --to videos`.
@@ -82,7 +83,7 @@ Command line: `frameport frame send <files> --to videos`.
 
 - **Share working config…** (game menu): opens a prefilled GitHub issue with the game's patches and settings. Accepted
   configs become built-in recipes.
-- **Report a problem…** (game menu, or Settings → Problems & feedback): saves a diagnostics zip to Documents (logs,
+- **Report a problem…** (game menu, or Settings → Problems and feedback): saves a diagnostics zip to Documents (logs,
   recipe, device details; IP addresses, user names, home folders and Steam ids replaced) and opens a prefilled GitHub
   issue to attach it to. Command line: `frameport diag report <game>`, `frameport share-recipe <game>`.
 

@@ -41,7 +41,8 @@ def test_heuristics_reproduce_catalog(dumps):
     import importlib.util
     from pathlib import Path
 
-    spec = importlib.util.spec_from_file_location("ev", Path(__file__).resolve().parents[1] / "scripts/eval_heuristics.py")
+    script = Path(__file__).resolve().parents[1] / "scripts/eval_heuristics.py"
+    spec = importlib.util.spec_from_file_location("ev", script)
     ev = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ev)
     exact = total = 0

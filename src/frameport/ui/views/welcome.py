@@ -32,7 +32,8 @@ class WelcomeView:
     def step(self, n: int, head: str, text: str, state: str, *content: ft.Control) -> ft.Control:
         icon = {"done": (ft.Icons.CHECK_ROUNDED, T.OK), "busy": (None, T.ACCENT),
                 "todo": (None, T.TEXT_3), "error": (ft.Icons.PRIORITY_HIGH_ROUNDED, T.ERROR)}[state]
-        marker = ft.ProgressRing(width=T.px(20), height=T.px(20), stroke_width=T.px(2), color=T.ACCENT) if state == "busy" else \
+        marker = ft.ProgressRing(width=T.px(20), height=T.px(20), stroke_width=T.px(2),
+                                 color=T.ACCENT) if state == "busy" else \
             ft.Icon(icon[0], size=T.px(18), color=icon[1]) if icon[0] else ft.Text(str(n), weight=ft.FontWeight.W_700,
                                                                             color=T.TEXT_2)
         return C.card(ft.Row([
@@ -62,8 +63,9 @@ class WelcomeView:
         g_state = "done" if library.games() else "todo"
         return ft.Column([
             ft.Container(height=T.S5),
-            ft.Row([ft.Container(ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(30), color=T.ON_ACCENT), width=T.px(56),
-                                 height=T.px(56), border_radius=T.px(16), bgcolor=T.ACCENT, alignment=ft.Alignment.CENTER),
+            ft.Row([ft.Container(ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(30), color=T.ON_ACCENT),
+                                 width=T.px(56), height=T.px(56), border_radius=T.px(16), bgcolor=T.ACCENT,
+                                 alignment=ft.Alignment.CENTER),
                     ft.Column([C.title(tr("Welcome to FramePort")),
                                C.body(tr("Play your Quest, Android and PC VR games on the Steam Frame. Three steps "
                                       "and you're set."))], spacing=T.px(2))], spacing=T.S4),
@@ -73,9 +75,11 @@ class WelcomeView:
                       *([C.secondary(tr("Try again"), ft.Icons.REFRESH_ROUNDED, lambda e: app.update_tools())]
                         if t_state == "error" else [])),
             self.step(2, tr("Connect your Steam Frame"), f_text, f_state,
-                      *([] if f_state == "done" else [C.secondary(tr("Set up the Frame"), ft.Icons.ARROW_FORWARD_ROUNDED,
-                                                                  lambda e: app.go("frame"))])),
-            self.step(3, tr("Add your games"), tr("A folder with Android games (APK + OBB, e.g. Quest games) or PC VR games."),
+                      *([] if f_state == "done"
+                        else [C.secondary(tr("Set up the Frame"), ft.Icons.ARROW_FORWARD_ROUNDED,
+                                          lambda e: app.go("frame"))])),
+            self.step(3, tr("Add your games"),
+                      tr("A folder with Android games (APK + OBB, e.g. Quest games) or PC VR games."),
                       g_state, ft.Row([C.primary(tr("Scan a folder"), ft.Icons.FOLDER_OPEN_ROUNDED, app.pick_folder),
                                        C.ghost(tr("Add an APK file"), ft.Icons.ANDROID_ROUNDED, app.pick_apk)],
                                       spacing=T.S2)),

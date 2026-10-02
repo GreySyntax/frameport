@@ -8,11 +8,13 @@ LOG_OK = """
 09-28 17:39:05.000  1147  1174 I FrameBridge: pacing: 72.2 fps, displayTime vs predicted: avg 0.00 ms
 """
 
-LOG_BAD = """
+LOG_BAD = ("""
 09-28 17:39:01.000  1000  1000 I ActivityManager: Start proc 1150:com.example.game/u0a55 for activity
-09-28 17:39:02.000  1150  1170 E AndroidRuntime: java.lang.UnsatisfiedLinkError: dlopen failed: cannot locate symbol "ovr_User_GetLoggedInUser" referenced by "libgame.so"
-09-28 17:39:02.000  1150  1170 I GLShim  : SHADER COMPILE FAILED 1: 0:9(1): error: #extension directive is not allowed in the middle of a shader
-"""
+09-28 17:39:02.000  1150  1170 E AndroidRuntime: java.lang.UnsatisfiedLinkError: dlopen failed: cannot locate symbol"""
+""" "ovr_User_GetLoggedInUser" referenced by "libgame.so"
+09-28 17:39:02.000  1150  1170 I GLShim  : SHADER COMPILE FAILED 1: 0:9(1): error: #extension directive is not"""
+""" allowed in the middle of a shader
+""")
 
 
 def test_healthy_log():

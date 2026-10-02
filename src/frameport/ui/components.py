@@ -174,12 +174,14 @@ def _shape(radius=None):
 
 def primary(label: str, icon: str | None = None, on_click: Callable | None = None, disabled: bool = False,
             tooltip: str | None = None, big: bool = False) -> ft.FilledButton:
+    padding = (ft.Padding(T.px(22), T.px(18), T.px(22), T.px(18)) if big
+               else ft.Padding(T.px(16), T.px(12), T.px(16), T.px(12)))
     return ft.FilledButton(label, icon=icon, on_click=on_click, disabled=disabled, tooltip=tooltip,
                            style=ft.ButtonStyle(shape=_shape(), bgcolor={ft.ControlState.DEFAULT: T.ACCENT,
                                                                         ft.ControlState.DISABLED: T.SURFACE_3},
                                                 color={ft.ControlState.DEFAULT: T.ON_ACCENT,
                                                        ft.ControlState.DISABLED: T.TEXT_3},
-                                                padding=ft.Padding(T.px(22), T.px(18), T.px(22), T.px(18)) if big else ft.Padding(T.px(16), T.px(12), T.px(16), T.px(12)),
+                                                padding=padding,
                                                 text_style=ft.TextStyle(size=T.px(15) if big else T.px(13),
                                                                         weight=ft.FontWeight.W_600)))
 
@@ -235,8 +237,8 @@ def callout(text: str | ft.Control, kind: str = "info", icon: str | None = None)
 
 def empty_state(icon: str, heading: str, text: str, *actions: ft.Control) -> ft.Container:
     return ft.Container(ft.Column([
-        ft.Container(ft.Icon(icon, size=T.px(40), color=T.ACCENT), width=T.px(84), height=T.px(84), border_radius=T.px(42),
-                     bgcolor=T.ACCENT_SOFT, alignment=ft.Alignment.CENTER),
+        ft.Container(ft.Icon(icon, size=T.px(40), color=T.ACCENT), width=T.px(84), height=T.px(84),
+                     border_radius=T.px(42), bgcolor=T.ACCENT_SOFT, alignment=ft.Alignment.CENTER),
         ft.Container(height=T.S2),
         title(heading, 22),
         ft.Container(body(text, text_align=ft.TextAlign.CENTER), width=T.px(460)),
@@ -273,7 +275,8 @@ def art_fill(src: str | None, radius: int | None = None, placeholder_icon: str =
     if src:
         return ft.Container(image=ft.DecorationImage(src=src, fit=ft.BoxFit.COVER), border_radius=radius,
                             bgcolor=T.SURFACE_2, **kw)
-    icon = ft.Icon(placeholder_icon, size=T.px(220) if hero else T.px(56), color=T.soft(T.ACCENT, 0.22 if hero else 0.45))
+    icon = ft.Icon(placeholder_icon, size=T.px(220) if hero else T.px(56),
+                   color=T.soft(T.ACCENT, 0.22 if hero else 0.45))
     return ft.Container(ft.Container(icon, padding=ft.Padding(0, 0, T.px(60), 0) if hero else 0), border_radius=radius,
                         alignment=ft.Alignment.CENTER_RIGHT if hero else ft.Alignment.CENTER,
                         gradient=ft.LinearGradient(begin=ft.Alignment.TOP_LEFT, end=ft.Alignment.BOTTOM_RIGHT,

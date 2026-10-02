@@ -134,8 +134,8 @@ def test_library_migration_adds_no_crash_reporter(tmp_path, monkeypatch):
     }, "settings": {}}))
     games = library.load()["games"]
     # the run-correct migration re-derives from engine defaults: Oculus games get Revive + as-is
-    assert set(games["rift.ue"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.libovr_redirect", "pcvr.steamvr_tuning",
-        "pcvr.no_crash_reporter", "pcvr.oculus_unreal", "pcvr.xr_timefix"}
+    assert set(games["rift.ue"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.libovr_redirect",
+        "pcvr.steamvr_tuning", "pcvr.no_crash_reporter", "pcvr.oculus_unreal", "pcvr.xr_timefix"}
     assert set(games["rift.unity"]["recipe"]["patches"]) == {"pcvr.revive", "pcvr.revive_openvr", "pcvr.steamvr_tuning",
         "pcvr.libovr_redirect", "pcvr.xr_timefix"}
     assert games["rift.ue"]["recipe"]["as_is"] and games["rift.unity"]["recipe"]["as_is"]
@@ -170,7 +170,8 @@ def test_migration_rederives_rift_recipes(tmp_path, monkeypatch):
 
     monkeypatch.setattr(library, "_path", lambda: tmp_path / "library.json")
     (tmp_path / "library.json").write_text(json.dumps({"games": {
-        "rift.ue": {"analysis": {"engine": "Unreal", "abis": ["x86_64"], "extra": {"kind": "rift", "needs_revive": True}},
+        "rift.ue": {"analysis": {"engine": "Unreal", "abis": ["x86_64"],
+                                 "extra": {"kind": "rift", "needs_revive": True}},
                     "recipe": {"as_is": True, "patches": {}}},  # Revive wrongly dropped -> restored
         "com.q.ue": {"analysis": {"engine": "Unreal", "extra": {}}, "recipe": {"patches": {}}},
     }, "settings": {}}))

@@ -35,7 +35,8 @@ marked as not runnable on the Frame.
 3. **Connect the Frame**: turn on Developer Mode on the Frame (Settings → System → Developer). In FramePort open
    **Steam Frame**; if the Frame isn't listed, switch it to Desktop mode, open Konsole and paste the one command
    FramePort shows. This is needed once.
-4. **Add games**: **Add games → Scan a folder** with your Quest game backups (APK + OBB) or Rift game folders.
+4. **Add games**: **Add games → Scan a folder** with your game backups: Android/Quest games (APK + OBB) or PC VR
+   game folders.
    FramePort identifies each game and fetches its artwork and store details.
 5. **Install**: open a game and click **Install on Frame**. FramePort patches, checks, uploads and adds the game to the
    Frame's Steam library, then runs a short launch test.
@@ -53,11 +54,15 @@ switched on or off under **Customize**.
 
 ![Patches](docs/images/patches.png)
 
-- Quest games run in Valve's Android runtime (Lepton). 32-bit-only Quest games can't run (the Frame has no 32-bit ARM
-  support).
-- Rift games run through Proton on the Frame (experimental) or on a Windows PC with SteamVR, streamed to the Frame.
-  Games that use the Oculus Platform SDK need the Oculus app and a licence, so they run on the PC only.
-- Automated launch tests confirm a game starts; visuals can only be checked in the headset.
+| Kind of app | On the Steam Frame |
+|---|---|
+| Meta Quest games (APK) | Translated to OpenXR (OVRPort) and patched for the Frame; run in Valve's Android runtime (Lepton) |
+| Other Android VR apps using OpenXR (e.g. Pico builds) | Translated the same way; the other headset's own extensions and store services aren't available |
+| Ordinary Android apps and games (no VR) | Installed unchanged and run in Lepton |
+| PC VR games (Windows; OpenXR, SteamVR or Oculus) | Run through Proton on the Frame (experimental), or on a Windows PC with SteamVR and streamed to the Frame; Oculus-only games use Revive |
+| Can't run | 32-bit-only or x86-only APKs, Pico/HTC Wave SDK apps, Android XR apps, and games that check an Oculus licence (they need the Oculus app on a PC) |
+
+Automated launch tests confirm that a game starts; visuals can only be checked in the headset.
 
 ![Steam Frame](docs/images/frame.png)
 

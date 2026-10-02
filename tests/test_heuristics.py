@@ -19,7 +19,8 @@ def test_mixed_reality_only_scene_game():
 
 
 def test_mixed_reality_without_scene():
-    _, r = suggest(extra={"mr_only": True, "meta_permissions_used": ["com.oculus.permission.USE_ANCHOR_API"], "size": 1})
+    _, r = suggest(extra={"mr_only": True, "meta_permissions_used": ["com.oculus.permission.USE_ANCHOR_API"],
+                          "size": 1})
     assert "patch_force_passthrough" in r.patches and "adapter.scene_emul" not in r.patches
 
 
@@ -44,7 +45,8 @@ def test_old_unreal_nodebug_and_alt_build():
 
 
 def test_cryengine_disables_vrs():
-    _, r = suggest(engine="CryEngine", xr="VrApi", direct_vrapi=True, libs=["libCrySystem.so", "libCryRenderVulkan.so", "libvrapi.so"],
+    _, r = suggest(engine="CryEngine", xr="VrApi", direct_vrapi=True,
+                   libs=["libCrySystem.so", "libCryRenderVulkan.so", "libvrapi.so"],
                    graphics="Vulkan (declared in manifest)")
     assert r.params("device.files")["files"]["user.cfg"].startswith("r_variable_rate_shading = 0")
     assert "frame.vrapi_bridge" in r.patches

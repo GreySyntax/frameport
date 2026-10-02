@@ -80,7 +80,8 @@ def platform_asset() -> str | None:
 
 def update_from_release(release: dict, asset_name: str | None = None) -> Update | None:
     """The Update a GitHub "latest release" JSON describes (None for drafts/pre-releases or unusable data)."""
-    if not isinstance(release, dict) or release.get("draft") or release.get("prerelease") or not release.get("tag_name"):
+    if (not isinstance(release, dict) or release.get("draft") or release.get("prerelease")
+            or not release.get("tag_name")):
         return None
     assets = {a.get("name"): a.get("browser_download_url") for a in release.get("assets") or [] if isinstance(a, dict)}
     asset_name = asset_name if asset_name is not None else platform_asset()
@@ -305,7 +306,8 @@ def _signer_thumbprint(exe: Path) -> str | None:
     ps, env = _powershell()
     try:
         out = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-Command",
-                              f"(Get-AuthenticodeSignature -LiteralPath {_ps_quote(exe)}).SignerCertificate.Thumbprint"],
+                              f"(Get-AuthenticodeSignature -LiteralPath {_ps_quote(exe)})"
+                              ".SignerCertificate.Thumbprint"],
                              capture_output=True, text=True, timeout=60, env=env)
     except (OSError, subprocess.SubprocessError) as exc:
         _log.warning("reading the signature of %s failed: %s", exe, exc)
@@ -403,11 +405,12 @@ def swap_script(app: Path, target: Path, pid: int, platform: str, relaunch: bool
     if platform == "win32":
         start = f"Start-Process -FilePath {_ps_quote(target / 'FramePort.exe')} -WorkingDirectory {_ps_quote(target)}" \
             if relaunch else "Write-Log 'not relaunching'"
-        return f"""$ErrorActionPreference = 'Stop'
+        return (f"""$ErrorActionPreference = 'Stop'
 $log = {_ps_quote(log)}
 function Write-Log($m) {{ Add-Content -LiteralPath $log -Value ("$(Get-Date -Format s) $m") }}
 Write-Log 'update: waiting for FramePort (pid {pid}) to exit'
-for ($i = 0; $i -lt 240 -and (Get-Process -Id {pid} -ErrorAction SilentlyContinue); $i++) {{ Start-Sleep -Milliseconds 500 }}
+for ($i = 0; $i -lt 240 -and (Get-Process -Id {pid} -ErrorAction SilentlyContinue); $i++) {{ Start-Sleep"""
+f""" -Milliseconds 500 }}
 Start-Sleep -Milliseconds 500
 $src = {_ps_quote(app)}; $dst = {_ps_quote(target)}
 $backup = Join-Path (Split-Path -Parent $src) 'previous'
@@ -431,7 +434,7 @@ try {{
   Copy-Item -Path (Join-Path $backup '*') -Destination $dst -Recurse -Force -ErrorAction SilentlyContinue
 }}
 {start}
-"""
+""")
     if platform == "darwin":
         start = f"open {_sh_quote(target)}" if relaunch else "echo 'not relaunching' >>\"$log\""
         extra = f"xattr -dr com.apple.quarantine {_sh_quote(target)} 2>/dev/null || true"
@@ -474,8 +477,8 @@ def apply(app: Path, target: Path | None = None, relaunch: bool = True, pid: int
     started = log.stat().st_size if log.exists() else 0
     if platform == "win32":
         ps, env = _powershell()
-        proc = spawn_hidden([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
-                             "-File", str(script)], env=env)
+        proc = spawn_hidden([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle",
+                             "Hidden", "-File", str(script)], env=env)
     else:
         proc = subprocess.Popen(["/bin/sh", str(script)], start_new_session=not wait, close_fds=True,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

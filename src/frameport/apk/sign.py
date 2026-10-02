@@ -74,7 +74,8 @@ def cert_digest(apk: Path) -> str | None:
 
 
 def alignment_problems(apk: Path) -> list[str]:
-    """Stored entries must be 4-byte aligned; stored .so files page (16 KiB) aligned (what zipalign -c -P 16 4 checks)."""
+    """Stored entries must be 4-byte aligned; stored .so files page (16 KiB) aligned (what zipalign -c -P 16 4
+    checks)."""
     bad = []
     with open(apk, "rb") as f, zipfile.ZipFile(apk) as z:
         for info in z.infolist():

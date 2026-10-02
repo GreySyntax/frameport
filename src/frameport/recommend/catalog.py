@@ -164,7 +164,8 @@ def entry_from_library(g: dict, status: str = "works", notes: str | None = None,
             return None
     return CatalogEntry(
         **common, as_is=r.as_is,
-        overport_extra=[p for p in r.patches if (c := cat(p)) and c.category == "overport" and p not in DEFAULT_OVERPORT],
+        overport_extra=[p for p in r.patches
+                        if (c := cat(p)) and c.category == "overport" and p not in DEFAULT_OVERPORT],
         overport_remove=[p for p in DEFAULT_OVERPORT if p not in r.patches],
         alt_overport=r.alt_patches, use_alt=r.use_alt,
         frame=[p for p in r.patches if (c := cat(p)) and c.category == "frame" and not c.default_on],

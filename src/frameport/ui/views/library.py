@@ -169,7 +169,8 @@ class LibraryView:
         self.search = ft.TextField(
             value=self.f["q"], hint_text=tr("Search games and tags"), prefix_icon=ft.Icons.SEARCH_ROUNDED, dense=True,
             width=T.px(260), border_radius=T.RADIUS_SM, bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT,
-            focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)), text_size=T.T_BODY,
+            focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)),
+            text_size=T.T_BODY,
             on_change=self._on_search)
         app.search_field = self.search
         self.filters = ft.Container()
@@ -179,27 +180,30 @@ class LibraryView:
         self.body = ft.Container(self.menu, expand=True)
         add = ft.PopupMenuButton(
             content=ft.Container(ft.Row([ft.Icon(ft.Icons.ADD_ROUNDED, color=T.ON_ACCENT, size=T.px(18)),
-                                         ft.Text(tr("Add games"), color=T.ON_ACCENT, weight=ft.FontWeight.W_600, size=T.px(13))],
+                                         ft.Text(tr("Add games"), color=T.ON_ACCENT, weight=ft.FontWeight.W_600,
+                                                 size=T.px(13))],
                                         spacing=T.px(6), tight=True),
-                                 bgcolor=T.ACCENT, border_radius=T.RADIUS_SM, padding=ft.Padding(T.px(14), T.px(9), T.px(16), T.px(9))),
+                                 bgcolor=T.ACCENT, border_radius=T.RADIUS_SM,
+                                 padding=ft.Padding(T.px(14), T.px(9), T.px(16), T.px(9))),
             items=[ft.PopupMenuItem(content=ft.Text(tr("Scan a folder…")), icon=ft.Icons.FOLDER_OPEN_ROUNDED,
                                     on_click=app.pick_folder),
-                   ft.PopupMenuItem(content=ft.Text(tr("Add one game folder…")), icon=ft.Icons.CREATE_NEW_FOLDER_ROUNDED,
-                                    on_click=app.pick_game_folder),
+                   ft.PopupMenuItem(content=ft.Text(tr("Add one game folder…")),
+                                    icon=ft.Icons.CREATE_NEW_FOLDER_ROUNDED, on_click=app.pick_game_folder),
                    ft.PopupMenuItem(content=ft.Text(tr("Add an APK file…")), icon=ft.Icons.ANDROID_ROUNDED,
                                     on_click=app.pick_apk)],
             bgcolor=T.SURFACE_2, tooltip="")
         self.rescan_btn = C.secondary(tr("Rescan folders"), ft.Icons.REFRESH_ROUNDED, app.rescan,
                                       tooltip=C.tip(HELP["rescan"]))
-        self.update_all_btn = C.secondary(tr("Update all"), ft.Icons.SYSTEM_UPDATE_ALT_ROUNDED, lambda e: app.update_all(),
-                                          tooltip=C.tip(HELP["update_all"]))
+        self.update_all_btn = C.secondary(tr("Update all"), ft.Icons.SYSTEM_UPDATE_ALT_ROUNDED,
+                                          lambda e: app.update_all(), tooltip=C.tip(HELP["update_all"]))
         self.update_all_btn.visible = False
         self.select_btn = C.secondary(tr("Select"), ft.Icons.CHECKLIST_ROUNDED, lambda e: self.set_select_mode(True),
                                       tooltip=C.tip(HELP["select"]))
         self.root = ft.Column([
             ft.Row([ft.Column([ft.Text(tr("Library"), size=T.T_TITLE, weight=ft.FontWeight.W_700, color=T.TEXT,
                                        no_wrap=True), self.subtitle], spacing=T.px(2), expand=True), self.search,
-                    self.update_all_btn, self.rescan_btn, self.select_btn, add], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3),
+                    self.update_all_btn, self.rescan_btn, self.select_btn, add],
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3),
             self.update_bar, self.resume_bar, self.hint, self.filters, self.body, self.sel_bar,
         ], expand=True, spacing=T.S4)
         # skeleton cards until the first batch arrives
@@ -233,8 +237,9 @@ class LibraryView:
             if not games:
                 self.body.content = C.empty_state(
                     ft.Icons.LIBRARY_ADD_ROUNDED, tr("Add your games"),
-                    tr("Point FramePort at a folder with Android games (APK + OBB, e.g. Quest games) or PC VR games (one folder "
-                    "per game, or a folder of them). It finds them, works out what each needs and fetches artwork."),
+                    tr("Point FramePort at a folder with Android games (APK + OBB, e.g. Quest games) or PC VR games "
+                       "(one folder per game, or a folder of them). It finds them, works out what each needs and "
+                       "fetches artwork."),
                     C.primary(tr("Scan a folder"), ft.Icons.FOLDER_OPEN_ROUNDED, self.app.pick_folder, big=True),
                     C.secondary(tr("Add an APK file"), ft.Icons.ANDROID_ROUNDED, self.app.pick_apk))
                 self.cards.clear()
@@ -298,14 +303,16 @@ class LibraryView:
         self.sel_bar.visible = self.select_mode
         self.sel_bar.content = ft.Container(ft.Row([
             ft.Icon(ft.Icons.CHECKLIST_ROUNDED, color=T.ACCENT),
-            C.body(tr("{n} selected").format(n=n) if n else tr("Select games to install"), T.TEXT, weight=ft.FontWeight.W_600),
+            C.body(tr("{n} selected").format(n=n) if n else tr("Select games to install"), T.TEXT,
+                   weight=ft.FontWeight.W_600),
             ft.Container(expand=True),
             C.ghost(tr("Select all shown"), on_click=lambda e: self.select_visible()),
             C.ghost(tr("Clear"), on_click=lambda e: (self.selected.clear(), self.set_select_mode(True))),
             *([C.secondary(tr("Install {len} on this PC").format(len=len(rift)), ft.Icons.COMPUTER_ROUNDED,
                            lambda e: app.install_many(sorted(rift), "pc"), disabled=not winhost.available())]
               if rift else []),
-            C.primary(tr("Install {n} on Frame").format(n=n) if n else tr("Install on Frame"), ft.Icons.VIEW_IN_AR_ROUNDED,
+            C.primary(tr("Install {n} on Frame").format(n=n) if n else tr("Install on Frame"),
+                      ft.Icons.VIEW_IN_AR_ROUNDED,
                       lambda e: app.install_many(sorted(self.selected), "frame"),
                       disabled=not n or app.frame_state != "connected",
                       tooltip=None if app.frame_state == "connected" else tr("Connect your Frame first")),
@@ -330,7 +337,11 @@ class LibraryView:
         if pending:
             names = ", ".join(app._title(p) for p in list(pending)[:3]) + ("…" if len(pending) > 3 else "")
             self.resume_bar.content = C.callout(ft.Row([
-                C.body(tr_n("{n} install didn't finish: {names}. What was already copied is kept, so resuming continues where it stopped.", "{n} installs didn't finish: {names}. What was already copied is kept, so resuming continues where it stopped.", len(pending), names=names), T.TEXT, expand=True),
+                C.body(tr_n("{n} install didn't finish: {names}. What was already copied is kept, so resuming "
+                            "continues where it stopped.",
+                            "{n} installs didn't finish: {names}. What was already copied is kept, so resuming "
+                            "continues where it stopped.",
+                            len(pending), names=names), T.TEXT, expand=True),
                 C.primary(tr("Resume"), ft.Icons.PLAY_ARROW_ROUNDED, lambda e: app.resume_installs()),
                 C.ghost(tr("Dismiss"), on_click=lambda e: app.forget_installs()),
             ], spacing=T.S3), "warn", ft.Icons.PAUSE_CIRCLE_OUTLINE_ROUNDED)
@@ -399,7 +410,8 @@ class LibraryView:
         self.subtitle.value = " · ".join(parts)
         updates = len(self.app.updatable())
         self.update_all_btn.visible = updates > 0
-        self.update_all_btn.content = tr("Update all ({updates})").format(updates=updates) if updates else tr("Update all")
+        self.update_all_btn.content = (tr("Update all ({updates})").format(updates=updates) if updates
+                                       else tr("Update all"))
         C.update(self.update_all_btn)
         self._update_hint()
         has_rift = any(g.get("kind") == "rift" for g in games)
@@ -410,14 +422,16 @@ class LibraryView:
             self._seg("where", where),
             self._seg("platform", [("all", "All"), ("quest", "Android"), ("pcvr", "PC VR")]) if has_rift else
             ft.Container(),
-            self._menu_chip("status", tr("Status"), [("all", tr("Any")), ("works", tr("Works")), ("issues", tr("Works with issues")),
-                                                 ("unknown", tr("Untested")), ("unsupported", tr("Can't run"))]),
+            self._menu_chip("status", tr("Status"), [("all", tr("Any")), ("works", tr("Works")),
+                                                     ("issues", tr("Works with issues")),
+                                                     ("unknown", tr("Untested")), ("unsupported", tr("Can't run"))]),
             C.help_icon("status"),
             self._tag_menu(games),
             ft.Container(expand=True),
             self.count,
-            self._menu_chip("sort", tr("Sort"), [("name", tr("Name")), ("recent", tr("Recently added")), ("played", tr("Recently used")),
-                                             ("status", tr("Status")), ("size", tr("Size"))]),
+            self._menu_chip("sort", tr("Sort"), [("name", tr("Name")), ("recent", tr("Recently added")),
+                                                 ("played", tr("Recently used")),
+                                                 ("status", tr("Status")), ("size", tr("Size"))]),
         ], spacing=T.S2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
         self.filters.visible = bool(games)
         C.update(self.subtitle, self.hint, self.filters)
@@ -428,7 +442,8 @@ class LibraryView:
             on = self.f.get(key) == value
             items.append(ft.Container(
                 ft.Text(label, size=T.T_META, weight=ft.FontWeight.W_600, color=T.TEXT if on else T.TEXT_2),
-                padding=ft.Padding(T.px(12), T.px(6), T.px(12), T.px(6)), border_radius=T.px(20), bgcolor=T.SURFACE_3 if on else None,
+                padding=ft.Padding(T.px(12), T.px(6), T.px(12), T.px(6)), border_radius=T.px(20),
+                bgcolor=T.SURFACE_3 if on else None,
                 on_click=lambda e, v=value: self._set(key, v), ink=True))
         return ft.Container(ft.Row(items, spacing=T.px(2), tight=True), padding=T.px(3), border_radius=T.px(22),
                             border=ft.Border.all(1, T.BORDER))
@@ -439,7 +454,8 @@ class LibraryView:
             content=ft.Container(ft.Row([C.meta(label + ":"), C.body(current, T.TEXT, size=T.T_META),
                                          ft.Icon(ft.Icons.EXPAND_MORE_ROUNDED, size=T.px(16), color=T.TEXT_2)],
                                         spacing=T.px(4), tight=True),
-                                 padding=ft.Padding(T.px(12), T.px(7), T.px(8), T.px(7)), border_radius=T.px(20), border=ft.Border.all(1, T.BORDER)),
+                                 padding=ft.Padding(T.px(12), T.px(7), T.px(8), T.px(7)), border_radius=T.px(20),
+                                 border=ft.Border.all(1, T.BORDER)),
             items=[ft.PopupMenuItem(content=ft.Text(text), checked=self.f.get(key) == value,
                                     on_click=lambda e, v=value: self._set(key, v)) for value, text in options],
             bgcolor=T.SURFACE_2, tooltip="")
@@ -458,8 +474,10 @@ class LibraryView:
             items.append(ft.PopupMenuItem(content=ft.Text(tr("Clear tags")), icon=ft.Icons.CLEAR_ROUNDED,
                                           on_click=lambda e: self._set("tags", [])))
         return ft.PopupMenuButton(
-            content=ft.Container(ft.Row([ft.Icon(ft.Icons.SELL_OUTLINED, size=T.px(14), color=T.TEXT_2), C.meta(tr("Tags:")),
-                                         C.body(label if len(label) < 28 else tr("{len} selected").format(len=len(chosen)), T.TEXT,
+            content=ft.Container(ft.Row([ft.Icon(ft.Icons.SELL_OUTLINED, size=T.px(14), color=T.TEXT_2),
+                                         C.meta(tr("Tags:")),
+                                         C.body(label if len(label) < 28
+                                                else tr("{len} selected").format(len=len(chosen)), T.TEXT,
                                                 size=T.T_META),
                                          ft.Icon(ft.Icons.EXPAND_MORE_ROUNDED, size=T.px(16), color=T.TEXT_2)],
                                         spacing=T.px(4), tight=True),

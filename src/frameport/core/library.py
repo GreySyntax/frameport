@@ -75,7 +75,8 @@ def _migrate(data: dict) -> bool:
                     and not extra.get("openxr_native")):
                 r.setdefault("patches", {}).setdefault("pcvr.oculus_unreal", {})
                 r.setdefault("reasons", {}).setdefault(
-                    "pcvr.oculus_unreal", "Unreal game: its Oculus plugin checks for the Oculus service before it starts VR.")
+                    "pcvr.oculus_unreal",
+                    "Unreal game: its Oculus plugin checks for the Oculus service before it starts VR.")
         done.append("oculus_unreal")
         changed = True
     if "rift_revive_correct" not in done:
@@ -274,5 +275,6 @@ def analysis_from_dict(d: dict) -> Analysis:
         elif f.default is not dataclasses.MISSING or f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
             continue  # let the dataclass default apply
         else:
-            kwargs[f.name] = "" if f.type == "str" else [] if "list" in str(f.type) else                 0 if f.type == "int" else False if f.type == "bool" else None
+            kwargs[f.name] = ("" if f.type == "str" else [] if "list" in str(f.type) else
+                              0 if f.type == "int" else False if f.type == "bool" else None)
     return Analysis(**kwargs)

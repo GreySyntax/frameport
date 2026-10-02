@@ -56,7 +56,8 @@ def cached_json(name: str, url: str, max_age: float = 86400, fallback=None):
         return fallback
 
 
-def download(url: str, dest: Path, progress=None, expected_sha256: str | None = None, expected_sha1: str | None = None) -> Path:
+def download(url: str, dest: Path, progress=None, expected_sha256: str | None = None,
+             expected_sha1: str | None = None) -> Path:
     """Stream url to dest (atomic), verifying a checksum when given."""
     import hashlib
 

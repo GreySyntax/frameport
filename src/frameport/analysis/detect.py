@@ -103,7 +103,8 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
                         lib_bytes[lib] = z.read(info)
         engine_lib = next((prefix + n for n in ("libUE4.so", "libUnreal.so") if prefix and prefix + n in names), None)
         unreal_version = _unreal_version(z, engine_lib) if deep and engine_lib else None
-        boot = z.read("assets/bin/Data/boot.config").decode("utf-8", "replace") if "assets/bin/Data/boot.config" in names else ""
+        boot = (z.read("assets/bin/Data/boot.config").decode("utf-8", "replace")
+                if "assets/bin/Data/boot.config" in names else "")
         ggm = z.read(UNITY_GGM) if deep and UNITY_GGM in names else None
 
     package, version, label, activity = _read_manifest_info(path)
@@ -136,7 +137,8 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
             oculus_os_refs.append(name)
         if name != "libOVRPlugin.so":  # OVRPlugin lists every layer extension; only the game's own requests count
             layer_exts |= {ext for ext in LAYER_EXTENSIONS if ext.encode() + b"\0" in data}
-        if name not in ("libvrapi.so", "libOVRPlugin.so") and b"GLAD_GL_" in data and "eglGetProcAddress" in elf.dyn_symbols(data, False):
+        if (name not in ("libvrapi.so", "libOVRPlugin.so") and b"GLAD_GL_" in data
+                and "eglGetProcAddress" in elf.dyn_symbols(data, False)):
             uses_glad = True
 
     msaa_levels = 0
@@ -175,9 +177,11 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
             "missing_ovr_symbols": sorted(missing_ovr_symbols(lib_bytes)), "size": path.stat().st_size,
             "data_bytes": data_bytes or 0,
             "features": features,
-            "meta_permissions_used": sorted(p for p in used_perms if p.startswith(("com.oculus.permission.", "horizonos."))),
+            "meta_permissions_used": sorted(p for p in used_perms
+                                            if p.startswith(("com.oculus.permission.", "horizonos."))),
             # mixed-reality-only: passthrough required and no guardian (Meta's BOUNDARYLESS_APP)
-            "mr_only": features.get("com.oculus.feature.PASSTHROUGH", False) and "com.oculus.feature.BOUNDARYLESS_APP" in features,
+            "mr_only": (features.get("com.oculus.feature.PASSTHROUGH", False)
+                        and "com.oculus.feature.BOUNDARYLESS_APP" in features),
             "hand_tracking_only": features.get("oculus.software.handtracking", False),
             "unreal_version": unreal_version,
             "oculus_os_refs": sorted(oculus_os_refs),
@@ -205,7 +209,8 @@ def missing_ovr_symbols(lib_bytes: dict[str, bytes]) -> set[str]:
             exported |= elf.dyn_symbols(lib_bytes[extra], True)
     wanted = set()
     for name, data in lib_bytes.items():
-        if name.startswith(("libovrplatformloader", "libopenxr_loader", "libframe_settings", "libfrda")) or not elf.is_elf(data):
+        if (name.startswith(("libovrplatformloader", "libopenxr_loader", "libframe_settings", "libfrda"))
+                or not elf.is_elf(data)):
             continue
         wanted |= {s for s in elf.dyn_symbols(data, False) if s.startswith(("ovr_", "ovrMessageType_"))}
     return wanted - exported

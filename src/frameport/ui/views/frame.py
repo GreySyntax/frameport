@@ -25,13 +25,16 @@ class FrameView:
         t = app.target
         free = (info.get("free_bytes") or 0) / 2**30
         return C.card(ft.Row([
-            ft.Container(ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(34), color=T.ACCENT), width=T.px(72), height=T.px(72),
-                         border_radius=T.px(18), bgcolor=T.ACCENT_SOFT, alignment=ft.Alignment.CENTER),
+            ft.Container(ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(34), color=T.ACCENT), width=T.px(72),
+                         height=T.px(72), border_radius=T.px(18), bgcolor=T.ACCENT_SOFT, alignment=ft.Alignment.CENTER),
             ft.Column([
                 ft.Row([C.title(info.get("hostname") or t.label, 22), C.pill(tr("Connected"), T.OK, ft.Icons.CIRCLE)],
                        spacing=T.S3),
-                C.body(tr("{user}@{host} · {get} {get2} (build {get3})").format(user=t.target.user, host=t.target.host, get=info.get('os'), get2=info.get('os_version'), get3=info.get('build_id'))),
-                C.meta(tr("{free:.0f} GiB free · {len} games installed").format(free=free, len=len(info.get('installed') or []))),
+                C.body(tr("{user}@{host} · {get} {get2} (build {get3})")
+                       .format(user=t.target.user, host=t.target.host, get=info.get('os'),
+                               get2=info.get('os_version'), get3=info.get('build_id'))),
+                C.meta(tr("{free:.0f} GiB free · {len} games installed")
+                       .format(free=free, len=len(info.get('installed') or []))),
             ], spacing=T.px(4), expand=True),
             ft.Column([
                 C.secondary(tr("Refresh"), ft.Icons.REFRESH_ROUNDED, lambda e: app.refresh_frame()),
@@ -44,7 +47,8 @@ class FrameView:
         rows = []
         lepton = info.get("lepton")
         rows.append(C.status_row(bool(lepton), tr("Quest games (Lepton)"),
-                                 tr("Ready") if lepton else tr("Valve's Android runtime isn't installed (needs Developer Mode)"),
+                                 tr("Ready") if lepton
+                                 else tr("Valve's Android runtime isn't installed (needs Developer Mode)"),
                                  None if lepton else C.secondary(tr("Install"), ft.Icons.DOWNLOAD_ROUNDED,
                                                                  lambda e: app.install_lepton()),
                                  help="lepton"))
@@ -54,7 +58,8 @@ class FrameView:
             rows.append(C.status_row(
                 bool(ready), tr("PC VR games (Proton)"),
                 tr("{display_name} installed").format(display_name=ready['display_name']) if ready else
-                (tr("{display_name} can be installed (about 1 GiB; Steam restarts once)").format(display_name=sug['display_name']) if sug else
+                (tr("{display_name} can be installed (about 1 GiB; Steam restarts once)")
+                 .format(display_name=sug['display_name']) if sug else
                  tr("Not offered by Steam on this Frame yet")),
                 C.secondary(tr("Test"), ft.Icons.SCIENCE_OUTLINED, lambda e: app.test_proton()) if ready else
                 C.primary(tr("Install"), ft.Icons.DOWNLOAD_ROUNDED, lambda e: app.install_proton(), disabled=not sug),
@@ -68,7 +73,8 @@ class FrameView:
                                      f"{keys['keys']}/{keys['max_keys']} kernel keys used"
                                      + (tr(" · restart the Frame soon to reset it") if high else ""),
                                      help="kernel_keys"))
-        return C.section(tr("Ready to play"), C.card(ft.Column(rows, spacing=0), padding=ft.Padding(T.S4, T.S2, T.S4, T.S2)))
+        return C.section(tr("Ready to play"), C.card(ft.Column(rows, spacing=0),
+                                                     padding=ft.Padding(T.S4, T.S2, T.S4, T.S2)))
 
     def installed(self, info: dict) -> ft.Control:
         """The list fills in the background (icon thumbnails may need creating the first time)."""
@@ -106,7 +112,8 @@ class FrameView:
             art = thumbs.url(pkg, ("icon", "square", "portrait"), 96)
             size = d.get("apk_size", 0)
             sub = (tr("PC VR · Proton") + (tr(" + Revive") if d.get("revive") else "")) if pcvr else tr("Quest")
-            sub += tr(" · {value:.1f} GiB").format(value=size / 2**30) if size >= 2**30 else tr(" · {value:.0f} MiB").format(value=size / 2**20)
+            sub += (tr(" · {value:.1f} GiB").format(value=size / 2**30) if size >= 2**30
+                    else tr(" · {value:.0f} MiB").format(value=size / 2**20))
             in_lib = pkg in games
             title = display_title(games[pkg], tw) if in_lib else (d.get("title") or pkg)
             rows.append(ft.Container(ft.Row([
@@ -179,32 +186,38 @@ class FrameView:
             line = app.pairing.one_liner
             pair_box.controls = [
                 C.body(tr("On the Frame: Steam button → Power → Switch to Desktop, open Konsole and run:"), T.TEXT),
-                ft.Container(ft.Row([ft.Text(line, font_family="monospace", selectable=True, size=T.px(12), color=T.TEXT,
-                                             expand=True),
+                ft.Container(ft.Row([ft.Text(line, font_family="monospace", selectable=True, size=T.px(12),
+                                             color=T.TEXT, expand=True),
                                      C.icon_btn(ft.Icons.CONTENT_COPY_ROUNDED, tr("Copy"), lambda e: app.copy(line))]),
                              padding=ft.Padding(T.S3, T.S2, T.S2, T.S2), bgcolor=T.BG, border_radius=T.RADIUS_SM,
                              border=ft.Border.all(1, T.BORDER)),
                 ft.Row([ft.ProgressRing(width=T.px(14), height=T.px(14), stroke_width=T.px(2), color=T.ACCENT),
-                        C.meta(tr("Waiting for your Frame… (code {code})").format(code=app.pairing.code))], spacing=T.S2),
+                        C.meta(tr("Waiting for your Frame… (code {code})").format(code=app.pairing.code))],
+                       spacing=T.S2),
                 C.meta(tr("It turns on SSH, trusts this app, makes the Frame findable on your network and installs "
                        "Lepton if needed. You only do this once.")),
             ]
             pair_box.update()
 
         style = dict(dense=True, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT,
-                     focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(10), T.px(12), T.px(10)), text_size=T.T_BODY)
+                     focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(10), T.px(12), T.px(10)),
+                     text_size=T.T_BODY)
         addr = ft.TextField(hint_text=tr("steamos@frame.local or an IP address"), width=T.px(320), **style)
-        pw = ft.TextField(hint_text=tr("Password (first time only)"), password=True, can_reveal_password=True, width=T.px(240),
-                          tooltip=C.tip(HELP["password"]), **style)
+        pw = ft.TextField(hint_text=tr("Password (first time only)"), password=True, can_reveal_password=True,
+                          width=T.px(240), tooltip=C.tip(HELP["password"]), **style)
         saved = saved_targets()
         offline = None
         if saved and app.frame_state == "offline":
-            offline = C.callout(ft.Row([C.body(tr("{label} ({host}) isn't reachable. Make sure it's switched on and on the same network.").format(label=saved[0].label, host=saved[0].host), T.TEXT, expand=True),
+            unreachable = tr("{label} ({host}) isn't reachable. Make sure it's switched on and on the same "
+                             "network.").format(label=saved[0].label, host=saved[0].host)
+            offline = C.callout(ft.Row([C.body(unreachable, T.TEXT, expand=True),
                                         C.secondary(tr("Try again"), ft.Icons.REFRESH_ROUNDED,
                                                     lambda e: app.connect(saved[0]))]), "warn")
         elif app.frame_state == "connecting":
-            offline = C.callout(ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT),
-                                        C.body(tr("Connecting to {value}…").format(value=saved[0].label if saved else 'your Frame'), T.TEXT)],
+            connecting = tr("Connecting to {value}…").format(value=saved[0].label if saved else 'your Frame')
+            offline = C.callout(ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2),
+                                                        color=T.ACCENT),
+                                        C.body(connecting, T.TEXT)],
                                        spacing=T.S3), "info")
         import time as _time
 
@@ -227,7 +240,8 @@ class FrameView:
                  C.secondary(tr("Show setup command"), ft.Icons.TERMINAL_ROUNDED, pair), pair_box,
                  help="first_time_setup"),
             step(3, tr("Enter the address"), tr("If you know the Frame's address."),
-                 ft.Row([addr, pw, C.primary(tr("Connect"), on_click=lambda e: app.connect_manual(addr.value, pw.value))],
+                 ft.Row([addr, pw, C.primary(tr("Connect"),
+                                             on_click=lambda e: app.connect_manual(addr.value, pw.value))],
                         wrap=True, spacing=T.S3)),
         ], spacing=T.S4, scroll=ft.ScrollMode.AUTO, expand=True)
 

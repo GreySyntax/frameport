@@ -357,7 +357,8 @@ def prepare_as_is(package: str, reporter: Reporter) -> dict:
         with zipfile.ZipFile(apk) as z:
             cats = axml.categories(z.read("AndroidManifest.xml"))
         check("Launcher entry for Lepton", axml.LAUNCHER in cats or None,
-              "present" if axml.LAUNCHER in cats else "missing: Lepton may not find the game (turn off 'Install as is')")
+              "present" if axml.LAUNCHER in cats
+              else "missing: Lepton may not find the game (turn off 'Install as is')")
     except Exception as exc:  # noqa: BLE001
         check("Manifest", None, str(exc))
     art, store_title = artwork.fetch(package, apk)

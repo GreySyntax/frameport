@@ -82,7 +82,8 @@ def human(n: int) -> str:
 
 def show_files_dialog(app: FramePortApp, package: str, title: str) -> None:
     status = C.meta(tr("Reading the file list from the Frame…"))
-    body = ft.Column([ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT), status],
+    ring = ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT)
+    body = ft.Column([ft.Row([ring, status],
                              spacing=T.S2)], spacing=T.S3, expand=True)
     dialog = ft.AlertDialog(
         title=ft.Text(tr("Files on the Frame — {title}").format(title=title), weight=ft.FontWeight.W_600),
@@ -100,19 +101,22 @@ def show_files_dialog(app: FramePortApp, package: str, title: str) -> None:
         rows = ft.ListView(spacing=0, expand=True)
         search = ft.TextField(hint_text=tr("Filter files (e.g. .pak, Binaries)"), dense=True, expand=True,
                               border_radius=T.RADIUS_SM, bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT,
-                              focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)),
+                              focused_border_color=T.ACCENT,
+                              content_padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)),
                               text_size=T.T_BODY, prefix_icon=ft.Icons.SEARCH_ROUNDED)
 
         def row(depth: int, node: Node | int, root_key: str) -> ft.Control:
             pad = ft.Padding(8 + depth * 18, T.px(3), T.px(8), T.px(3))
             if isinstance(node, int):
-                return ft.Container(C.meta(tr("… {node} more (use the filter to find them)").format(node=node)), padding=pad)
+                return ft.Container(C.meta(tr("… {node} more (use the filter to find them)").format(node=node)),
+                                    padding=pad)
             key = f"{root_key}\0{node.path}"
             icon = (ft.Icons.FOLDER_OPEN_ROUNDED if key in expanded else ft.Icons.FOLDER_ROUNDED) if node.is_dir \
                 else ft.Icons.INSERT_DRIVE_FILE_OUTLINED
             chevron = ft.Icon(ft.Icons.EXPAND_MORE_ROUNDED if key in expanded else ft.Icons.CHEVRON_RIGHT_ROUNDED,
                               size=T.px(16), color=T.TEXT_3) if node.is_dir else ft.Container(width=T.px(16))
-            info = tr("{human} · {files} files").format(human=human(node.size), files=node.files) if node.is_dir else human(node.size)
+            info = (tr("{human} · {files} files").format(human=human(node.size), files=node.files) if node.is_dir
+                    else human(node.size))
             return ft.Container(ft.Row([
                 chevron, ft.Icon(icon, size=T.px(16), color=T.ACCENT if node.is_dir else T.TEXT_3),
                 C.body(node.name, T.TEXT, expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
@@ -130,7 +134,8 @@ def show_files_dialog(app: FramePortApp, package: str, title: str) -> None:
                     ft.Container(expand=True),
                     C.icon_btn(ft.Icons.CONTENT_COPY_ROUNDED, tr("Copy path"), lambda e, p=r["path"]: app.copy(p)),
                 ], spacing=T.S2), padding=ft.Padding(T.px(8), T.S2, T.px(8), T.px(2))))
-                controls.append(ft.Container(C.meta(r["path"], selectable=True), padding=ft.Padding(T.px(8), 0, T.px(8), T.px(4))))
+                controls.append(ft.Container(C.meta(r["path"], selectable=True),
+                                             padding=ft.Padding(T.px(8), 0, T.px(8), T.px(4))))
                 if text:
                     found = matches(r["files"], text)
                     controls += [ft.Container(ft.Row([
@@ -138,7 +143,8 @@ def show_files_dialog(app: FramePortApp, package: str, title: str) -> None:
                         C.body(rel, T.TEXT, expand=True, selectable=True), C.meta(human(size))], spacing=T.px(6)),
                         padding=ft.Padding(T.px(8), T.px(3), T.px(8), T.px(3))) for rel, size in found]
                     if not found:
-                        controls.append(ft.Container(C.meta(tr("No matching files")), padding=ft.Padding(T.px(8), T.px(3), T.px(8), T.px(3))))
+                        controls.append(ft.Container(C.meta(tr("No matching files")),
+                                                     padding=ft.Padding(T.px(8), T.px(3), T.px(8), T.px(3))))
                 else:
                     visible = visible_rows(tree, {k.split("\0", 1)[1] for k in expanded
                                                   if k.split("\0", 1)[0] == r["path"]})
@@ -154,13 +160,18 @@ def show_files_dialog(app: FramePortApp, package: str, title: str) -> None:
         head: list[ft.Control] = []
         total = sum(t.size for _, t in trees)
         count = sum(t.files for _, t in trees)
-        summary = tr("{count} files · {human}").format(count=count, human=human(total)) + (tr(" (list cut off)") if result.get("truncated") else "")
+        summary = (tr("{count} files · {human}").format(count=count, human=human(total))
+                   + (tr(" (list cut off)") if result.get("truncated") else ""))
         missing = result.get("missing") or []
         if missing:
             lines = "\n".join(f"{rel}: " + ("missing" if actual is None else f"{human(actual)} of {human(size)}")
                               for rel, size, actual in missing[:8])
             more = tr_n("\n… and {n} more", "\n… and {n} more", len(missing) - 8) if len(missing) > 8 else ""
-            head.append(C.callout(tr_n("{n} file is missing or incomplete compared to what was uploaded. Install the game again to re-send it.\n{lines}{more}", "{n} files are missing or incomplete compared to what was uploaded. Install the game again to re-send them.\n{lines}{more}", len(missing), lines=lines, more=more), "warn"))
+            head.append(C.callout(tr_n("{n} file is missing or incomplete compared to what was uploaded. "
+                                       "Install the game again to re-send it.\n{lines}{more}",
+                                       "{n} files are missing or incomplete compared to what was uploaded. "
+                                       "Install the game again to re-send them.\n{lines}{more}",
+                                       len(missing), lines=lines, more=more), "warn"))
         elif result.get("kind") == "pcvr":
             head.append(C.callout(tr("Every uploaded file is present with the right size."), "ok"))
         body.controls = [ft.Row([search, C.meta(summary)], spacing=T.S3), *head, rows]

@@ -77,7 +77,8 @@ class Updater:
         self.preparing = True
         try:
             updates.prepare(up)
-            self.app.toast(tr("FramePort {version} is downloaded and installs the next time FramePort starts").format(version=up.version),
+            self.app.toast(tr("FramePort {version} is downloaded and installs the next time FramePort starts")
+                           .format(version=up.version),
                            action=tr("Restart now"), on_action=lambda e: self.install())
         except Exception as exc:  # noqa: BLE001
             applog.log.warning("automatic update download failed: %s", exc)
@@ -106,13 +107,16 @@ class Updater:
             page.pop_dialog()
             self.install()
         page.show_dialog(ft.AlertDialog(
-            title=ft.Text(tr("FramePort {version} is available").format(version=up.version), color=T.TEXT, weight=ft.FontWeight.W_600), bgcolor=T.SURFACE_2,
+            title=ft.Text(tr("FramePort {version} is available").format(version=up.version), color=T.TEXT,
+                          weight=ft.FontWeight.W_600),
+            bgcolor=T.SURFACE_2,
             content=ft.Container(ft.Column([
                 C.body(tr("You have {version}. {how}").format(version=__version__, how=how), T.TEXT_2),
                 ft.Container(ft.Markdown(notes, selectable=True, extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
                                          md_style_sheet=_notes_style(),
                                          on_tap_link=lambda e: page.launch_url(e.data)),
-                             padding=T.S3, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE, border=ft.Border.all(1, T.BORDER)),
+                             padding=T.S3, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE,
+                             border=ft.Border.all(1, T.BORDER)),
             ], spacing=T.S3, scroll=ft.ScrollMode.AUTO, tight=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
                 width=T.px(560), height=T.px(min(420, 130 + 26 * len(notes.splitlines())))),
             actions=[C.ghost(tr("Skip this version"), on_click=later),
@@ -129,11 +133,13 @@ class Updater:
         if kind == "bundle":
             target = updates.bundle_root()
             if not target or not updates.can_replace(target):
-                self.app.toast(tr("FramePort can't replace itself in {value} (no permission): opening the release page to download it").format(value=target or 'this folder'), error=True)
+                self.app.toast(tr("FramePort can't replace itself in {value} (no permission): opening the release "
+                                  "page to download it").format(value=target or 'this folder'), error=True)
                 page.launch_url(up.page)
                 return
         if kind == "source" and updates.source_is_dirty():
-            self.app.toast(tr("This source checkout has uncommitted changes: commit or stash them, then update"), error=True)
+            self.app.toast(tr("This source checkout has uncommitted changes: commit or stash them, then update"),
+                           error=True)
             return
         if page.web:
             self.app.toast(tr("Updating works in the desktop app"))
@@ -152,15 +158,18 @@ class Updater:
                         out = subprocess.run(cmd, capture_output=True, text=True, timeout=updates.UPGRADE_TIMEOUT,
                                              env=updates.upgrade_env(), stdin=subprocess.DEVNULL)
                     except subprocess.TimeoutExpired:
-                        raise RuntimeError(tr("{value} took too long; update by hand: {join}").format(value=cmd[0], join=' '.join(cmd))) from None
+                        raise RuntimeError(tr("{value} took too long; update by hand: {join}")
+                                           .format(value=cmd[0], join=' '.join(cmd))) from None
                     for line in (out.stdout + out.stderr).splitlines()[-20:]:
                         rep.log(line)
                     if out.returncode:
-                        raise RuntimeError(tr("{value} failed ({returncode})").format(value=cmd[0], returncode=out.returncode))
+                        raise RuntimeError(tr("{value} failed ({returncode})")
+                                           .format(value=cmd[0], returncode=out.returncode))
                 self.restart = self._restart_process
             rep.stage("Restarting")
             return tr("FramePort {version} is ready: restarting").format(version=up.version)
-        self.app.submit(tr("Update FramePort to {version}").format(version=up.version), run, None, kind="app-update", open_panel=True)
+        self.app.submit(tr("Update FramePort to {version}").format(version=up.version), run, None, kind="app-update",
+                        open_panel=True)
         if self.app.jobs.current() and self.app.jobs.current().kind != "app-update":
             self.app.toast(tr("FramePort updates and restarts after the current job"))
 
@@ -202,7 +211,8 @@ def _notes_style() -> ft.MarkdownStyleSheet:
         p_text_style=text(T.TEXT_2), list_bullet_text_style=text(T.TEXT_2),
         strong_text_style=text(weight=ft.FontWeight.W_600), em_text_style=text(T.TEXT_2, italic=True),
         a_text_style=text(T.ACCENT), code_text_style=text(T.TEXT, 13, font_family="monospace"),
-        h1_text_style=text(size=18, weight=ft.FontWeight.W_600), h2_text_style=text(size=16, weight=ft.FontWeight.W_600),
+        h1_text_style=text(size=18, weight=ft.FontWeight.W_600),
+        h2_text_style=text(size=16, weight=ft.FontWeight.W_600),
         h3_text_style=text(size=15, weight=ft.FontWeight.W_600), blockquote_text_style=text(T.TEXT_2))
 
 
@@ -212,7 +222,8 @@ def library_bar(app: FramePortApp) -> ft.Control | None:
     if not up:
         return None
     return C.callout(ft.Row([
-        C.body(tr("FramePort {version} is available (you have {version2}).").format(version=up.version, version2=__version__), T.TEXT, expand=True),
+        C.body(tr("FramePort {version} is available (you have {version2}).")
+               .format(version=up.version, version2=__version__), T.TEXT, expand=True),
         C.primary(tr("Update now"), ft.Icons.SYSTEM_UPDATE_ROUNDED, lambda e: app.updater.install()),
         C.ghost(tr("What's new"), on_click=lambda e: app.updater.show_dialog()),
         C.ghost(tr("Later"), on_click=lambda e: (updates.skip(up.version), app.updater._set(None))),

@@ -24,7 +24,8 @@ class VulkanSanitize(Patch):
     def detect(self, a):
         if a.engine == "Unreal":
             return Suggestion(True, "Unreal game: applied automatically when the engine loads Vulkan by name; keeps "
-                                    "Lepton's Fossilize layer from crashing on uninitialized pointers (e.g. Deadpool VR).")
+                                    "Lepton's Fossilize layer from crashing on uninitialized pointers "
+                                    "(e.g. Deadpool VR).")
         return None
 
     def applies(self, a):

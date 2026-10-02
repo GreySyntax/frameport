@@ -91,7 +91,8 @@ def install(frame: Frame, plan: InstallPlan, reporter: Reporter) -> dict:
         else:
             def apk_cb(done, size):
                 reporter.check_cancel()
-                reporter.progress(done / total, f"APK {done / 2**20:.0f}/{size / 2**20:.0f} MiB", speed=speed.text(done))
+                reporter.progress(done / total, f"APK {done / 2**20:.0f}/{size / 2**20:.0f} MiB",
+                                  speed=speed.text(done))
             xfer.put(plan.apk, posixpath.join(incoming, "game.apk"), apk_cb)
             sent += plan.apk.stat().st_size
         if to_send:
@@ -107,7 +108,8 @@ def install(frame: Frame, plan: InstallPlan, reporter: Reporter) -> dict:
     reporter.stage("Finalize install")
     ctx = install_context(plan.recipe)
     result = frame.agent(
-        "finalize", package=plan.package, title=plan.title, dest=plan.dest, apk_sha256=apk_sha, tags=_tags(plan.package),
+        "finalize", package=plan.package, title=plan.title, dest=plan.dest, apk_sha256=apk_sha,
+        tags=_tags(plan.package),
         apk_name=plan.apk.name, settings=ctx.adapter_settings,
         files={k: v.decode() if isinstance(v, bytes) else v for k, v in ctx.files.items()}, env=ctx.env,
         obb_manifest=manifest or None,

@@ -13,3 +13,9 @@ native/.cache/
 native/**/build/
 # per-machine Claude Code settings (contain home paths)
 .claude/settings.local.json
+
+# maintainer-local notes for Claude Code (accounts, credentials)
+CLAUDE.local.md
+# outputs of `frameport report` / `parity` / ruff
+REPORT.md
+.ruff_cache/

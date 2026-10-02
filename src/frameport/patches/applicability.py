@@ -29,7 +29,8 @@ def arm64(a: Analysis) -> bool:
 
 
 def meta_audio_libs(a: Analysis) -> list[str]:
-    return [lib for lib in a.libs if lib.lower().startswith(("libmetaxraudio", "libovraudio", "libaksoundengine", "libovravatar"))]
+    prefixes = ("libmetaxraudio", "libovraudio", "libaksoundengine", "libovravatar")
+    return [lib for lib in a.libs if lib.lower().startswith(prefixes)]
 
 
 def uses_scene(a: Analysis) -> bool:
@@ -55,7 +56,8 @@ def unreal_version(a: Analysis) -> tuple[int, int] | None:
 def uses_render_models(a: Analysis) -> bool:
     """The game declares Meta's runtime controller models (XR_FB_render_model): permission or feature RENDER_MODEL."""
     perms = a.extra.get("meta_permissions_used") or a.meta_permissions
-    return any(p.endswith("RENDER_MODEL") for p in perms) or "com.oculus.feature.RENDER_MODEL" in (a.extra.get("features") or {})
+    return (any(p.endswith("RENDER_MODEL") for p in perms)
+            or "com.oculus.feature.RENDER_MODEL" in (a.extra.get("features") or {}))
 
 
 def may_use_render_models(a: Analysis) -> bool:

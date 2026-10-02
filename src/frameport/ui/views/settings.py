@@ -34,7 +34,8 @@ class SettingsView:
             newer = s.latest and s.version and s.latest != s.version and s.version not in ("external", "system")
             detail = TOOL_WHY.get(s.name, "")
             if s.installed:
-                detail += f" · {s.version or 'installed'}" + (tr(" (update: {latest})").format(latest=s.latest) if newer else "")
+                detail += (f" · {s.version or 'installed'}"
+                           + (tr(" (update: {latest})").format(latest=s.latest) if newer else ""))
                 if s.name == "revive" and "using" in (s.detail or ""):
                     detail += " · " + s.detail.split("·")[-1].strip()
             else:
@@ -49,17 +50,20 @@ class SettingsView:
         from ...core import winhost
 
         if not winhost.available():
-            self.pc.controls = [C.status_row(None, tr("Windows not detected"),
-                                             tr("PC VR games can run on this PC only with Windows (or WSL on Windows)"))]
+            self.pc.controls = [C.status_row(
+                None, tr("Windows not detected"),
+                tr("PC VR games can run on this PC only with Windows (or WSL on Windows)"))]
         else:
             try:
                 from ...targets.pc_revive import PcReviveTarget
 
                 d = PcReviveTarget().describe()
                 self.pc.controls = [
-                    C.status_row(bool(d["steam"]), tr("Steam"), tr("Found") if d["steam"] else tr("Steam for Windows not found")),
+                    C.status_row(bool(d["steam"]), tr("Steam"),
+                                 tr("Found") if d["steam"] else tr("Steam for Windows not found")),
                     C.status_row(d["steamvr"] or None, tr("SteamVR"),
-                                 tr("Installed") if d["steamvr"] else tr("Install SteamVR from Steam to play PC VR games"),
+                                 tr("Installed") if d["steamvr"]
+                                 else tr("Install SteamVR from Steam to play PC VR games"),
                                  help="steamvr_pc"),
                     C.status_row(bool(d["revive"]), tr("Revive"), (f"{d['revive_version']} · {d['revive']}"
                                                               if d["revive"] else tr("Downloaded when first needed")),
@@ -89,10 +93,12 @@ class SettingsView:
         last = library.setting("update.last_check")
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(last)) if last else "never"
         found = app.updater.found
-        status = (C.callout(ft.Row([C.body(tr("FramePort {version} is available.").format(version=found.version), T.TEXT, expand=True),
+        status = (C.callout(ft.Row([C.body(tr("FramePort {version} is available.").format(version=found.version),
+                                           T.TEXT, expand=True),
                                     C.primary(tr("Update now"), ft.Icons.SYSTEM_UPDATE_ROUNDED,
                                               lambda e: app.updater.install())], spacing=T.S3), "info")
-                  if found else C.meta(tr("You have the latest version as of the last check ({when}).").format(when=when)))
+                  if found else C.meta(tr("You have the latest version as of the last check ({when}).")
+                                       .format(when=when)))
 
         def auto_check(e):
             library.set_setting("update.auto_check", bool(e.control.value))
@@ -126,7 +132,8 @@ class SettingsView:
         def changed(e):
             library.set_setting("ui.scale", e.control.value)
             new = T.scale_from_setting(e.control.value)
-            note.value = (tr("Now {scale:.0%}; {new:.0%} after restarting FramePort.").format(scale=T.SCALE, new=new) if abs(new - T.SCALE) > 0.01
+            note.value = (tr("Now {scale:.0%}; {new:.0%} after restarting FramePort.").format(scale=T.SCALE, new=new)
+                          if abs(new - T.SCALE) > 0.01
                           else tr("Now {scale:.0%}.").format(scale=T.SCALE))
             C.update(note)
 
@@ -154,17 +161,20 @@ class SettingsView:
         info = self.app.frame_info or {}
         remote = info.get("agent_version")
         if self.app.frame_state == "connected" and remote:
-            text += tr(" · on the Frame: ") + (f"v{remote}" if remote == mine else tr("v{remote} (updates on the next action)").format(remote=remote))
+            text += tr(" · on the Frame: ") + (f"v{remote}" if remote == mine
+                                               else tr("v{remote} (updates on the next action)").format(remote=remote))
         else:
             text += tr(" · Frame not connected")
         return text
 
     def build(self) -> ft.Control:
         app = self.app
-        self.tools.controls = [ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT),
+        self.tools.controls = [ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2),
+                                                       color=T.ACCENT),
                                        C.meta(tr("Checking tools…"))], spacing=T.S2)]
         app.run_bg(self.fill_tools)
-        self.pc.controls = [ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT),
+        self.pc.controls = [ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2),
+                                                    color=T.ACCENT),
                                     C.meta(tr("Checking this PC…"))], spacing=T.S2)]
         app.run_bg(self.fill_pc)
         from ... import __version__ as ver
@@ -183,14 +193,16 @@ class SettingsView:
                 C.kv(tr("Data folder"), ft.Row([C.body(data, T.TEXT, selectable=True, expand=True),
                                             C.icon_btn(ft.Icons.CONTENT_COPY_ROUNDED, tr("Copy path"),
                                                        lambda e: app.copy(data))]), "data_folder"),
-                C.kv(tr("Catalog"), tr("{len} known-good recipes (bundled, remote and yours)").format(len=len(catalog.load())), "catalog"),
+                C.kv(tr("Catalog"), tr("{len} known-good recipes (bundled, remote and yours)")
+                     .format(len=len(catalog.load())), "catalog"),
             ], spacing=T.S2))),
             C.section(tr("Problems and feedback"), C.card(ft.Row([
                 C.body(tr("Something not working? Collect a diagnostics zip (logs, settings, device info; personal "
                        "data removed) and attach it to a GitHub issue. For one game, use its menu instead."),
                        expand=True),
                 C.ghost(tr("Collect app logs"), ft.Icons.FOLDER_ZIP_OUTLINED, lambda e: app.collect_logs()),
-                C.secondary(tr("Report a problem…"), ft.Icons.BUG_REPORT_OUTLINED, lambda e: app.report_problem_dialog()),
+                C.secondary(tr("Report a problem…"), ft.Icons.BUG_REPORT_OUTLINED,
+                            lambda e: app.report_problem_dialog()),
             ], spacing=T.S3)), help="diag_bundle"),
             C.section(tr("Remove FramePort"), C.card(ft.Row([
                 C.body(tr("Removes everything FramePort created: its data and tools on this PC, the Steam entries it "
@@ -208,6 +220,7 @@ class SettingsView:
                 C.kv(tr("Frame agent"), self.agent_text(), "frame_agent"),
                 C.kv(tr("Source"), ft.TextButton(REPO_URL.removeprefix("https://"), icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                                              url=REPO_URL)),
-                C.meta(tr("Uses overport, Revive (LibreVR), Valve's Lepton and Proton. Not affiliated with Valve or Meta.")),
+                C.meta(tr("Uses overport, Revive (LibreVR), Valve's Lepton and Proton. "
+                          "Not affiliated with Valve or Meta.")),
             ], spacing=T.S2))),
         ], spacing=T.S5, scroll=ft.ScrollMode.AUTO, expand=True)

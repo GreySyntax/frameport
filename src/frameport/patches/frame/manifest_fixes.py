@@ -49,8 +49,8 @@ class NoDebuggable(Patch):
             return Suggestion(True, f"Unreal Engine {v[0]}.{v[1]}: older UE4 makes JNI calls CheckJNI rejects "
                                     "(e.g. Time Stall aborted on GetStringUTFChars(NULL)).")
         if any(lib.startswith("libmetaxraudio") for lib in a.libs):
-            return Suggestion(True, "Unreal build of Meta XR Audio: its telemetry lookup leaves a pending JNI exception "
-                                    "that CheckJNI turns into an abort (e.g. NOPE Challenge).")
+            return Suggestion(True, "Unreal build of Meta XR Audio: its telemetry lookup leaves a pending JNI "
+                                    "exception that CheckJNI turns into an abort (e.g. NOPE Challenge).")
         return Suggestion(False, "Enable if the game aborts with 'JNI DETECTED ERROR' (CheckJNI).")
 
     def applies(self, a):
@@ -74,11 +74,12 @@ class MetaPermissions(Patch):
         from ..applicability import needs_scene
 
         if needs_scene(a):
-            return Suggestion(True, "Mixed-reality game that needs the room model: its 'use spatial data' permission must "
-                                    "be granted (e.g. Demeter).")
+            return Suggestion(True, "Mixed-reality game that needs the room model: its 'use spatial data' "
+                                    "permission must be granted (e.g. Demeter).")
         scene = [p for p in a.meta_permissions if any(k in p for k in ("SCENE", "ANCHOR", "SPATIAL", "BOUNDARY"))]
         if scene:
-            return Suggestion(False, "Uses Meta scene/anchor permissions (" + ", ".join(p.rsplit(".", 1)[-1] for p in scene[:3])
+            names = ", ".join(p.rsplit(".", 1)[-1] for p in scene[:3])
+            return Suggestion(False, "Uses Meta scene/anchor permissions (" + names
                               + "); enable if the game says it needs spatial data access.")
         return None
 

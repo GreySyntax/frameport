@@ -57,8 +57,10 @@ int main(void) {
             }
     // equirect2: full sphere, image centre (u 0.5) straight ahead (-Z), +X to the right, v 1 at the top
     float u, v;
-    CHECK(lm_equirect2_uv((XrVector3f){0, 0, -1}, 2 * LM_PI, LM_PI / 2, -LM_PI / 2, &u, &v) && NEAR(u, 0.5f) && NEAR(v, 0.5f));
-    CHECK(lm_equirect2_uv((XrVector3f){1, 0, 0}, 2 * LM_PI, LM_PI / 2, -LM_PI / 2, &u, &v) && NEAR(u, 0.75f) && NEAR(v, 0.5f));
+    CHECK(lm_equirect2_uv((XrVector3f){0, 0, -1}, 2 * LM_PI, LM_PI / 2, -LM_PI / 2, &u, &v)
+          && NEAR(u, 0.5f) && NEAR(v, 0.5f));
+    CHECK(lm_equirect2_uv((XrVector3f){1, 0, 0}, 2 * LM_PI, LM_PI / 2, -LM_PI / 2, &u, &v)
+          && NEAR(u, 0.75f) && NEAR(v, 0.5f));
     CHECK(lm_equirect2_uv((XrVector3f){-1, 0, 0}, 2 * LM_PI, LM_PI / 2, -LM_PI / 2, &u, &v) && NEAR(u, 0.25f));
     CHECK(lm_equirect2_uv((XrVector3f){0, 1, 0}, 2 * LM_PI, LM_PI / 2, -LM_PI / 2, &u, &v) && NEAR(v, 1.0f));
     CHECK(lm_equirect2_uv((XrVector3f){0, -1, -0.0001f}, 2 * LM_PI, LM_PI / 2, -LM_PI / 2, &u, &v) && v < 0.001f);
@@ -72,10 +74,12 @@ int main(void) {
     CHECK(lm_face_visible(1, ahead, cos_limit) && lm_face_visible(4, ahead, cos_limit));
     CHECK(lm_face_score(0, ahead) > lm_face_score(1, ahead));
     // pose algebra (stable_local): (A∘B)∘B⁻¹ = A
-    XrPosef a = {lm_axis_angle(0, 1, 0, 0.7f), {0.3f, -0.2f, 1.1f}}, b = {lm_axis_angle(1, 0, 0, -0.4f), {-0.5f, 0.1f, 0.2f}};
+    XrPosef a = {lm_axis_angle(0, 1, 0, 0.7f), {0.3f, -0.2f, 1.1f}},
+            b = {lm_axis_angle(1, 0, 0, -0.4f), {-0.5f, 0.1f, 0.2f}};
     XrPosef back = lm_pose_mul(lm_pose_mul(a, b), lm_pose_inv(b));
     CHECK(VNEAR(back.position, a.position.x, a.position.y, a.position.z));
-    CHECK(NEAR(fabsf(back.orientation.w), fabsf(a.orientation.w)) && NEAR(lm_angle(lm_qmul(back.orientation, lm_qconj(a.orientation))), 0));
+    CHECK(NEAR(fabsf(back.orientation.w), fabsf(a.orientation.w))
+          && NEAR(lm_angle(lm_qmul(back.orientation, lm_qconj(a.orientation))), 0));
     CHECK(NEAR(lm_angle(lm_axis_angle(0, 1, 0, 0.5f)), 0.5f));
     puts("ok");
     return 0;

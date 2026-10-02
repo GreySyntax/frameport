@@ -153,7 +153,8 @@ def test_pcvr_install_flow(monkeypatch, tmp_path):
     (inc / "revive").mkdir(exist_ok=True)
     (inc / "revive/ReviveInjector.exe").write_bytes(b"MZ")
     (inc / "xrlayer").mkdir(exist_ok=True)
-    layer_json = '{"api_layer": {"name": "XR_APILAYER_FRAMEPORT_timefix", "library_path": "./libxr_frameport_timefix.so"}}'
+    layer_json = ('{"api_layer": {"name": "XR_APILAYER_FRAMEPORT_timefix", '
+                  '"library_path": "./libxr_frameport_timefix.so"}}')
     (inc / "xrlayer/XR_APILAYER_FRAMEPORT_timefix.json").write_text(layer_json)
     (inc / "xrlayer/libxr_frameport_timefix.so").write_bytes(b"ELF")
     manifests = {"game": {"Space Game.exe": 5, "Space Game_Data/level0": 4}, "revive": {"ReviveInjector.exe": 2},
@@ -250,7 +251,8 @@ def test_run_tree_kills_the_whole_group(monkeypatch, tmp_path):
     out, code = a.run_tree(["bash", "-c", "echo started; (sleep 60 &) ; sleep 60"], dict(a.os.environ), str(tmp_path),
                            str(tmp_path / "log"), 2)
     assert code is None and "started" in out and time.time() - start < 20
-    out, code = a.run_tree(["bash", "-c", "echo ok; exit 3"], dict(a.os.environ), str(tmp_path), str(tmp_path / "l2"), 10)
+    out, code = a.run_tree(["bash", "-c", "echo ok; exit 3"], dict(a.os.environ), str(tmp_path), str(tmp_path / "l2"),
+                           10)
     assert (out.strip(), code) == ("ok", 3)
 
 
@@ -329,7 +331,8 @@ def test_pcvr_launcher_oculus_hmd_helper(monkeypatch, tmp_path):
     assert helper in cmd and cmd.index(helper) < cmd.index("ReviveInjector.exe")
     # everything after the helper is a Windows command line: the injector by its Z: path, then the game + args
     assert f"'Z:{base}/revive/ReviveInjector.exe'".replace("/", "\\") in cmd
-    assert cmd.index("ReviveInjector.exe") < cmd.index("/openxr") < cmd.index("UEGame.exe") < cmd.index("-nocrashreports")
+    assert (cmd.index("ReviveInjector.exe") < cmd.index("/openxr") < cmd.index("UEGame.exe")
+            < cmd.index("-nocrashreports"))
     assert a.deployment("rift.ue_game")["oculus_hmd"] is True
     cmd, base = install("rift.ue_direct", revive=False)
     assert f"{base}/helpers/fp_oculushmd.exe" in cmd and "ReviveInjector" not in cmd and "'Z:" in cmd
@@ -361,7 +364,8 @@ def test_launch_uses_steam_shortcut(monkeypatch, tmp_path):
     a = load_agent(monkeypatch, tmp_path)
     anchor = tmp_path / "Applications/quest-frame/com.x.y"
     anchor.mkdir(parents=True)
-    (anchor / "deployment.json").write_text(json.dumps({"package": "com.x.y", "appid": 2546384938, "base": str(anchor)}))
+    deployment = {"package": "com.x.y", "appid": 2546384938, "base": str(anchor)}
+    (anchor / "deployment.json").write_text(json.dumps(deployment))
     calls = []
     monkeypatch.setattr(a, "run", lambda cmd, **k: (calls.append(cmd), SimpleNamespace(returncode=0, stdout=""))[1])
     r = a.cmd_launch({"package": "com.x.y"})

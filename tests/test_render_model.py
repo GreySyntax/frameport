@@ -36,8 +36,10 @@ int main(int argc, char **argv) {
     if (argc > 2) { CHECK(!render_models_available); return 0; }
     CHECK(render_models_available);
     emulate_render_model = 1;
-    PFN_xrEnumerateRenderModelPathsFB enumerate = (PFN_xrEnumerateRenderModelPathsFB)render_model_emulation("xrEnumerateRenderModelPathsFB");
-    PFN_xrGetRenderModelPropertiesFB props_fn = (PFN_xrGetRenderModelPropertiesFB)render_model_emulation("xrGetRenderModelPropertiesFB");
+    PFN_xrEnumerateRenderModelPathsFB enumerate =
+        (PFN_xrEnumerateRenderModelPathsFB)render_model_emulation("xrEnumerateRenderModelPathsFB");
+    PFN_xrGetRenderModelPropertiesFB props_fn =
+        (PFN_xrGetRenderModelPropertiesFB)render_model_emulation("xrGetRenderModelPropertiesFB");
     PFN_xrLoadRenderModelFB load = (PFN_xrLoadRenderModelFB)render_model_emulation("xrLoadRenderModelFB");
     CHECK(enumerate && props_fn && load && !render_model_emulation("xrCreatePassthroughFB"));
     uint32_t n = 0;
@@ -51,10 +53,12 @@ int main(int argc, char **argv) {
                                               XR_RENDER_MODEL_SUPPORTS_GLTF_2_0_SUBSET_2_BIT_FB};
     XrRenderModelPropertiesFB props = {XR_TYPE_RENDER_MODEL_PROPERTIES_FB, &req};
     CHECK(props_fn(XR_NULL_HANDLE, right, &props) == XR_SUCCESS);
-    CHECK(props.vendorId == 0x28DE && strstr(props.modelName, "Right") && props.modelKey != XR_NULL_RENDER_MODEL_KEY_FB);
+    CHECK(props.vendorId == 0x28DE && strstr(props.modelName, "Right")
+          && props.modelKey != XR_NULL_RENDER_MODEL_KEY_FB);
     CHECK(props.flags == XR_RENDER_MODEL_SUPPORTS_GLTF_2_0_SUBSET_2_BIT_FB);
     XrRenderModelPropertiesFB bad = {XR_TYPE_RENDER_MODEL_PROPERTIES_FB};
-    CHECK(props_fn(XR_NULL_HANDLE, 12345, &bad) == XR_ERROR_PATH_UNSUPPORTED && bad.modelKey == XR_NULL_RENDER_MODEL_KEY_FB);
+    CHECK(props_fn(XR_NULL_HANDLE, 12345, &bad) == XR_ERROR_PATH_UNSUPPORTED
+          && bad.modelKey == XR_NULL_RENDER_MODEL_KEY_FB);
     XrRenderModelLoadInfoFB info = {XR_TYPE_RENDER_MODEL_LOAD_INFO_FB, NULL, props.modelKey};
     XrRenderModelBufferFB buf = {XR_TYPE_RENDER_MODEL_BUFFER_FB};
     CHECK(load(XR_NULL_HANDLE, &info, &buf) == XR_SUCCESS && buf.bufferCountOutput == 11);
@@ -75,8 +79,9 @@ int main(int argc, char **argv) {
 def harness(tmp_path_factory):
     d = tmp_path_factory.mktemp("render_model")
     (d / "harness.c").write_text(HARNESS)
-    subprocess.run([CC, "-std=c11", "-D_GNU_SOURCE", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", "-Wno-unused-variable",
-                    "-Wno-missing-field-initializers", "-I", str(INC), "-I", str(ROOT / "native/adapter"),
+    subprocess.run([CC, "-std=c11", "-D_GNU_SOURCE", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
+                    "-Wno-unused-variable", "-Wno-missing-field-initializers", "-I", str(INC),
+                    "-I", str(ROOT / "native/adapter"),
                     str(d / "harness.c"), "-o", str(d / "harness")], check=True)
     return d / "harness"
 

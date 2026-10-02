@@ -22,7 +22,8 @@ def test_needed_layout_equivalent():
 
 
 def test_settings_classification():
-    kind, why = classify("lib/arm64-v8a/libframe_settings.so", b"scale=1.0\nscene_emul=1\n", b"scene_emul=1\nscale=1.0\n")
+    kind, why = classify("lib/arm64-v8a/libframe_settings.so", b"scale=1.0\nscene_emul=1\n",
+                         b"scene_emul=1\nscale=1.0\n")
     assert kind == "equivalent"
 
 

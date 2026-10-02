@@ -22,7 +22,8 @@ def test_stub_library(abi):
 def _with_note(lib: bytes) -> bytes:
     """Turn the stub's PT_GNU_STACK into a PT_NOTE so add_needed can reuse it (the common case)."""
     buf = bytearray(lib)
-    phoff, phentsize, phnum = struct.unpack_from("<Q", buf, 32)[0], struct.unpack_from("<H", buf, 54)[0], struct.unpack_from("<H", buf, 56)[0]
+    phoff = struct.unpack_from("<Q", buf, 32)[0]
+    phentsize, phnum = struct.unpack_from("<H", buf, 54)[0], struct.unpack_from("<H", buf, 56)[0]
     for i in range(phnum):
         if struct.unpack_from("<I", buf, phoff + i * phentsize)[0] == 0x6474E551:
             struct.pack_into("<I", buf, phoff + i * phentsize, 4)

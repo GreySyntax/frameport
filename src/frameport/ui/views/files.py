@@ -271,7 +271,8 @@ class FilesView:
                                                                               else T.TEXT_2)))
         android = loc.get("android")
         rel = posixpath.relpath(self.path, loc["path"]) if self.path != loc["path"] else ""
-        self.where.value = (tr("Games see this folder as {value}").format(value=posixpath.join(android, rel) if rel else android)
+        self.where.value = (tr("Games see this folder as {value}")
+                            .format(value=posixpath.join(android, rel) if rel else android)
                             if android else self.path)
         rows = []
         self.checks = {}
@@ -284,7 +285,8 @@ class FilesView:
         self.listing.controls = rows
         n_dirs = sum(e.is_dir for e in self.entries)
         size = sum(e.size for e in self.entries if not e.is_dir)
-        self.status.value = ", ".join([tr_n("{n} folder", "{n} folders", n_dirs), tr_n("{n} file", "{n} files", len(self.entries) - n_dirs), human(size)])
+        self.status.value = ", ".join([tr_n("{n} folder", "{n} folders", n_dirs),
+                                       tr_n("{n} file", "{n} files", len(self.entries) - n_dirs), human(size)])
         self._update_selection(render=False)
         for c in (self.crumb_row, self.where, self.listing, self.status):
             C.update(c)
@@ -296,10 +298,13 @@ class FilesView:
                                 padding=ft.Padding(T.S3, T.px(8), T.S3, T.px(8)), border_radius=T.RADIUS_SM, ink=True,
                                 on_click=lambda ev: self.cd(posixpath.dirname(self.path)))
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(e.mtime)) if e.mtime else ""
-        info = ("folder" if e.is_dir else human(e.size)) + (tr(" · link") if e.link else "") + (f" · {when}" if when else "")
-        actions = [C.icon_btn(ft.Icons.DOWNLOAD_ROUNDED, tr("Download to this PC"), lambda ev, x=e: self.download([x]))]
+        info = (("folder" if e.is_dir else human(e.size)) + (tr(" · link") if e.link else "")
+                + (f" · {when}" if when else ""))
+        actions = [C.icon_btn(ft.Icons.DOWNLOAD_ROUNDED, tr("Download to this PC"),
+                              lambda ev, x=e: self.download([x]))]
         if not self._protected(e):
-            actions += [C.icon_btn(ft.Icons.DRIVE_FILE_RENAME_OUTLINE_ROUNDED, tr("Rename"), lambda ev, x=e: self.rename(x)),
+            actions += [C.icon_btn(ft.Icons.DRIVE_FILE_RENAME_OUTLINE_ROUNDED, tr("Rename"),
+                                   lambda ev, x=e: self.rename(x)),
                         C.icon_btn(ft.Icons.DELETE_OUTLINE_ROUNDED, tr("Delete"), lambda ev, x=e: self.delete([x]))]
         check = ft.Checkbox(value=e.path in self.selected, active_color=T.ACCENT, check_color=T.ON_ACCENT,
                             on_change=lambda ev, p=e.path: self._toggle(p, ev.control.value),
@@ -345,7 +350,8 @@ class FilesView:
     def _update_selection(self, render: bool = True) -> None:
         n = len(self.selected)
         size = sum(x.size for x in self.entries if x.path in self.selected and not x.is_dir)
-        self.sel_label.value = tr("{n} selected").format(n=n) + (tr(" · {human} in files").format(human=human(size)) if size else "")
+        self.sel_label.value = (tr("{n} selected").format(n=n)
+                                + (tr(" · {human} in files").format(human=human(size)) if size else ""))
         self.sel_bar.visible = bool(n)
         self.select_all.value = bool(self.entries) and n == len([x for x in self.entries if self._selectable(x)])
         if render:
@@ -389,8 +395,10 @@ class FilesView:
             from ...install import files
 
             sent, skipped, total = files.upload(app.target.frame, paths, dest, job.reporter)
-            return tr_n("Uploaded {n} file", "Uploaded {n} files", len(sent)) + (tr_n(", {n} already there", ", {n} already there", len(skipped)) if skipped else "")
-        app.submit(tr("Upload to {label}").format(label=loc['label']), run, loc.get("package"), kind="tool-frame", open_panel=True)
+            return (tr_n("Uploaded {n} file", "Uploaded {n} files", len(sent))
+                    + (tr_n(", {n} already there", ", {n} already there", len(skipped)) if skipped else ""))
+        app.submit(tr("Upload to {label}").format(label=loc['label']), run, loc.get("package"), kind="tool-frame",
+                   open_panel=True)
 
     async def download(self, items: list) -> None:
         folder = await ft.FilePicker().get_directory_path(dialog_title=tr("Download to which folder on this PC?"))
@@ -402,8 +410,10 @@ class FilesView:
             from ...install import files
 
             r = files.download(app.target.frame, root, [x.path for x in items], Path(folder), job.reporter)
-            return tr_n("Downloaded {n} file to {folder}", "Downloaded {n} files to {folder}", r["files"], folder=r["folder"])
-        app.submit(tr("Download {name}").format(name=items[0].name) + (tr_n(" and {n} more", " and {n} more", len(items) - 1) if len(items) > 1 else ""), run,
+            return tr_n("Downloaded {n} file to {folder}", "Downloaded {n} files to {folder}", r["files"],
+                        folder=r["folder"])
+        more = tr_n(" and {n} more", " and {n} more", len(items) - 1) if len(items) > 1 else ""
+        app.submit(tr("Download {name}").format(name=items[0].name) + more, run,
                    None, kind="tool-frame", open_panel=True)
 
     def new_folder(self) -> None:
@@ -411,13 +421,15 @@ class FilesView:
             lambda files, frame: files.make_dir(frame, self.loc["path"], self.path, name)))
 
     def rename(self, e) -> None:
-        self._ask_name(tr("Rename {name}").format(name=e.name), tr("New name"), e.name, tr("Rename"), lambda name: self._fs(
-            lambda files, frame: files.rename(frame, self.loc["path"], e.path, name)))
+        self._ask_name(tr("Rename {name}").format(name=e.name), tr("New name"), e.name, tr("Rename"),
+                       lambda name: self._fs(
+                           lambda files, frame: files.rename(frame, self.loc["path"], e.path, name)))
 
     def delete(self, items: list) -> None:
         names = ", ".join(x.name for x in items[:3]) + (" …" if len(items) > 3 else "")
         what = tr("folder and everything in it") if any(x.is_dir for x in items) else "file"
-        C.confirm(self.app.page, tr("Delete {names}?").format(names=names), tr("This deletes the {what} on the Frame. It can't be undone.").format(what=what),
+        C.confirm(self.app.page, tr("Delete {names}?").format(names=names),
+                  tr("This deletes the {what} on the Frame. It can't be undone.").format(what=what),
                   tr("Delete"), lambda: (self.selected.difference_update(x.path for x in items),
                                      self._fs(lambda files, frame: files.delete(frame, self.loc["path"],
                                                                                 [x.path for x in items]))),

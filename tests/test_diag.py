@@ -15,11 +15,12 @@ from frameport.recommend import catalog
 
 ROOT = Path(__file__).resolve().parents[1]
 
-LOG = """
+LOG = ("""
 09-28 17:39:01.000  1000  1000 I ActivityManager: Start proc 1150:com.example.game/u0a55 for activity
-09-28 17:39:02.000  1150  1170 E AndroidRuntime: java.lang.UnsatisfiedLinkError: dlopen failed: cannot locate symbol "ovr_User_GetLoggedInUser" referenced by "libgame.so"
+09-28 17:39:02.000  1150  1170 E AndroidRuntime: java.lang.UnsatisfiedLinkError: dlopen failed: cannot locate symbol"""
+""" "ovr_User_GetLoggedInUser" referenced by "libgame.so"
 connecting to 192.168.1.23 from /home/alice/.local/share/frameport, steam id 76561198012345678
-"""
+""")
 
 
 @pytest.fixture(autouse=True)
@@ -218,7 +219,8 @@ def test_catalog_from_issue(tmp_path):
 
 
 @pytest.mark.parametrize("bad", ["package: ../../etc/passwd\ntitle: x", "package: com.a.b\ntitle: x\nevil: 1",
-                                 "package: com.a.b\ntitle: x\nstatus: great", "package: com.a.b\ntitle: x\nframe: [\"$(rm)\"]",
+                                 "package: com.a.b\ntitle: x\nstatus: great",
+                                 "package: com.a.b\ntitle: x\nframe: [\"$(rm)\"]",
                                  "package: com.a.b\ntitle: x\ndevice_files: {'../x': 1}", "- a list"])
 def test_catalog_from_issue_rejects(tmp_path, bad):
     s = _script()

@@ -252,7 +252,8 @@ def define_meta_permissions(manifest: bytes) -> tuple[bytes, list[str]] | None:
         start = struct.pack("<HHIII", RES_XML_START_ELEMENT, 16, 56, 0, 0xFFFFFFFF)
         start += struct.pack("<IIHHHHHH", 0xFFFFFFFF, perm_el, 20, 20, 1, 0, 0, 0)
         start += struct.pack("<IIIHBBI", android_ns, name_attr, value, 8, 0, TYPE_STRING, value)
-        end = struct.pack("<HHIII", RES_XML_END_ELEMENT, 16, 24, 0, 0xFFFFFFFF) + struct.pack("<II", 0xFFFFFFFF, perm_el)
+        end = (struct.pack("<HHIII", RES_XML_END_ELEMENT, 16, 24, 0, 0xFFFFFFFF)
+               + struct.pack("<II", 0xFFFFFFFF, perm_el))
         chunks += start + end
     manifest_el = next(el for el in x.elements() if el.name == "manifest")
     insert_at = manifest_el.offset + manifest_el.size

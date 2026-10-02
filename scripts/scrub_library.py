@@ -74,9 +74,11 @@ def main() -> int:
              if not keep or (g.get("recipe") or {}).get("status", "unknown") in keep}
     view = {**(lib.get("settings", {}).get("ui.library") or {}), "sort": args.sort, "platform": "all",
             "where": "all", "status": "all", "tags": []}
-    out = {"games": games, "settings": {"ui.library": view, "migrations": lib.get("settings", {}).get("migrations", [])}}
+    migrations = lib.get("settings", {}).get("migrations", [])
+    out = {"games": games, "settings": {"ui.library": view, "migrations": migrations}}
     text = json.dumps(out, indent=1)
-    leftovers = [o for o in re.findall(r'"((?:/|[A-Za-z]:\\\\)[^"]*)"', text) if not o.startswith(("D:/Games/",) + DEVICE)]
+    leftovers = [o for o in re.findall(r'"((?:/|[A-Za-z]:\\\\)[^"]*)"', text)
+                 if not o.startswith(("D:/Games/",) + DEVICE)]
     if leftovers:
         print("not scrubbed:", leftovers[:10], file=sys.stderr)
         return 1

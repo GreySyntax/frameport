@@ -301,7 +301,8 @@ class PcReviveTarget(Target):
         for m in result.milestones:
             reporter.check(m, True)
         for f in result.findings:
-            reporter.check(f.id, None if f.severity in ("warning", "info") else False, f"{f.diagnosis} [{f.evidence[:160]}]")
+            reporter.check(f.id, None if f.severity in ("warning", "info") else False,
+                           f"{f.diagnosis} [{f.evidence[:160]}]")
         return result, log
 
     def set_settings(self, package, settings):

@@ -20,8 +20,9 @@ from ..help import HELP
 if TYPE_CHECKING:
     from ..app import FramePortApp
 
-CATEGORY_TITLES = {"frame": tr("Steam Frame patches"), "overport": tr("OVRPort patches"), "adapter": tr("Adapter settings"),
-                   "device": tr("Files and environment on the Frame"), "pcvr": tr("PC VR (Revive / Proton)")}
+CATEGORY_TITLES = {"frame": tr("Steam Frame patches"), "overport": tr("OVRPort patches"),
+                   "adapter": tr("Adapter settings"), "device": tr("Files and environment on the Frame"),
+                   "pcvr": tr("PC VR (Revive / Proton)")}
 
 
 def _ago(t: float | None) -> str:
@@ -88,7 +89,8 @@ class GameView:
             pct = (f" {job.fraction:.0%}" if job.fraction is not None else "") + \
                 (f" · {job.speed.split(' · ')[0]}" if job.speed else "")
             return ft.Row([
-                ft.FilledButton(content=ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ON_ACCENT),
+                ft.FilledButton(content=ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2),
+                                                                color=T.ON_ACCENT),
                                                 ft.Text(f"{job.stage or 'Queued'}{pct}", color=T.ON_ACCENT,
                                                         weight=ft.FontWeight.W_600)], spacing=T.px(10), tight=True),
                                 on_click=lambda e: app.show_activity(True),
@@ -104,8 +106,8 @@ class GameView:
                 C.install_state(g, app.frame_info) in ("installed", "outdated"):
             buttons.append(C.secondary(tr("Add videos"), ft.Icons.VIDEO_LIBRARY_OUTLINED,
                                        lambda e: app.go("files", pkg), False,
-                                       tr("Opens this player's storage on the Frame (Files tab): upload videos into the "
-                                       "folder it lists")))
+                                       tr("Opens this player's storage on the Frame (Files tab): upload videos "
+                                          "into the folder it lists")))
         more = ft.PopupMenuButton(icon=ft.Icons.MORE_HORIZ_ROUNDED, icon_color=T.TEXT_2, bgcolor=T.SURFACE_2,
                                   tooltip=tr("More actions"), items=C.menu_items(app.game_actions(pkg, quick=False)))
         return ft.Row(buttons + [more], spacing=T.S2, wrap=True)
@@ -139,7 +141,8 @@ class GameView:
                      tr("Needs the Oculus Platform (Meta Horizon app) for its license check, which the Frame doesn't "
                      "have — it crashes at startup there. Play it on this PC.") if rift_platform else
                      tr("Uses the repack's bundled Revive — experimental on the Frame") if rift_repack and not last else
-                     tr("Last launch test: {get} · furthest: {value}").format(get=last.get('verdict'), value=last.get('milestone') or '—') if last
+                     tr("Last launch test: {get} · furthest: {value}")
+                     .format(get=last.get('verdict'), value=last.get('milestone') or '—') if last
                      else tr("Runs directly — no Revive needed") if self.rift else "")
         cards.append(self.target_card(
             ft.Icons.VIEW_IN_AR_ROUNDED, tr("Steam Frame"), frame_line, frame_color, frame_sub,
@@ -154,7 +157,8 @@ class GameView:
                 (tr("In your Steam library · launch settings changed — update it") if C.pc_outdated(g, dep) else
                  tr("In your Steam library")) if dep else tr("Not installed"),
                 (T.WARN if C.pc_outdated(g, dep) else T.PC) if dep else T.TEXT_3,
-                (tr("Revive {value} · {value2} backend").format(value=dep.get('revive_version') or '', value2=dep.get('backend') or 'openxr')
+                (tr("Revive {value} · {value2} backend")
+                 .format(value=dep.get('revive_version') or '', value2=dep.get('backend') or 'openxr')
                  if dep.get("revive_win") else tr("The repack's own Revive · runs the game directly")
                  if dep.get("launch") == "repack" else tr("Runs the game directly")) if dep else "",
                 [C.icon_btn(ft.Icons.SCIENCE_OUTLINED, tr("Launch test on this PC"),
@@ -165,8 +169,8 @@ class GameView:
 
     def target_card(self, icon, name, line, color, sub, buttons) -> ft.Control:
         return C.card(ft.Row([
-            ft.Container(ft.Icon(icon, color=color, size=T.px(22)), width=T.px(44), height=T.px(44), border_radius=T.px(10),
-                         bgcolor=T.soft(color, 0.14), alignment=ft.Alignment.CENTER),
+            ft.Container(ft.Icon(icon, color=color, size=T.px(22)), width=T.px(44), height=T.px(44),
+                         border_radius=T.px(10), bgcolor=T.soft(color, 0.14), alignment=ft.Alignment.CENTER),
             ft.Column([C.body(name, T.TEXT, weight=ft.FontWeight.W_600), C.body(line, color, size=T.T_META)]
                       + ([C.meta(sub)] if sub else []), spacing=T.px(2), expand=True),
             *buttons,
@@ -180,25 +184,29 @@ class GameView:
         extra = g["analysis"].get("extra", {})
         if self.rift and g.get("exe_confirmed") is False:
             out.append(C.callout(ft.Row([
-                C.body(tr("FramePort picked {value} to start this game, but there are other candidates. Check it before installing.").format(value=g.get('exe', '').rsplit('/', 1)[-1]), T.TEXT, expand=True),
+                C.body(tr("FramePort picked {value} to start this game, but there are other candidates. "
+                          "Check it before installing.").format(value=g.get('exe', '').rsplit('/', 1)[-1]),
+                       T.TEXT, expand=True),
                 C.secondary(tr("Check"), ft.Icons.TERMINAL_ROUNDED, lambda e: self.app.choose_exe(pkg))]), "warn",
                 ft.Icons.HELP_OUTLINE_ROUNDED))
         if self.rift and extra.get("platform_sdk"):
-            out.append(C.callout(tr("Uses the Oculus Platform SDK: it checks your Oculus license. Normally that needs the "
-                                 "Oculus app on this PC with a license you own, so it may quit right after starting "
-                                 "on the headset. You can still try it."), "warn"))
+            out.append(C.callout(tr("Uses the Oculus Platform SDK: it checks your Oculus license. Normally that "
+                                    "needs the Oculus app on this PC with a license you own, so it may quit right "
+                                    "after starting on the headset. You can still try it."), "warn"))
         if recipe.status == "unsupported":
             out.append(C.callout(recipe.notes or tr("This game can't run on the Steam Frame."), "error"))
         elif recipe.notes and not (self.rift and extra.get("platform_sdk")):
             out.append(C.callout(recipe.notes, "info"))
         if entry and entry.pcvr_alternative:
-            out.append(C.callout(tr("PC VR alternative: {pcvr_alternative}").format(pcvr_alternative=entry.pcvr_alternative), "pc"))
+            out.append(C.callout(tr("PC VR alternative: {pcvr_alternative}")
+                                 .format(pcvr_alternative=entry.pcvr_alternative), "pc"))
         from .library import counterparts
 
         links = []
         for r in counterparts(g, self.games):
             other_rift = r.get("kind") == "rift"
-            links.append(C.ghost(tr("Also in your library: {value} version").format(value='Rift' if other_rift else 'Quest'),
+            links.append(C.ghost(tr("Also in your library: {value} version")
+                                 .format(value='Rift' if other_rift else 'Quest'),
                                  ft.Icons.COMPUTER_ROUNDED if other_rift else ft.Icons.VIEW_IN_AR_ROUNDED,
                                  lambda e, p=r["package"]: self.app.open_game(p), color=T.ACCENT))
         if links:
@@ -231,7 +239,8 @@ class GameView:
         facts = [(k, d.get(k)) for k in ("developer", "publisher", "release_date") if d.get(k)]
         if facts:
             parts.append(ft.Row([ft.Column([C.meta({"developer": "Developer", "publisher": "Publisher",
-                                                     "release_date": "Released"}[k]), C.body(v, T.TEXT)], spacing=T.px(2))
+                                                     "release_date": "Released"}[k]), C.body(v, T.TEXT)],
+                                           spacing=T.px(2))
                                  for k, v in facts], spacing=T.S6, wrap=True))
         if d.get("genres"):
             parts.append(ft.Row([C.pill(g, T.TEXT_2) for g in d["genres"][:8]], spacing=T.px(6), wrap=True))
@@ -307,13 +316,16 @@ class GameView:
 
         field = ft.TextField(hint_text=tr("Add a tag"), dense=True, width=T.px(150), text_size=T.T_META,
                              border_radius=T.px(20), bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT,
-                             focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(6), T.px(12), T.px(6)), on_submit=add)
+                             focused_border_color=T.ACCENT,
+                             content_padding=ft.Padding(T.px(12), T.px(6), T.px(12), T.px(6)), on_submit=add)
 
         def fill():
             mine = user_tags(self.g)
             chips = [ft.Container(ft.Row([C.body(t, T.TEXT, size=T.T_META),
-                                          ft.Icon(ft.Icons.CLOSE_ROUNDED, size=T.px(13), color=T.TEXT_2)], spacing=T.px(4), tight=True),
-                                  bgcolor=T.ACCENT_SOFT, border_radius=T.px(20), padding=ft.Padding(T.px(10), T.px(5), T.px(8), T.px(5)),
+                                          ft.Icon(ft.Icons.CLOSE_ROUNDED, size=T.px(13), color=T.TEXT_2)],
+                                         spacing=T.px(4), tight=True),
+                                  bgcolor=T.ACCENT_SOFT, border_radius=T.px(20),
+                                  padding=ft.Padding(T.px(10), T.px(5), T.px(8), T.px(5)),
                                   on_click=lambda e, t=t: remove(t), tooltip=tr("Remove tag"))
                      for t in mine]
             chips += [ft.Container(C.meta(t), border=ft.Border.all(1, T.BORDER), border_radius=T.px(20),
@@ -341,20 +353,23 @@ class GameView:
         elif recipe.source == "user":
             lead, icon, color = tr("Your custom recipe"), ft.Icons.TUNE_ROUNDED, T.ACCENT
         else:
-            lead, icon, color = tr("Suggested by FramePort from the game's engine and APIs"), ft.Icons.AUTO_AWESOME_ROUNDED, \
-                T.ACCENT
+            lead, icon, color = tr("Suggested by FramePort from the game's engine and APIs"), \
+                ft.Icons.AUTO_AWESOME_ROUNDED, T.ACCENT
         chips = [ft.Container(C.body(tr(p.title), T.TEXT, size=T.T_META),
                               tooltip=C.tip(tr(recipe.reasons.get(p.id) or p.description)),
-                              bgcolor=T.SURFACE_3, border_radius=T.px(6), padding=ft.Padding(T.px(10), T.px(5), T.px(10), T.px(5)))
+                              bgcolor=T.SURFACE_3, border_radius=T.px(6),
+                              padding=ft.Padding(T.px(10), T.px(5), T.px(10), T.px(5)))
                  for p in visible]
         base_count = len(on) - len(visible)
         if base_count > 0:
-            chips.append(C.with_help(C.meta(tr("+ {base_count} standard patches").format(base_count=base_count)), "standard_fixes"))
+            chips.append(C.with_help(C.meta(tr("+ {base_count} standard patches").format(base_count=base_count)),
+                                     "standard_fixes"))
         as_is = recipe.as_is
         if as_is and self.rift:
             # a pre-patched Rift copy still needs a VR runtime on the Frame: Revive is added at launch, not to its files
             lead, icon, color = (tr("Your copy is used as it is (only the Frame's copy gets launch patches)") +
-                                 (tr(" · Revive provides the Oculus runtime") if "pcvr.revive" in recipe.patches else "")), \
+                                 (tr(" · Revive provides the Oculus runtime") if "pcvr.revive" in recipe.patches
+                                  else "")), \
                 ft.Icons.INVENTORY_2_ROUNDED, T.PC
         elif as_is:
             lead, icon, color = tr("Installs the game exactly as it is: no patches (your copy is already patched)"), \
@@ -467,7 +482,9 @@ class GameView:
             count = sum(1 for p in base.all_patches() if p.category == cat and p.id in recipe.patches)
             sections.append(C.card(ft.Column([
                 ft.Container(ft.Row([C.body(CATEGORY_TITLES[cat], T.TEXT, weight=ft.FontWeight.W_600),
-                                     C.help_icon(f"cat_{cat}"), C.meta(tr("{count} on").format(count=count))], spacing=T.S2), padding=ft.Padding(T.S4, T.S3, T.S4, T.S3)),
+                                     C.help_icon(f"cat_{cat}"), C.meta(tr("{count} on").format(count=count))],
+                                    spacing=T.S2),
+                             padding=ft.Padding(T.S4, T.S3, T.S4, T.S3)),
                 *rows], spacing=0), padding=0))
 
         def set_alt(e):
@@ -480,7 +497,8 @@ class GameView:
                                    "alt_build"))
         if hidden:
             top.append(C.with_help(C.switch(
-                label=tr("Show all patches ({len} don't apply to this game)").format(len=len(hidden)), value=self.show_all,
+                label=tr("Show all patches ({len} don't apply to this game)").format(len=len(hidden)),
+                value=self.show_all,
                 active_color=T.ACCENT, on_change=lambda e: app.open_game(package, advanced=True,
                                                                          show_all=e.control.value)), "show_all"))
         warn.value = "\n".join(engine.warnings(recipe))
@@ -493,9 +511,11 @@ class GameView:
         if self.rift:
             rows += [C.kv(tr("Folder"), g.get("game_dir") or ""), C.kv(tr("Executable"), g.get("exe") or ""),
                      C.kv(tr("Type"), f"{a['abis'][0]} · {a['graphics']}"),
-                     C.kv(tr("Size"), tr("{value:.1f} GiB").format(value=(a.get('extra', {}).get('data_bytes') or 0) / 2**30))]
+                     C.kv(tr("Size"), tr("{value:.1f} GiB")
+                          .format(value=(a.get('extra', {}).get('data_bytes') or 0) / 2**30))]
         else:
-            rows += [C.kv(tr("Version"), a.get("version") or ""), C.kv(tr("ABIs"), ", ".join(a.get("abis") or []), "abis"),
+            rows += [C.kv(tr("Version"), a.get("version") or ""),
+                     C.kv(tr("ABIs"), ", ".join(a.get("abis") or []), "abis"),
                      C.kv(tr("Graphics"), a.get("graphics") or "", "graphics"), C.kv(tr("APK"), g.get("apk") or ""),
                      C.kv(tr("Data"), tr("{value:.1f} GiB").format(value=(g.get('data_bytes') or 0) / 2**30)
                           + (f" · {g.get('data_dir')}" if g.get("data_dir") else ""))]
@@ -509,7 +529,8 @@ class GameView:
 
     def build(self) -> ft.Control:
         if not self.g:
-            return C.empty_state(ft.Icons.SEARCH_OFF_ROUNDED, tr("Game not found"), tr("It was removed from the library."),
+            return C.empty_state(ft.Icons.SEARCH_OFF_ROUNDED, tr("Game not found"),
+                                 tr("It was removed from the library."),
                                  C.primary(tr("Back to library"), on_click=lambda e: self.app.go("library")))
         about = self.about()
         body = [self.hero(), *self.notes(), self.where(), *([about] if about else []), self.tags(),

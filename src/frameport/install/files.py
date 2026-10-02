@@ -101,7 +101,8 @@ def send_files(frame: Frame, paths: list[Path], target: str = "videos", package:
         else:
             reporter.log("the game has no folder of its own yet (start it once); it finds the files in " + where)
     reporter.log(f"done: in the app, open {where}")
-    return {"files": len(items), "skipped": len(have), "bytes": total, "path": posixpath.join(dest["path"], sub), "android": where,
+    return {"files": len(items), "skipped": len(have), "bytes": total, "path": posixpath.join(dest["path"], sub),
+            "android": where,
             "shared": dest["shared"], "linked": linked}
 
 

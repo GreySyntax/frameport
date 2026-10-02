@@ -136,7 +136,8 @@ def main() -> int:
     vw, vh = (int(x) for x in args.viewport.split("x"))
     args.out.mkdir(parents=True, exist_ok=True)
     game = args.game or (library.games()[0]["package"] if library.games() else None)
-    steps = [("library", lambda a: a.navigate(0)), ("frame", lambda a: a.navigate(1)), ("files", lambda a: a.go("files")), ("tools", lambda a: a.go("settings"))]
+    steps = [("library", lambda a: a.navigate(0)), ("frame", lambda a: a.navigate(1)),
+             ("files", lambda a: a.go("files")), ("tools", lambda a: a.go("settings"))]
     if game:
         steps.insert(1, ("game", lambda a: a.open_game(game)))
         steps.insert(2, ("game-customize", lambda a: a.open_game(game, advanced=True)))
@@ -148,7 +149,8 @@ def main() -> int:
     if args.docs:
         steps = [("library", lambda a: a.navigate(0))]
         if game:
-            steps += [("game", lambda a: a.open_game(game)), ("game-customize", lambda a: a.open_game(game, advanced=True))]
+            steps += [("game", lambda a: a.open_game(game)),
+                      ("game-customize", lambda a: a.open_game(game, advanced=True))]
         steps.append(("frame", lambda a: a.navigate(1)))
         steps.append(("files", lambda a: a.go("files")))
         steps.append(("files-select", lambda a: [a.files_view._toggle(e.path, True)

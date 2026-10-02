@@ -136,7 +136,8 @@ def classify(name: str, new: bytes, old: bytes) -> tuple[str, str]:
         why = _overport_config(new, old)
         if why:
             return "expected", why
-    if base == "libovrplatformloader.so" and elf.is_elf(new) and elf.is_elf(old) and _text_bytes(new) == _text_bytes(old):
+    if (base == "libovrplatformloader.so" and elf.is_elf(new) and elf.is_elf(old)
+            and _text_bytes(new) == _text_bytes(old)):
         ignore = {"libovrstubs.so", COMPAT}
         if set(elf.needed(new)) - ignore == set(elf.needed(old)) - ignore and COMPAT in elf.needed(new):
             return "expected", "same loader, linked to the platform compat library by the overport CLI (OVRPort 1.2.5+)"
@@ -161,8 +162,10 @@ def classify(name: str, new: bytes, old: bytes) -> tuple[str, str]:
         return "UNEXPLAINED", "stub exports differ"
     if elf.is_elf(new) and elf.is_elf(old):
         if (elf.needed(new) == elf.needed(old) and elf.dyn_symbols(new, True) == elf.dyn_symbols(old, True)
-                and elf.dyn_symbols(new, False) == elf.dyn_symbols(old, False) and _text_bytes(new) == _text_bytes(old)):
-            return "equivalent", f"same code, symbols and NEEDED ({', '.join(elf.needed(new)[:2])}, …); different layout"
+                and elf.dyn_symbols(new, False) == elf.dyn_symbols(old, False)
+                and _text_bytes(new) == _text_bytes(old)):
+            return "equivalent", (f"same code, symbols and NEEDED ({', '.join(elf.needed(new)[:2])}, …); "
+                                  "different layout")
         return "UNEXPLAINED", f"ELF differs (NEEDED new {elf.needed(new)[:3]} vs old {elf.needed(old)[:3]})"
     return "UNEXPLAINED", "content differs"
 
@@ -182,13 +185,16 @@ def _redundant_stubs(new_apk: Path, old_apk: Path, name: str) -> bool:
 def compare(new_apk: Path, old_apk: Path) -> dict:
     a, b = _entries(new_apk), _entries(old_apk)
     rows = []
-    stub_names = [n for n in b if n.endswith("/libovrstubs.so") and n not in a and _redundant_stubs(new_apk, old_apk, n)]
+    stub_names = [n for n in b
+                  if n.endswith("/libovrstubs.so") and n not in a and _redundant_stubs(new_apk, old_apk, n)]
     for n in stub_names:
-        rows.append((n, "expected", "known-good stub only shadowed libovrplatformcompat's real ovrMessageType_ToString; not needed"))
+        rows.append((n, "expected", "known-good stub only shadowed libovrplatformcompat's real "
+                                    "ovrMessageType_ToString; not needed"))
         loader = n.rsplit("/", 1)[0] + "/libovrplatformloader.so"
         if loader in a and a[loader] != b.get(loader):
             new_l, old_l = _read(new_apk, loader), _read(old_apk, loader)
-            if [x for x in elf.needed(old_l) if x != "libovrstubs.so"] == elf.needed(new_l) and _text_bytes(new_l) == _text_bytes(old_l):
+            old_needed = [x for x in elf.needed(old_l) if x != "libovrstubs.so"]
+            if old_needed == elf.needed(new_l) and _text_bytes(new_l) == _text_bytes(old_l):
                 rows.append((loader, "expected", "same, minus the redundant libovrstubs.so dependency"))
                 a[loader] = b[loader]
         b.pop(n)
@@ -257,10 +263,11 @@ def run_parity(known_good: Path, sources: Path, outdir: Path, report: Path, only
             row["primary"] = compare(res.apk, folder / f"{pkg}.apk")
             if res.alt_apk:
                 known_alt = folder / f"{pkg}.alt-noforcequit.apk"
-                row["alt"] = compare(res.alt_apk, known_alt) if known_alt.exists() else {"verdict": "UNEXPLAINED",
-                                                                                           "diffs": [("alt", "UNEXPLAINED", "no known-good alt APK")]}
+                no_alt = {"verdict": "UNEXPLAINED", "diffs": [("alt", "UNEXPLAINED", "no known-good alt APK")]}
+                row["alt"] = compare(res.alt_apk, known_alt) if known_alt.exists() else no_alt
             elif (folder / f"{pkg}.alt-noforcequit.apk").exists():
-                row["alt"] = {"verdict": "UNEXPLAINED", "diffs": [("alt", "UNEXPLAINED", "recipe has no alternate build")]}
+                row["alt"] = {"verdict": "UNEXPLAINED",
+                              "diffs": [("alt", "UNEXPLAINED", "recipe has no alternate build")]}
             row["new_apk"] = str(res.apk)
             row["new_alt_apk"] = str(res.alt_apk) if res.alt_apk else None
             # unsupported games (32-bit) fail the 64-bit check by design
@@ -288,7 +295,8 @@ def run_parity(known_good: Path, sources: Path, outdir: Path, report: Path, only
 
 
 def write_report(results: list[dict], path: Path) -> None:
-    lines = ["# Parity report", "", f"Generated {time.strftime('%Y-%m-%d %H:%M')}. Rebuilt each game from its original dump "
+    lines = ["# Parity report", "",
+             f"Generated {time.strftime('%Y-%m-%d %H:%M')}. Rebuilt each game from its original dump "
              "with its catalog recipe and compared every APK entry with the known-good build (META-INF excluded).", "",
              "| Game | Primary | Alternate | Failed checks | Notes |", "|---|---|---|---|---|"]
     for r in results:
@@ -302,7 +310,8 @@ def write_report(results: list[dict], path: Path) -> None:
         failed = ", ".join(c["name"] for c in r.get("checks_failed", [])) or "none"
         lines.append(f"| {r['game']} | {r['primary']['verdict']} | {r.get('alt', {}).get('verdict', '—')} | {failed} | "
                      + "<br>".join(notes) + " |")
-    ok = sum(1 for r in results if "error" not in r and all(r.get(k, {}).get("verdict") != "UNEXPLAINED" for k in ("primary", "alt")))
+    ok = sum(1 for r in results
+             if "error" not in r and all(r.get(k, {}).get("verdict") != "UNEXPLAINED" for k in ("primary", "alt")))
     lines += ["", f"**{ok}/{len(results)} games at parity** (identical, expected or equivalent)."]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -345,7 +354,8 @@ def install_and_test(results_json: Path, target, baseline: Path | None, report: 
         res = {"game": row["game"], "package": pkg, "apk": apk.name}
         try:
             reporter.stage(f"install {title}")
-            installer.install(target.frame, installer.InstallPlan(pkg, title, apk, None, recipe, apk_only=True), reporter)
+            plan = installer.InstallPlan(pkg, title, apk, None, recipe, apk_only=True)
+            installer.install(target.frame, plan, reporter)
             installed_pkgs.append(pkg)
             res["install"] = "ok"
         except Exception as exc:  # noqa: BLE001
@@ -375,14 +385,17 @@ def install_and_test(results_json: Path, target, baseline: Path | None, report: 
     out = sorted(previous.values(), key=lambda x: x["game"].lower()) if previous else out
     lines = ["# Device parity (install + headless launch)", "",
              f"Generated {time.strftime('%Y-%m-%d %H:%M')}. APK-only reinstall through the FramePort agent, Steam "
-             "shortcuts re-added in one batch, then a 45 s headless launch per game compared with the pre-change baseline.",
+             "shortcuts re-added in one batch, then a 45 s headless launch per game compared with the pre-change "
+             "baseline.",
              "", "| Game | Install | Shortcut | Baseline | Now | Furthest milestone | fps | Fatal findings |",
              "|---|---|---|---|---|---|---|---|"]
     for r in out:
         lines.append(f"| {r['game']} | {r.get('install')} | {r.get('shortcut', '')} | {r.get('baseline', '')} | "
-                     f"{r.get('state', '')}{' **REGRESSION**' if r.get('regression') else ''} | {r.get('milestone') or ''} | "
+                     f"{r.get('state', '')}{' **REGRESSION**' if r.get('regression') else ''} | "
+                     f"{r.get('milestone') or ''} | "
                      f"{r.get('fps') or ''} | {', '.join(r.get('findings') or [])} |")
-    regressions = [r for r in out if r.get("regression") or (r.get("install") not in ("ok", None) and "skipped" not in r["install"])]
+    regressions = [r for r in out if r.get("regression")
+                   or (r.get("install") not in ("ok", None) and "skipped" not in r["install"])]
     lines += ["", f"**{len(out) - len(regressions)}/{len(out)} OK, {len(regressions)} regression(s).**"]
     report.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return not regressions

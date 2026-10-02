@@ -21,7 +21,8 @@ def show_art_dialog(app: FramePortApp, package: str) -> None:
     term = ft.TextField(value=g.get("title") or package, dense=True, expand=True, border_radius=T.RADIUS_SM,
                         bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT, focused_border_color=T.ACCENT,
                         content_padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)), text_size=T.T_BODY)
-    results = ft.GridView(max_extent=T.px(190), child_aspect_ratio=0.8, spacing=T.S3, run_spacing=T.S3, height=T.px(400))
+    results = ft.GridView(max_extent=T.px(190), child_aspect_ratio=0.8, spacing=T.S3, run_spacing=T.S3,
+                          height=T.px(400))
     status = C.meta("")
 
     def pick(choice):
@@ -29,13 +30,16 @@ def show_art_dialog(app: FramePortApp, package: str) -> None:
 
         def work():
             if not sources.apply_choice(package, choice):
-                app.toast(tr("No artwork could be downloaded from that {source} result; the current artwork stays. Try another one.").format(source=choice['source']), error=True)
+                app.toast(tr("No artwork could be downloaded from that {source} result; the current artwork stays. "
+                             "Try another one.").format(source=choice['source']), error=True)
                 return
             thumbs.prewarm(package)
             library.upsert_game(package, art_source=choice["source"].lower())
             app.refresh_view()
             if C.install_state(library.game(package), app.frame_info) in ("installed", "outdated"):
-                app.toast(tr("Artwork updated for {get}. The Frame's Steam library still shows the old art.").format(get=g.get('title')), action=tr("Update on Frame"), on_action=lambda e: app.update_steam_art(package))
+                app.toast(tr("Artwork updated for {get}. The Frame's Steam library still shows the old art.")
+                          .format(get=g.get('title')),
+                          action=tr("Update on Frame"), on_action=lambda e: app.update_steam_art(package))
             else:
                 app.toast(tr("Artwork updated for {get}").format(get=g.get('title')))
         app.run_bg(work)
@@ -53,7 +57,8 @@ def show_art_dialog(app: FramePortApp, package: str) -> None:
                 C.meta(r["source"]),
             ], spacing=T.px(4)), padding=T.S2, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE, ink=True,
                 on_click=lambda e, r=r: pick(r)) for r in found]
-            status.value = tr("{len} results").format(len=len(found)) if found else tr("Nothing found. Try a shorter or different name.")
+            status.value = (tr("{len} results").format(len=len(found)) if found
+                            else tr("Nothing found. Try a shorter or different name."))
             C.update(status, results)
         app.run_bg(work)
 
@@ -67,7 +72,8 @@ def show_art_dialog(app: FramePortApp, package: str) -> None:
             src = found.get("source")
             if src and src != "none" and C.install_state(library.game(package), app.frame_info) in ("installed",
                                                                                                     "outdated"):
-                app.toast(tr("Artwork updated ({src}). The Frame's Steam library still shows the old art.").format(src=src),
+                app.toast(tr("Artwork updated ({src}). The Frame's Steam library still shows the old art.")
+                          .format(src=src),
                           action=tr("Update on Frame"), on_action=lambda e: app.update_steam_art(package))
             else:
                 app.toast(tr("Artwork: {value}").format(value=src or 'none found'))

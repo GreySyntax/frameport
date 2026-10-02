@@ -87,7 +87,8 @@ class LibovrRedirect(_PcvrPatch):
             return None
         if _mode(analysis) == "native":
             return Suggestion(False, "Supports SteamVR/OpenXR itself: no Oculus runtime needed.")
-        return Suggestion(True, "Lets the game find Revive's runtime on the Frame (doesn't bypass its signature check).")
+        return Suggestion(True, "Lets the game find Revive's runtime on the Frame (doesn't bypass its signature "
+                                "check).")
 
 
 class RepackLauncher(_PcvrPatch):
@@ -154,9 +155,9 @@ class XrTimefix(_PcvrPatch):
 class NoCrashReporter(_PcvrPatch):
     id = "pcvr.no_crash_reporter"
     title = "No Unreal crash reporter"
-    description = ("Unreal games start CrashReportClient when they crash, which leaves a crash dialog instead of simply "
-                   "closing. This passes -nocrashreports to the game and, on the Frame, renames the game's copy of "
-                   "CrashReportClient.exe so it can't start (your game files on this PC aren't changed).")
+    description = ("Unreal games start CrashReportClient when they crash, which leaves a crash dialog instead of "
+                   "simply closing. This passes -nocrashreports to the game and, on the Frame, renames the game's copy "
+                   "of CrashReportClient.exe so it can't start (your game files on this PC aren't changed).")
     order = 15
 
     def detect(self, analysis):
@@ -171,8 +172,8 @@ class NoCrashReporter(_PcvrPatch):
 class OculusUnreal(_PcvrPatch):
     id = "pcvr.oculus_unreal"
     title = "Patch Oculus detection for Unreal (Frame)"
-    description = ("The PC VR counterpart of overport's 'Patch Oculus detection for Unreal'. Unreal's Oculus plugin only "
-                   "starts when the Oculus service announces a headset (the Windows event 'OculusHMDConnected'); "
+    description = ("The PC VR counterpart of overport's 'Patch Oculus detection for Unreal'. Unreal's Oculus plugin "
+                   "only starts when the Oculus service announces a headset (the Windows event 'OculusHMDConnected'); "
                    "without it the game runs as a flat window. On the Frame the launcher runs the game through "
                    "FramePort's small helper (fp_oculushmd.exe) that provides that event while the game runs, instead "
                    "of relying only on Revive's hook of the check. Ignored on this PC (the Oculus app or Revive "
@@ -210,7 +211,8 @@ class ProtonTool(_PcvrPatch):
 class ProtonEnv(_PcvrPatch):
     id = "pcvr.proton_env"
     title = "Extra launch environment (Frame)"
-    description = "Environment variables for the Proton launcher on the Frame (e.g. DXVK_HUD=fps), one KEY=value per line."
+    description = ("Environment variables for the Proton launcher on the Frame (e.g. DXVK_HUD=fps), one KEY=value "
+                   "per line.")
     order = 50
     params = [Param("env", "text", "", "KEY=value lines")]
 
@@ -233,8 +235,8 @@ class SteamvrTuning(_PcvrPatch):
         return None
 
 
-for _cls in (RepackLauncher, LaunchArgs, Revive, ReviveOpenVR, LibovrRedirect, NoCrashReporter, OculusUnreal, XrTimefix, ProtonLog,
-             ProtonTool, ProtonEnv, SteamvrTuning):
+for _cls in (RepackLauncher, LaunchArgs, Revive, ReviveOpenVR, LibovrRedirect, NoCrashReporter, OculusUnreal, XrTimefix,
+             ProtonLog, ProtonTool, ProtonEnv, SteamvrTuning):
     register(_cls)
 
 

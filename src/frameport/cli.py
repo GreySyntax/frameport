@@ -157,7 +157,8 @@ def _pkgs(package: Optional[str], all_: bool) -> list[str]:
         return [g["package"] for g in library.games()]
     if not package:
         raise typer.BadParameter("give a package or --all")
-    matches = [g["package"] for g in library.games() if package.lower() in (g["package"] + " " + (g.get("title") or "")).lower()]
+    matches = [g["package"] for g in library.games()
+               if package.lower() in (g["package"] + " " + (g.get("title") or "")).lower()]
     if package in [g["package"] for g in library.games()]:
         return [package]
     if len(matches) != 1:
@@ -172,7 +173,8 @@ def tools_status(check_latest: bool = typer.Option(False, "--latest", help="also
 
     for s in toolchain.status(check_latest):
         latest = f" (latest {s.latest})" if s.latest else ""
-        typer.echo(f"{s.name:10} {'installed' if s.installed else 'missing':9} {s.version or '-'}{latest}  {s.path or ''}")
+        state = "installed" if s.installed else "missing"
+        typer.echo(f"{s.name:10} {state:9} {s.version or '-'}{latest}  {s.path or ''}")
 
 
 @tools_app.command("install")
@@ -242,7 +244,8 @@ def show(package: str, as_json: bool = typer.Option(False, "--json"),
     if hidden and not all_:
         typer.echo(f"  ({len(hidden)} patches hidden as not relevant for this game; --all to list them)")
     if r.get("alt_patches"):
-        typer.echo(f"  alternate build adds: {', '.join(r['alt_patches'])}  (installed: {'alt' if r['use_alt'] else 'primary'})")
+        which = "alt" if r["use_alt"] else "primary"
+        typer.echo(f"  alternate build adds: {', '.join(r['alt_patches'])}  (installed: {which})")
 
 
 @app.command()
@@ -254,7 +257,8 @@ def patches():
 
 
 @app.command()
-def recipe(package: str, enable: list[str] = typer.Option([], "--enable"), disable: list[str] = typer.Option([], "--disable"),
+def recipe(package: str, enable: list[str] = typer.Option([], "--enable"),
+           disable: list[str] = typer.Option([], "--disable"),
            set_: list[str] = typer.Option([], "--set", help="adapter setting key=value"),
            use_alt: Optional[bool] = typer.Option(None, "--use-alt/--no-alt"), reset: bool = False,
            as_is: Optional[bool] = typer.Option(None, "--as-is/--patch", help="install unchanged (already patched)"),
@@ -346,7 +350,8 @@ def triage(logfile: Path, package: Optional[str] = None):
     r = run_triage(logfile.read_text(errors="replace"), "UNKNOWN", package)
     typer.echo(f"furthest milestone: {r.milestone}; fps {r.fps}")
     for f in r.findings:
-        typer.echo(f"  {f.severity:7} {f.id}: {f.diagnosis}\n          {f.evidence[:200]}\n          suggest: {f.suggest}")
+        typer.echo(f"  {f.severity:7} {f.id}: {f.diagnosis}\n          {f.evidence[:200]}\n"
+                   f"          suggest: {f.suggest}")
 
 
 @app.command()
@@ -399,12 +404,15 @@ def frame_connect(address: str, password: Optional[str] = typer.Option(None, pro
     info = f.agent("info")
     t.name = info["hostname"]
     save_target(t)
-    typer.echo(json.dumps({k: info[k] for k in ("hostname", "os", "os_version", "lepton", "steam_users", "free_bytes")}, indent=1))
+    keys = ("hostname", "os", "os_version", "lepton", "steam_users", "free_bytes")
+    typer.echo(json.dumps({k: info[k] for k in keys}, indent=1))
 
 
 @frame_app.command("cleanup")
-def frame_cleanup(frame: Optional[str] = None, keep_rollback: bool = typer.Option(False, help="keep previous-game.apk copies"),
-                  path: list[str] = typer.Option([], help="extra folder under the Frame's home to delete, e.g. ~/PATCHED")):
+def frame_cleanup(frame: Optional[str] = None,
+                  keep_rollback: bool = typer.Option(False, help="keep previous-game.apk copies"),
+                  path: list[str] = typer.Option([], help="extra folder under the Frame's home to delete, "
+                                                         "e.g. ~/PATCHED")):
     """Free space on the Frame: rollback APKs from reinstalls, leftover uploads, optional extra folders."""
     r = _target(frame).frame.agent("cleanup", rollback=not keep_rollback, paths=path)
     typer.echo(f"removed {len(r['removed'])} item(s), freed {r['freed_bytes'] / 2**30:.1f} GiB")
