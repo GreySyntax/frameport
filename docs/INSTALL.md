@@ -77,7 +77,7 @@ skip files that are already there.
   videos uploaded into that folder.
 - **Home folder** shows everything in the Frame's home folder (hidden files with **Show hidden files**).
 
-Command line: `frameport frame send <files> --to videos`.
+Command line: `frameport frame send <files> --dest videos` (`frameport frame storage` lists the destinations).
 
 ## Sharing a working game, reporting a problem
 
@@ -86,6 +86,24 @@ Command line: `frameport frame send <files> --to videos`.
 - **Report a problem…** (game menu, or Settings → Problems and feedback): saves a diagnostics zip to Documents (logs,
   recipe, device details; IP addresses, user names, home folders and Steam ids replaced) and opens a prefilled GitHub
   issue to attach it to. Command line: `frameport diag report <game>`, `frameport share-recipe <game>`.
+
+## Command line
+
+Everything the app does is also a `frameport` command (in a source checkout: `uv run frameport`); `frameport --help`
+and `frameport <command> --help` describe every option. The main ones:
+
+| Command | What it does |
+|---|---|
+| `scan <folder>` / `list` / `show <game>` | add games, list the library, show a game's analysis and patches |
+| `recipe <game> --enable/--disable <patch>` | change a game's patches (`patches` lists them all) |
+| `build <game>` / `install <game>` / `test <game>` | build, install on the Frame (`--to pc` for PC VR on this PC), launch test |
+| `frame discover` / `frame connect` / `frame info` | find, pair with and describe the Frame |
+| `frame send` / `frame storage` / `frame cleanup` | copy files to the Frame, show where they go, free space |
+| `tools status` / `tools install` | the tools FramePort downloads |
+| `diag report <game>` / `share-recipe <game>` | report a problem / share a working recipe |
+| `update` | update FramePort |
+
+Exit codes: 0 done, 1 something failed, 2 wrong usage, 10 (`update --check`) a newer version exists.
 
 ## Uninstalling
 

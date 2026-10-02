@@ -1,4 +1,5 @@
 """FramePort command line. Same operations as the GUI (for automation and headless use).
+Exit codes: 0 done, 1 something failed, 2 wrong usage, 10 (`update --check`) a newer version exists.
 
     frameport tools install                      # portable Java + overport + apksigner
     frameport scan "<folder with game dumps>"    # analyze + suggest recipes
@@ -8,8 +9,9 @@
     frameport frame discover | pair | info --frame steamos@frame.local
     frameport install <pkg> --frame steamos@frame.local [--apk-only]
     frameport test <pkg> --frame ...             # headless launch + triage
-    frameport frame proton [--install]           # Proton on the Frame, for Oculus Rift (PC VR) games
-    frameport install rift.<game> --to pc|frame  # Rift games: this PC (Revive + Steam) or the Frame (Proton)
+    frameport frame send <files> --dest videos   # copy files to the Frame (where every game sees them)
+    frameport frame proton [--install]           # Proton on the Frame, for PC VR games
+    frameport install rift.<game> --to pc|frame  # PC VR games: this PC (Steam) or the Frame (Proton)
     frameport pc info                            # Windows Steam / SteamVR / Revive on this PC
     frameport parity --known-good <PATCHED dir>  # rebuild everything and diff against known-good APKs
     frameport diag collect <pkg>|--all [--no-frame]  # redacted diagnostics zip (attach it to a GitHub issue)
@@ -31,10 +33,17 @@ from .core import library
 from .core.events import printing_reporter
 from .patches import base
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, help="Port Meta Quest games to the Steam Frame.")
+FRAME_HELP = "the Frame as user@host (default: the paired Frame)"
+ALL_HELP = "every game in the library"
+JSON_HELP = "print JSON"
+
+app = typer.Typer(add_completion=False, no_args_is_help=True,
+                  help="Run Meta Quest, Android and PC VR games on the Steam Frame.",
+                  epilog="Exit codes: 0 done, 1 something failed, 2 wrong usage, 10 (update --check) a newer version "
+                         "exists. The GUI is frameport-gui.")
 tools_app = typer.Typer(help="Manage the portable toolchain.")
 frame_app = typer.Typer(help="Find and connect to a Steam Frame.")
-pc_app = typer.Typer(help="This PC as a target for Oculus Rift (PC VR) games via Revive.")
+pc_app = typer.Typer(help="This PC as a target for PC VR games (Steam and SteamVR; Revive for Oculus games).")
 diag_app = typer.Typer(help="Diagnostics bundles and problem reports.")
 app.add_typer(tools_app, name="tools")
 app.add_typer(frame_app, name="frame")
@@ -169,6 +178,7 @@ def _pkgs(package: Optional[str], all_: bool) -> list[str]:
 # ------------------------------------------------------------------------------------------ tools
 @tools_app.command("status")
 def tools_status(check_latest: bool = typer.Option(False, "--latest", help="also look up the newest versions")):
+    """Which tools FramePort has (Java runtime, OVRPort, apksigner, Revive)."""
     from .tools import toolchain
 
     for s in toolchain.status(check_latest):
@@ -179,7 +189,8 @@ def tools_status(check_latest: bool = typer.Option(False, "--latest", help="also
 
 @tools_app.command("install")
 def tools_install(update: bool = typer.Option(False, help="update to the newest versions"),
-                  revive: bool = typer.Option(False, help="also install Revive (for Oculus Rift games)")):
+                  revive: bool = typer.Option(False, help="also install Revive (for Oculus PC games)")):
+    """Download the tools FramePort needs into its own folder (nothing is installed system-wide)."""
     from .tools import overport as ov
     from .tools import toolchain
 
@@ -195,7 +206,7 @@ def tools_install(update: bool = typer.Option(False, help="update to the newest 
 
 
 @tools_app.command("import-keys")
-def tools_import_keys(dirs: list[Path]):
+def tools_import_keys(dirs: list[Path] = typer.Argument(..., help="folders with <package>.keystore files")):
     """Import existing per-package signing keystores (keeps updates installable over existing installs)."""
     from .tools import overport as ov
 
@@ -204,7 +215,7 @@ def tools_import_keys(dirs: list[Path]):
 
 # ------------------------------------------------------------------------------------------ library
 @app.command()
-def scan(path: Path):
+def scan(path: Path = typer.Argument(..., help="a folder with game backups (APKs or PC VR game folders), or an APK")):
     """Find games under PATH, analyze them and suggest patches."""
     rep = printing_reporter(verbose=False)
     for g in pipeline.add_path(path, rep):
@@ -214,6 +225,7 @@ def scan(path: Path):
 
 @app.command("list")
 def list_games():
+    """The games in the library."""
     for g in library.games():
         a = g["analysis"]
         built = "built" if g.get("build", {}).get("ok") else ("build-failed" if g.get("build") else "")
@@ -222,8 +234,9 @@ def list_games():
 
 
 @app.command()
-def show(package: str, as_json: bool = typer.Option(False, "--json"),
+def show(package: str, as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
          all_: bool = typer.Option(False, "--all", help="also list patches that don't apply to this game")):
+    """A game's analysis and recipe (its patches, with the reason for each)."""
     [pkg] = _pkgs(package, False)
     g = library.game(pkg)
     if as_json:
@@ -257,12 +270,13 @@ def patches():
 
 
 @app.command()
-def recipe(package: str, enable: list[str] = typer.Option([], "--enable"),
-           disable: list[str] = typer.Option([], "--disable"),
+def recipe(package: str, enable: list[str] = typer.Option([], "--enable", help="patch id to turn on (repeatable)"),
+           disable: list[str] = typer.Option([], "--disable", help="patch id to turn off (repeatable)"),
            set_: list[str] = typer.Option([], "--set", help="adapter setting key=value"),
-           use_alt: Optional[bool] = typer.Option(None, "--use-alt/--no-alt"), reset: bool = False,
+           use_alt: Optional[bool] = typer.Option(None, "--use-alt/--no-alt", help="install the alternate build"),
+           reset: bool = typer.Option(False, help="start again from the suggested recipe"),
            as_is: Optional[bool] = typer.Option(None, "--as-is/--patch", help="install unchanged (already patched)"),
-           exe: Optional[str] = typer.Option(None, help="Rift games: the program that starts the game (relative)")):
+           exe: Optional[str] = typer.Option(None, help="PC VR games: the program that starts the game (relative)")):
     """Change a game's patch selection."""
     [pkg] = _pkgs(package, False)
     r = pipeline.reset_recipe(pkg) if reset else library.recipe_from_dict(library.game(pkg)["recipe"])
@@ -291,8 +305,9 @@ def recipe(package: str, enable: list[str] = typer.Option([], "--enable"),
 
 # ------------------------------------------------------------------------------------------ build / install / test
 @app.command()
-def build(package: Optional[str] = typer.Argument(None), all_: bool = typer.Option(False, "--all"),
-          outdir: Optional[Path] = None, verbose: bool = False):
+def build(package: Optional[str] = typer.Argument(None), all_: bool = typer.Option(False, "--all", help=ALL_HELP),
+          outdir: Optional[Path] = typer.Option(None, help="where to write the APKs (default: FramePort's data)"),
+          verbose: bool = typer.Option(False, help="print every step")):
     """Patch and sign (primary + alternate build when the recipe has one)."""
     failed = []
     for pkg in _pkgs(package, all_):
@@ -303,19 +318,21 @@ def build(package: Optional[str] = typer.Argument(None), all_: bool = typer.Opti
             if not info["ok"]:
                 failed.append(pkg)
         except Exception as exc:  # noqa: BLE001
-            typer.echo(f"{pkg}: FAILED {exc}")
+            typer.echo(f"{pkg}: FAILED {exc}", err=True)
             failed.append(pkg)
     raise typer.Exit(1 if failed else 0)
 
 
 @app.command()
-def install(package: Optional[str] = typer.Argument(None), all_: bool = typer.Option(False, "--all"),
-            frame: Optional[str] = typer.Option(None, help="steamos@host"), password: Optional[str] = None,
+def install(package: Optional[str] = typer.Argument(None), all_: bool = typer.Option(False, "--all", help=ALL_HELP),
+            frame: Optional[str] = typer.Option(None, help=FRAME_HELP),
+            password: Optional[str] = typer.Option(None, help="the Frame's password (first connection only)"),
             apk_only: bool = typer.Option(False, help="reuse game data already on the Frame"),
             no_library: bool = typer.Option(False, help="don't add to the Steam library now"),
-            to: str = typer.Option("frame", help="frame, or pc (Oculus Rift games only: run on this PC via Revive)"),
+            to: str = typer.Option("frame", help="frame, or pc (PC VR games only: install on this PC)"),
             apk: Optional[Path] = typer.Option(None, help="install this APK instead of the last build (one game; e.g. "
                                                           "a test build signed with the game's key)")):
+    """Install games on the Frame (or PC VR games on this PC) and add them to the Steam library."""
     target = _target(frame, password, to)
     pkgs = _pkgs(package, all_)
     if apk and len(pkgs) != 1:
@@ -327,15 +344,16 @@ def install(package: Optional[str] = typer.Argument(None), all_: bool = typer.Op
 
 
 @app.command()
-def test(package: Optional[str] = typer.Argument(None), all_: bool = typer.Option(False, "--all"),
-         frame: Optional[str] = None, seconds: int = 45,
-         to: str = typer.Option("frame", help="frame, or pc (Rift games installed on this PC)")):
+def test(package: Optional[str] = typer.Argument(None), all_: bool = typer.Option(False, "--all", help=ALL_HELP),
+         frame: Optional[str] = typer.Option(None, help=FRAME_HELP),
+         seconds: int = typer.Option(45, help="how long the game runs before it's stopped"),
+         to: str = typer.Option("frame", help="frame, or pc (PC VR games installed on this PC)")):
     """Headless launch on the Frame (or this PC) + log triage."""
     target = _target(frame, to=to)
     installed = {g["package"] for g in target.installed()}
     for pkg in _pkgs(package, all_):
         if pkg not in installed:
-            typer.echo(f"{pkg}: not installed on {target.label}")
+            typer.echo(f"{pkg}: not installed on {target.label}", err=True)
             continue
         s = pipeline.test_game(pkg, target, printing_reporter(False), seconds)
         typer.echo(f"{pkg}: {s['state']} ({s['verdict']}) furthest: {s['milestone']}"
@@ -343,7 +361,8 @@ def test(package: Optional[str] = typer.Argument(None), all_: bool = typer.Optio
 
 
 @app.command()
-def triage(logfile: Path, package: Optional[str] = None):
+def triage(logfile: Path = typer.Argument(..., help="a launch.log"),
+           package: Optional[str] = typer.Option(None, help="the game's package (keeps only its log lines)")):
     """Classify a launch.log offline."""
     from .validate.triage import triage as run_triage
 
@@ -355,7 +374,8 @@ def triage(logfile: Path, package: Optional[str] = None):
 
 
 @app.command()
-def settings(package: str, values: list[str], frame: Optional[str] = None):
+def settings(package: str, values: list[str] = typer.Argument(..., help="key=value pairs"),
+             frame: Optional[str] = typer.Option(None, help=FRAME_HELP)):
     """Change FrameBridge settings of an installed game (no re-patching), e.g. scale=1.2."""
     target = _target(frame)
     kv = dict(v.split("=", 1) for v in values)
@@ -364,7 +384,8 @@ def settings(package: str, values: list[str], frame: Optional[str] = None):
 
 # ------------------------------------------------------------------------------------------ frame
 @frame_app.command("discover")
-def frame_discover(seconds: float = 4.0):
+def frame_discover(seconds: float = typer.Option(4.0, help="how long to listen")):
+    """Find Steam Frames (in Developer Mode) on the local network."""
     from .frame.discovery import browse
 
     for f in browse(seconds):
@@ -372,7 +393,7 @@ def frame_discover(seconds: float = 4.0):
 
 
 @frame_app.command("pair")
-def frame_pair(timeout: float = 600):
+def frame_pair(timeout: float = typer.Option(600, help="seconds to wait for the Frame")):
     """Serve the one-line bootstrap for the Frame and wait until it reports back."""
     import time
 
@@ -394,7 +415,8 @@ def frame_pair(timeout: float = 600):
 
 
 @frame_app.command("connect")
-def frame_connect(address: str, password: Optional[str] = typer.Option(None, prompt=False)):
+def frame_connect(address: str = typer.Argument(..., help="steamos@<host or IP>"),
+                  password: Optional[str] = typer.Option(None, prompt=False, help="the Frame's password (once)")):
     """Connect with SSH (password once), install FramePort's key and remember the Frame."""
     from .frame.connection import Frame, parse_target, save_target
 
@@ -409,7 +431,7 @@ def frame_connect(address: str, password: Optional[str] = typer.Option(None, pro
 
 
 @frame_app.command("cleanup")
-def frame_cleanup(frame: Optional[str] = None,
+def frame_cleanup(frame: Optional[str] = typer.Option(None, help=FRAME_HELP),
                   keep_rollback: bool = typer.Option(False, help="keep previous-game.apk copies"),
                   path: list[str] = typer.Option([], help="extra folder under the Frame's home to delete, "
                                                          "e.g. ~/PATCHED")):
@@ -420,12 +442,13 @@ def frame_cleanup(frame: Optional[str] = None,
 
 @frame_app.command("send")
 def frame_send(paths: list[Path] = typer.Argument(..., help="files or folders to send"),
-               to: str = typer.Option("videos", help="destination: videos, downloads, documents, app, app-files"),
-               game: Optional[str] = typer.Option(None, help="package of the game, for --to app / app-files"),
+               to: str = typer.Option("videos", "--dest", "--to",
+                                      help="destination: videos, downloads, documents, app, app-files"),
+               game: Optional[str] = typer.Option(None, help="package of the game, for --dest app / app-files"),
                folder: str = typer.Option("", help="sub-folder inside the destination"),
                app: Optional[str] = typer.Option(None, help="package of a player: also add the files to its own folder "
                                                             "(e.g. 4XVR lists /sdcard/4XPlayer, not Movies)"),
-               frame: Optional[str] = None):
+               frame: Optional[str] = typer.Option(None, help=FRAME_HELP)):
     """Send files to apps on the Frame. videos/downloads/documents are shared by every Quest game (they appear as
     /sdcard/Movies, /sdcard/Download, /sdcard/Documents); app/app-files are one game's own storage. Apps find the
     files by browsing folders (Android's media index doesn't work in Lepton)."""
@@ -437,7 +460,8 @@ def frame_send(paths: list[Path] = typer.Argument(..., help="files or folders to
 
 
 @frame_app.command("storage")
-def frame_storage(game: Optional[str] = None, frame: Optional[str] = None):
+def frame_storage(game: Optional[str] = typer.Option(None, help="also show this game's own storage"),
+                  frame: Optional[str] = typer.Option(None, help=FRAME_HELP)):
     """Where files for Lepton apps go on the Frame (and where the apps see them)."""
     from .install import files
 
@@ -446,19 +470,20 @@ def frame_storage(game: Optional[str] = None, frame: Optional[str] = None):
 
 
 @frame_app.command("info")
-def frame_info(frame: Optional[str] = None):
+def frame_info(frame: Optional[str] = typer.Option(None, help=FRAME_HELP)):
+    """The Frame's SteamOS build, runtimes, storage and installed games (JSON)."""
     typer.echo(json.dumps(_target(frame).describe(), indent=1, default=str))
 
 
 @frame_app.command("controller-models")
-def frame_controller_models(frame: Optional[str] = None,
+def frame_controller_models(frame: Optional[str] = typer.Option(None, help=FRAME_HELP),
                             convert: bool = typer.Option(False, help="also convert them (cached on the Frame)")):
     """SteamVR render models on the Frame and which ones serve as Steam Frame controller models (controller_models)."""
     typer.echo(json.dumps(_target(frame).frame.agent("controller_models", convert=convert), indent=1))
 
 
 @frame_app.command("proton")
-def frame_proton(frame: Optional[str] = None,
+def frame_proton(frame: Optional[str] = typer.Option(None, help=FRAME_HELP),
                  install_: bool = typer.Option(False, "--install", help="install it (Steam on the Frame restarts once "
                                                "and downloads it; waits until done)"),
                  in_headset: bool = typer.Option(False, help="with --install: only ask Steam (confirm in the headset)"),
@@ -492,6 +517,7 @@ def frame_proton(frame: Optional[str] = None,
 # ------------------------------------------------------------------------------------------ pc (Revive)
 @pc_app.command("info")
 def pc_info():
+    """Steam, SteamVR and Revive on this PC (JSON)."""
     typer.echo(json.dumps(_target(None, to="pc").describe(), indent=1, default=str))
 
 
@@ -508,8 +534,10 @@ def pc_install_revive():
 @app.command()
 def parity(known_good: Path = typer.Option(..., help="folder of known-good game folders (PATCHED layout)"),
            sources: Path = typer.Option(..., help="folder with the original game dumps"),
-           outdir: Path = typer.Option(Path("parity-out")), only: list[str] = typer.Option([]),
-           report: Path = typer.Option(Path("parity-report.md")), keep: bool = False):
+           outdir: Path = typer.Option(Path("parity-out"), help="where the rebuilt APKs go"),
+           only: list[str] = typer.Option([], help="only games whose folder contains this (repeatable)"),
+           report: Path = typer.Option(Path("parity-report.md"), help="the report to write"),
+           keep: bool = typer.Option(False, help="keep work files")):
     """Rebuild every catalog game from its source dump and compare with the known-good APKs."""
     from .parity import run_parity
 
@@ -518,7 +546,7 @@ def parity(known_good: Path = typer.Option(..., help="folder of known-good game 
 
 
 @app.command()
-def report(out: Path = typer.Option(Path("REPORT.md"))):
+def report(out: Path = typer.Option(Path("REPORT.md"), help="the file to write")):
     """Write a status report of every catalog game (markdown)."""
     from .report import write
 
@@ -526,10 +554,13 @@ def report(out: Path = typer.Option(Path("REPORT.md"))):
 
 
 @app.command("parity-device")
-def parity_device(results: Path = typer.Option(Path("parity-out/parity.json")), frame: Optional[str] = None,
+def parity_device(results: Path = typer.Option(Path("parity-out/parity.json"), help="parity.json from `parity`"),
+                  frame: Optional[str] = typer.Option(None, help=FRAME_HELP),
                   baseline: Optional[Path] = typer.Option(None, help="baseline launch.txt from before the change"),
-                  report: Path = typer.Option(Path("parity-device-report.md")), only: list[str] = typer.Option([]),
-                  seconds: int = 45, test_only: bool = typer.Option(False, help="only re-run the launch tests")):
+                  report: Path = typer.Option(Path("parity-device-report.md"), help="the report to write"),
+                  only: list[str] = typer.Option([], help="only these games (repeatable)"),
+                  seconds: int = typer.Option(45, help="launch test length"),
+                  test_only: bool = typer.Option(False, help="only re-run the launch tests")):
     """Install the APKs rebuilt by `parity` on the Frame (APK only) and compare headless launches with a baseline."""
     from .parity import install_and_test
 
@@ -570,7 +601,7 @@ def _diag_target(no_frame: bool, frame: Optional[str], to: str):
     try:
         return _target(frame, to=to)
     except Exception as exc:  # noqa: BLE001  (offline Frame: PC-side data only)
-        typer.echo(f"({to} not reachable: {exc}; collecting the PC side only)")
+        typer.echo(f"({to} not reachable: {exc}; collecting the PC side only)", err=True)
         return None
 
 
@@ -579,12 +610,13 @@ def _open(url: str, browser: bool) -> None:
 
     typer.echo(url)
     if browser and not winhost.open_url(url):
-        typer.echo("(couldn't open a browser: open the link above)")
+        typer.echo("(couldn't open a browser: open the link above)", err=True)
 
 
 @diag_app.command("collect")
 def diag_collect(package: Optional[str] = typer.Argument(None, help="a game (omit for app-wide logs only)"),
-                 all_: bool = typer.Option(False, "--all"), frame: Optional[str] = None,
+                 all_: bool = typer.Option(False, "--all", help=ALL_HELP),
+                 frame: Optional[str] = typer.Option(None, help=FRAME_HELP),
                  no_frame: bool = typer.Option(False, "--no-frame", help="don't contact the Frame"),
                  to: str = typer.Option("frame", help="where the game is installed: frame or pc"),
                  out: Optional[Path] = typer.Option(None, help="folder or .zip path (default: Documents)")):
@@ -595,7 +627,8 @@ def diag_collect(package: Optional[str] = typer.Argument(None, help="a game (omi
 
 
 @diag_app.command("inspect")
-def diag_inspect(bundle: Path, as_json: bool = typer.Option(False, "--json")):
+def diag_inspect(bundle: Path = typer.Argument(..., help="a diagnostics zip"),
+                 as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
     """Summarize a diagnostics zip and re-triage its launch logs with this version's signatures."""
     from .diag import bundle as b
 
@@ -624,10 +657,13 @@ def diag_inspect(bundle: Path, as_json: bool = typer.Option(False, "--json")):
 
 
 @diag_app.command("report")
-def diag_report(package: Optional[str] = typer.Argument(None), description: str = typer.Option("", "--text"),
-                frame: Optional[str] = None, no_frame: bool = typer.Option(False, "--no-frame"),
-                to: str = typer.Option("frame"), out: Optional[Path] = None,
-                browser: bool = typer.Option(True, "--browser/--no-browser")):
+def diag_report(package: Optional[str] = typer.Argument(None, help="the game (omit for an app problem)"),
+                description: str = typer.Option("", "--message", "--text", help="what went wrong"),
+                frame: Optional[str] = typer.Option(None, help=FRAME_HELP),
+                no_frame: bool = typer.Option(False, "--no-frame", help="don't contact the Frame"),
+                to: str = typer.Option("frame", help="where the game is installed: frame or pc"),
+                out: Optional[Path] = typer.Option(None, help="folder or .zip path (default: Documents)"),
+                browser: bool = typer.Option(True, "--browser/--no-browser", help="open the issue in a browser")):
     """Collect a diagnostics zip and open a prefilled GitHub problem report (attach the zip there)."""
     from .core import winhost
 
@@ -650,7 +686,7 @@ def diag_report(package: Optional[str] = typer.Argument(None), description: str 
 def share_recipe(package: str, status: str = typer.Option("works", help="works or issues"),
                  notes: str = typer.Option("", help="what you checked in the headset, known issues"),
                  frame: Optional[str] = typer.Option(None, help="include the Frame's SteamOS build"),
-                 browser: bool = typer.Option(True, "--browser/--no-browser")):
+                 browser: bool = typer.Option(True, "--browser/--no-browser", help="open the issue in a browser")):
     """Submit a working configuration: saves it as a known-good recipe and opens a prefilled GitHub issue."""
     if status not in ("works", "issues"):
         raise typer.BadParameter("--status must be works or issues")
