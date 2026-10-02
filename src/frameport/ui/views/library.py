@@ -200,9 +200,13 @@ class LibraryView:
         self.select_btn = C.secondary(tr("Select"), ft.Icons.CHECKLIST_ROUNDED, lambda e: self.set_select_mode(True),
                                       tooltip=C.tip(HELP["select"]))
         self.root = ft.Column([
+            # the actions wrap (right-aligned) in a narrow window instead of squeezing the heading away
             ft.Row([ft.Column([ft.Text(tr("Library"), size=T.T_TITLE, weight=ft.FontWeight.W_700, color=T.TEXT,
-                                       no_wrap=True), self.subtitle], spacing=T.px(2), expand=True), self.search,
-                    self.update_all_btn, self.rescan_btn, self.select_btn, add],
+                                       no_wrap=True), self.subtitle], spacing=T.px(2), expand=1),
+                    ft.Container(ft.Row([self.search, self.update_all_btn, self.rescan_btn, self.select_btn, add],
+                                        spacing=T.S3, run_spacing=T.S2, wrap=True,
+                                        alignment=ft.MainAxisAlignment.END,
+                                        vertical_alignment=ft.CrossAxisAlignment.CENTER), expand=3)],
                    vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3),
             self.update_bar, self.resume_bar, self.hint, self.filters, self.body, self.sel_bar,
         ], expand=True, spacing=T.S4)
@@ -418,16 +422,19 @@ class LibraryView:
         where = [("all", tr("All")), ("frame", tr("On Frame")), ("none", tr("Not installed"))]
         if has_rift:
             where.insert(2, ("pc", tr("On this PC")))
-        self.filters.content = ft.Row([
+        # the filters wrap onto a second line in a narrow window; count and sort stay on the right
+        left = ft.Row([
             self._seg("where", where),
-            self._seg("platform", [("all", "All"), ("quest", "Android"), ("pcvr", "PC VR")]) if has_rift else
-            ft.Container(),
-            self._menu_chip("status", tr("Status"), [("all", tr("Any")), ("works", tr("Works")),
-                                                     ("issues", tr("Works with issues")),
-                                                     ("unknown", tr("Untested")), ("unsupported", tr("Can't run"))]),
-            C.help_icon("status"),
+            *([self._seg("platform", [("all", tr("All")), ("quest", tr("Android")), ("pcvr", tr("PC VR"))])]
+              if has_rift else []),
+            C.with_help(self._menu_chip("status", tr("Status"), [("all", tr("Any")), ("works", tr("Works")),
+                                                                 ("issues", tr("Works with issues")),
+                                                                 ("unknown", tr("Untested")),
+                                                                 ("unsupported", tr("Can't run"))]), "status"),
             self._tag_menu(games),
-            ft.Container(expand=True),
+        ], spacing=T.S2, run_spacing=T.S2, wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        self.filters.content = ft.Row([
+            ft.Container(left, expand=True),
             self.count,
             self._menu_chip("sort", tr("Sort"), [("name", tr("Name")), ("recent", tr("Recently added")),
                                                  ("played", tr("Recently used")),
@@ -540,9 +547,9 @@ class LibraryView:
                 C.art_fill(art, left=0, right=0, top=0, bottom=0, opacity=0.5 if dim else 1.0,
                            placeholder_icon=ft.Icons.COMPUTER_ROUNDED if rift else ft.Icons.VIEW_IN_AR_ROUNDED),
                 ft.Container(C.bottom_fade(None, 0.92), left=0, right=0, bottom=0, top=T.px(90)),
-                ft.Container(ft.Row([platform], spacing=T.px(4)), left=T.px(10), top=T.px(10)),
-                ft.Container(ft.Column(badges, spacing=T.px(4), horizontal_alignment=ft.CrossAxisAlignment.END),
-                             right=T.px(10), top=T.px(10)),
+                # platform + state badges in one row that wraps: on a narrow card "On Frame" covered "Android"
+                ft.Container(ft.Row([platform, *badges], spacing=T.px(4), run_spacing=T.px(4), wrap=True),
+                             left=T.px(10), right=T.px(10), top=T.px(10)),
                 *([quick] if quick else []),
                 check,
                 ft.Container(ft.Column([

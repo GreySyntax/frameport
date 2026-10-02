@@ -58,6 +58,12 @@ class FramePortApp:
         T.apply(page)
         page.padding = 0
         page.window.min_width, page.window.min_height = 1000, 680
+        if not page.web:
+            # 16:10 sized for the UI scale (the first start used to open too narrow at 125 %: toolbars were cut off);
+            # later starts reopen at the size the window was left at
+            w, h = (library.setting("ui.window") or {}).get("size") or (round(1280 * T.SCALE), round(780 * T.SCALE))
+            page.window.width, page.window.height = max(int(w), 1000), max(int(h), 680)
+            page.window.on_event = self._on_window_event
         page.on_keyboard_event = self._on_key
         if page.web:  # the library's right-click menu; otherwise the browser shows its own
             try:
@@ -93,9 +99,23 @@ class FramePortApp:
         self.updater.start()
 
     # ================================================================== shell
+    def _on_window_event(self, e) -> None:
+        """Remember the window size (once a resize ends; not while maximized or full screen)."""
+        win = self.page.window
+        if e.type == ft.WindowEventType.RESIZED and not (win.maximized or win.full_screen) and win.width and \
+                win.height:
+            size = [round(win.width), round(win.height)]
+            self.page.run_thread(library.update_setting, "ui.window", lambda v: {**(v or {}), "size": size}, {})
+
     def top_bar(self, heading: str, subtitle: str = "", actions: list[ft.Control] | None = None) -> ft.Control:
         heads = [C.title(heading), C.body(subtitle)] if subtitle else [C.title(heading)]
-        return ft.Row([ft.Column(heads, spacing=T.px(2), expand=True), *(actions or [])],
+        if not actions:
+            return ft.Column(heads, spacing=T.px(2))
+        # the actions wrap (right-aligned) in a narrow window instead of squeezing the heading away
+        return ft.Row([ft.Column(heads, spacing=T.px(2), expand=1),
+                       ft.Container(ft.Row(actions, spacing=T.S3, run_spacing=T.S2, wrap=True,
+                                           alignment=ft.MainAxisAlignment.END,
+                                           vertical_alignment=ft.CrossAxisAlignment.CENTER), expand=2)],
                       vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3)
 
     def _build_sidebar_controls(self) -> None:

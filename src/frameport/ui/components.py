@@ -152,10 +152,11 @@ def tip(text: str) -> ft.Tooltip:
                       padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)), prefer_below=True)
 
 
-def help_icon(key_or_text: str, size: int = 15) -> ft.Container:
-    """A small "?" that explains a non-obvious term on hover: a key of ui.help.HELP, or the text itself."""
-    return ft.Container(ft.Icon(ft.Icons.HELP_OUTLINE_ROUNDED, size=size, color=T.TEXT_3),
-                        tooltip=tip(HELP.get(key_or_text, key_or_text)), padding=T.px(2), border_radius=size)
+def help_icon(key_or_text: str, size: int = 18) -> ft.Container:
+    """A "?" that explains a non-obvious term on hover: a key of ui.help.HELP, or the text itself."""
+    size = T.px(size)
+    return ft.Container(ft.Icon(ft.Icons.HELP_OUTLINE_ROUNDED, size=size, color=T.TEXT_2),
+                        tooltip=tip(HELP.get(key_or_text, key_or_text)), padding=T.px(3), border_radius=size)
 
 
 def with_help(control: ft.Control, key: str | None) -> ft.Control:
