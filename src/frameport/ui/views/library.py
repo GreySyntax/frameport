@@ -584,9 +584,9 @@ class LibraryView:
                 circle.scale = 1.0 if on else 0.85
             tile.update()
         tile.on_hover = hover
-        # key: Flutter matches grid items by key, not position, so filtering/sorting never shows a card in the wrong
-        # slot (without it, a search could hide a matching game and sorting looked wrong)
-        return ft.GestureDetector(content=tile, expand=True, key=pkg,
+        # no key=: Flet freezes keyed controls, and cards change in place (hover, state); the grid only ever holds
+        # the matching cards in order (see _apply), which is what fixed search and sorting
+        return ft.GestureDetector(content=tile, expand=True,
                                   on_secondary_tap_down=lambda e: self.open_menu(pkg, e.global_position))
 
     def open_menu(self, pkg: str, position=None) -> None:

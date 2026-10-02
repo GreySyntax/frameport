@@ -82,6 +82,7 @@ class ActivityPanel:
         jobs = self.app.jobs.recent(20)
         tiles, pinned = [], []
         queued = [j for j in jobs if j.state == "queued"]
+        rebuilt, live = False, []
         for j in jobs:
             running = j.state == "running"
             # a running job's tile is rebuilt only when its structure changes (new stage/check, log shown); progress
@@ -92,19 +93,31 @@ class ActivityPanel:
             if not cached or cached[0] != key:  # unchanged tiles are reused, so text selections survive refreshes
                 cached = (key, self.tile(j))
                 self._tiles[j.id] = cached
+                rebuilt = True
             elif running and j.id in self._live:
                 bar, msg, meta, log = self._live[j.id]
                 bar.value = j.fraction
                 msg.value = _progress_text(j)
                 meta.value = j.stage or ""
-                if log is not None:
+                live += [bar, msg, meta]
+                if log is not None and len(j.log) != getattr(log, "_lines", -1):  # only when it grew
                     log.value = "\n".join(j.log[-400:])
+                    log._lines = len(j.log)
+                    live.append(log)
             if running:
                 pinned.append(cached[1])
             else:
                 if j is (queued[0] if queued else None):
                     tiles.append(self._queue_header(queued))
                 tiles.append(cached[1])
+        layout = (tuple(j.id for j in jobs), self.app.jobs.paused)
+        if not rebuilt and layout == getattr(self, "_layout", None):
+            # nothing but progress changed (several times a second during an upload): update only those controls;
+            # comparing the whole panel each time (long queue, open log) made the app sluggish
+            if update and live:
+                C.update(*live)
+            return
+        self._layout = layout
         self._tiles = {j.id: self._tiles[j.id] for j in jobs}
         self._logviews = {jid: v for jid, v in self._logviews.items() if jid in self._tiles}
         if self.app.jobs.paused == "frame":

@@ -415,3 +415,28 @@ def test_free_space_is_checked_before_queueing(monkeypatch, tmp_path):
     assert not submitted and len(dialogs) == 1  # asks first
     dialogs[0].actions[-1].on_click(None)  # Install anyway
     assert submitted == ["com.a", "com.b"] and not app._asking
+
+
+def test_activity_progress_ticks_only_touch_the_progress_controls(monkeypatch):
+    """Progress several times a second must not rebuild or re-diff the whole panel (that made the app sluggish)."""
+    from types import SimpleNamespace
+
+    from frameport.ui import components as C
+    from frameport.ui.jobs import Job, JobManager
+    from frameport.ui.views.activity import ActivityPanel
+
+    jm = JobManager(save_logs=False)
+    run = Job("running", run=lambda j: None, state="running", created=1, started=1, fraction=0.1)
+    jm.jobs = [run, *[Job(f"q{i}", run=lambda j: None, created=2 + i) for i in range(30)]]
+    panel = ActivityPanel(SimpleNamespace(jobs=jm, job_followups=lambda j: [], copy=None, show_log_file=None))
+    panel.root.width = 400
+    updated = []
+    monkeypatch.setattr(C, "update", lambda *controls: updated.append(controls))
+    panel.refresh()
+    first_list = list(panel.list.controls)
+    assert updated[-1] == (panel.root,)  # the first time: everything
+    run.fraction = 0.5
+    panel.refresh()
+    bar = panel._live[run.id][0]
+    assert bar.value == 0.5 and panel.root not in updated[-1] and bar in updated[-1]
+    assert panel.list.controls == first_list  # nothing rebuilt
