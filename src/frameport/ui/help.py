@@ -47,6 +47,8 @@ HELP: dict[str, str] = _Translated({
              "again. PC VR games are never modified on this PC; the Frame's copy only gets launch fixes.",
     "alt_build": "Some games need a second build with different OVRPort patches (for some Unreal games: one with "
                  "Unreal's ForceQuit removed). Turn this on to install that build instead.",
+    "patch_details": "Each patch is described in plain words. Turn this on to also see its id, exactly what it "
+                     "changes in the game (useful when reporting a problem) and its parameters.",
     "show_all": "Patches that can't matter for this game (wrong engine or API) are hidden. Show them to force one on "
                 "anyway.",
     "where": "Steam Frame: installed on the headset with an entry in its Steam library. This PC: a Steam shortcut on "

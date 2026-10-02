@@ -402,3 +402,11 @@ def test_saving_a_recipe_keeps_works_with_issues():
     assert entry_from_library(entry("issues")).status == "issues"
     assert entry_from_library(entry("unknown")).status == "works"  # saved as known-good = it works
     assert entry_from_library(entry("issues"), status="works").status == "works"  # an explicit choice wins
+
+
+def test_every_patch_has_a_plain_summary():
+    """The game page shows patch.summary by default (plain words); adapter settings use the Game settings dialog."""
+    from frameport.patches import base
+
+    missing = [p.id for p in base.all_patches() if p.category != "adapter" and not p.summary]
+    assert not missing, f"add plain summaries to patches/summaries.py: {missing}"

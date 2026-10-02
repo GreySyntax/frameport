@@ -25,6 +25,25 @@ CATEGORY_TITLES = {"frame": tr("Steam Frame patches"), "overport": tr("OVRPort p
                    "pcvr": tr("PC VR (Revive / Proton)")}
 
 
+def plain_reason(reason: str, default_on: bool = False) -> str:
+    """Why a patch is on, in plain words (the exact reason is shown with technical details). Recipes store the
+    reason text from when they were made, so this also covers older wordings."""
+    low = reason.lower()
+    if low.startswith("known-good recipe"):
+        return tr("From the tested recipe for this game")
+    if low in ("enabled by you.", "set by you.", "enabled by user."):
+        return tr("Turned on by you")
+    if low.startswith("suggested by log triage"):
+        return tr("Suggested after a launch test")
+    if low.startswith("needed by") or low.startswith("required by"):
+        return tr("Needed by another patch")
+    if low.startswith("applied automatically"):
+        return tr("Added automatically when needed")
+    if default_on or "default" in low or low.startswith(("recommended for every", "required for every")):
+        return tr("Standard for every game")
+    return tr("Suggested for this game")
+
+
 def should_ask_to_share(g: dict, installed: bool) -> bool:
     """Invite the user to share a recipe the built-in catalog doesn't have yet: an untested Quest/Android game that
     they have installed, launch-tested or played, and haven't shared (or dismissed) already."""
@@ -445,6 +464,7 @@ class GameView:
         listed = {p.id for p in (shown + hidden if self.show_all else shown)}
         state = {"recipe": recipe}
         warn = C.body("", T.WARN)
+        technical = bool(library.setting("ui.patch_details", False))  # remembered for every game
 
         def save(r):
             r.source = "user"
@@ -506,11 +526,18 @@ class GameView:
             for p in [p for p in base.all_patches() if p.category == cat and p.id in listed]:
                 on = p.id in recipe.patches
                 reason = recipe.reasons.get(p.id, "")
-                sub = [C.meta(tr(p.description), T.TEXT_2)]
+                # plain by default; "Show technical details" adds the exact description, the id and the parameters
+                sub = [C.meta(tr(p.summary or p.description), T.TEXT_2)]
+                if technical and p.summary:
+                    sub.append(C.meta(tr(p.description), T.TEXT_3, selectable=True))
                 if reason:
-                    sub.insert(0, C.meta(tr(reason), T.ACCENT))
+                    shown = tr(reason).replace("overport", "OVRPort") if technical else \
+                        plain_reason(reason, p.default_on)
+                    sub.insert(0, C.meta(shown, T.ACCENT))
                 extra = None
-                if cat == "adapter":
+                if not technical:
+                    pass
+                elif cat == "adapter":
                     val = recipe.params(p.id).get("value", p.params[0].default)
                     extra = ft.TextField(value=str(val), width=T.px(90), dense=True, text_size=T.T_BODY,
                                          border_color=T.BORDER, on_blur=set_value(p.id, p.params[0].kind))
@@ -525,7 +552,8 @@ class GameView:
                     ft.Column([ft.Row([C.body(tr(p.title), T.TEXT, weight=ft.FontWeight.W_500)]
                                       + ([C.pill(tr("experimental"), T.WARN, tooltip=C.tip(HELP["experimental"]))]
                                          if p.experimental else [])
-                                      + [C.meta(p.id)], spacing=T.S2, wrap=True), *sub], spacing=T.px(3), expand=True),
+                                      + ([C.meta(p.id)] if technical else []), spacing=T.S2, wrap=True), *sub],
+                              spacing=T.px(3), expand=True),
                     *([extra] if extra else []),
                     ft.Switch(value=on, on_change=toggle(p.id), active_color=T.ACCENT),
                 ], spacing=T.S3), padding=ft.Padding(T.S4, T.px(10), T.S4, T.px(10)), border=ft.Border(
@@ -543,9 +571,15 @@ class GameView:
         def set_alt(e):
             state["recipe"].use_alt = e.control.value
             save(state["recipe"])
-        top = []
+        def set_technical(e):
+            library.set_setting("ui.patch_details", bool(e.control.value))
+            app.open_game(package, advanced=True, show_all=self.show_all)
+        top = [C.with_help(C.switch(tr("Show technical details (patch ids, exact effects, parameters)"),
+                                    value=technical, on_change=set_technical), "patch_details")]
         if recipe.alt_patches:
-            top.append(C.with_help(C.switch(label=tr("Install the alternate build (") + ", ".join(recipe.alt_patches)
+            alt = ", ".join(recipe.alt_patches if technical else
+                            [tr(base.get(p).title) if p in base.REGISTRY else p for p in recipe.alt_patches])
+            top.append(C.with_help(C.switch(label=tr("Install the alternate build (") + alt
                                              + ")", value=recipe.use_alt, on_change=set_alt, active_color=T.ACCENT),
                                    "alt_build"))
         if hidden:

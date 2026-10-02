@@ -79,7 +79,7 @@ def suggest(analysis: Analysis, use_catalog: bool = True) -> Recipe:
         for req in base.get(pid).requires:
             if req not in recipe.patches:
                 recipe.patches[req] = {}
-                recipe.reasons[req] = f"Required by {pid}."
+                recipe.reasons[req] = f"Needed by '{base.get(pid).title}'."
     return recipe
 
 

@@ -123,3 +123,13 @@ def test_untested_games_invite_sharing_their_recipe():
     assert not should_ask_to_share({**g, "shared_config": 1.0}, True)
     assert not should_ask_to_share({**g, "share_dismissed": True}, True)
     assert not should_ask_to_share({**g, "kind": "rift"}, True)
+
+
+def test_patch_reasons_in_plain_words():
+    from frameport.ui.views.game import plain_reason
+
+    assert plain_reason("overport default.") == "Standard for every game"  # an older recipe's wording
+    assert plain_reason("Known-good recipe for Batman (tested 2026-09-28).") == "From the tested recipe for this game"
+    assert plain_reason("Enabled by you.") == "Turned on by you"
+    assert plain_reason("Applied automatically if the manifest needs it.") == "Added automatically when needed"
+    assert plain_reason("Hand tracking is required by the game: …") == "Suggested for this game"

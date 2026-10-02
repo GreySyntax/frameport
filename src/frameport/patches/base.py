@@ -73,6 +73,13 @@ class Patch:
     experimental: bool = False
     needs_vr: bool = True  # only matters for VR apps (hidden for Android apps without VR)
 
+    @property
+    def summary(self) -> str:
+        """One plain sentence for the game page (patches/summaries.py); the description is the technical text."""
+        from .summaries import SUMMARIES
+
+        return SUMMARIES.get(self.id, "")
+
     def detect(self, analysis: Analysis) -> Suggestion | None:
         return Suggestion(True, "Recommended for every game.") if self.default_on else None
 

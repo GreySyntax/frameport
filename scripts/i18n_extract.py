@@ -53,7 +53,7 @@ def from_data() -> dict:
 
     texts = {dict.__getitem__(HELP, k): "" for k in HELP}
     for p in base.all_patches():
-        for t in (p.title, p.description):
+        for t in (p.title, p.description, p.summary):
             if t:
                 texts[t] = ""
     for _, title in GROUPS:  # the Game settings dialog

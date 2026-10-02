@@ -87,7 +87,7 @@ class OverportPatch(Patch):
 
         a = analysis
         if self.default_on:
-            return Suggestion(True, "OVRPort default.")
+            return Suggestion(True, "Part of every OVRPort conversion.")
         if self.id == "patch_force_passthrough" and a.extra.get("mr_only"):
             return Suggestion(True, "Mixed-reality-only game (passthrough required, no guardian): force "
                                     "passthrough on.")
