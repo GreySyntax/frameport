@@ -2,6 +2,7 @@
 patch list tucked under "Advanced"."""
 from __future__ import annotations
 
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -625,8 +626,21 @@ class GameView:
         if self.advanced:
             body.append(self.advanced_panel())
         body.append(self.details())
-        return ft.Column([ft.Container(ft.Column(body, spacing=T.S5), padding=ft.Padding(0, 0, T.S3, T.S6))],
-                         scroll=ft.ScrollMode.AUTO, expand=True)
+        app = self.app
+
+        def remember(e):
+            app.game_scroll = e.pixels
+        col = ft.Column([ft.Container(ft.Column(body, spacing=T.S5), padding=ft.Padding(0, 0, T.S3, T.S6))],
+                        scroll=ft.ScrollMode.AUTO, expand=True, on_scroll=remember, scroll_interval=100)
+        offset = getattr(app, "game_scroll", 0.0)
+        if offset > 0:  # back to where the user was, once the new page is on screen
+            def restore():
+                try:
+                    app.page.run_task(col.scroll_to, offset=offset, duration=0)
+                except Exception:  # noqa: BLE001 - the page changed again meanwhile
+                    pass
+            threading.Timer(0.08, restore).start()
+        return col
 
 
 def _known(pid: str) -> bool:

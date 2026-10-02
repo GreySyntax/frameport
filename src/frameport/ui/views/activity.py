@@ -43,16 +43,20 @@ class ActivityPanel:
         self.logs: set[int] = set()
         self._tiles: dict[int, tuple[tuple, ft.Control]] = {}  # job id -> (state key, tile)
         self._live: dict[int, tuple] = {}  # running job id -> (progress bar, message, stage text, log text or None)
+        # job id -> (log text, its scrolling column): kept across tile rebuilds so reading the log doesn't jump
+        self._logviews: dict[int, tuple[ft.Text, ft.Column]] = {}
         self._lock = threading.Lock()  # refresh() runs from job threads and the UI thread
-        self.pinned = ft.Column(spacing=T.S3)  # the running job: always visible above the (scrolling) list
+        # the running job: always visible above the list, scrolling on its own when it's taller than its share
+        self.pinned = ft.Column(spacing=T.S3, scroll=ft.ScrollMode.AUTO)
+        self.pinned_box = ft.Container(self.pinned, expand=3, visible=False)
         self.list = ft.Column(spacing=T.S3, scroll=ft.ScrollMode.AUTO, expand=True)
         self.root = ft.Container(
             ft.Column([
                 ft.Row([C.h2(tr("Activity")), ft.Container(expand=True),
                         C.ghost(tr("Clear finished"), on_click=lambda e: (app.jobs.clear_finished(), self.refresh())),
                         C.icon_btn(ft.Icons.CLOSE_ROUNDED, tr("Close"), lambda e: app.show_activity(False))]),
-                self.pinned,
-                self.list,
+                self.pinned_box,
+                ft.Container(self.list, expand=2),
             ], spacing=T.S3, expand=True),
             width=0, bgcolor=T.SIDEBAR, padding=ft.Padding(T.S4, T.S4, T.S4, T.S4),
             border=ft.Border(left=ft.BorderSide(1, T.BORDER)),
@@ -102,9 +106,11 @@ class ActivityPanel:
                     tiles.append(self._queue_header(queued))
                 tiles.append(cached[1])
         self._tiles = {j.id: self._tiles[j.id] for j in jobs}
+        self._logviews = {jid: v for jid, v in self._logviews.items() if jid in self._tiles}
         if self.app.jobs.paused == "frame":
             pinned.insert(0, self._paused_notice())
         self.pinned.controls = pinned
+        self.pinned_box.visible = bool(pinned)
         if not tiles and not pinned:
             tiles = [ft.Container(C.body(tr("Nothing running. Installs, launch tests and downloads show up here."),
                                          text_align=ft.TextAlign.CENTER), padding=T.S6, alignment=ft.Alignment.CENTER)]
@@ -187,15 +193,34 @@ class ActivityPanel:
                            lambda e: self.app.show_log_file(job.log_path, job.title))] if job.log_path else []),
             ], spacing=0, wrap=True))
             if show_log:
-                log = ft.Text("\n".join(job.log[-400:]), size=T.px(11), font_family="monospace", color=T.TEXT_2,
-                              selectable=True)
+                log, col = self._log_view(job)
+                log.value = "\n".join(job.log[-400:])
                 if running:
                     self._live[job.id] = (*self._live[job.id][:3], log)
-                parts.append(ft.Container(ft.Column([log], scroll=ft.ScrollMode.AUTO, auto_scroll=running),
-                                          bgcolor=T.BG, border_radius=T.RADIUS_SM, padding=T.S2, height=T.px(240)))
+                else:
+                    col.auto_scroll = False
+                parts.append(ft.Container(col, bgcolor=T.BG, border_radius=T.RADIUS_SM, padding=T.S2,
+                                          height=T.px(240)))
         return ft.Container(ft.Column(parts, spacing=T.S2), bgcolor=T.SURFACE, border_radius=T.RADIUS,
                             border=ft.Border.all(1, T.ACCENT if running else T.BORDER), padding=T.S3,
                             on_click=None if running else lambda e: self._toggle(self.expanded, job.id))
+
+    def _log_view(self, job: Job) -> tuple[ft.Text, ft.Column]:
+        """The job's log view, the same one for the job's whole life: rebuilding it on every new stage or check reset
+        its scroll position. It follows new lines only while it's scrolled to the bottom."""
+        view = self._logviews.get(job.id)
+        if view is None:
+            log = ft.Text("", size=T.px(11), font_family="monospace", color=T.TEXT_2, selectable=True)
+            col = ft.Column([log], scroll=ft.ScrollMode.AUTO, auto_scroll=True, scroll_interval=100)
+
+            def follow(e, col=col):
+                at_bottom = e.pixels >= (e.max_scroll_extent or 0) - 24
+                if col.auto_scroll != at_bottom:
+                    col.auto_scroll = at_bottom  # scrolled up to read: stop following; back at the bottom: follow
+                    C.update(col)
+            col.on_scroll = follow
+            view = self._logviews[job.id] = (log, col)
+        return view
 
     @staticmethod
     def job_text(job: Job) -> str:

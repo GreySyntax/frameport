@@ -224,6 +224,10 @@ class FramePortApp:
         return s[0].label if s else None
 
     def go(self, route: str, *args) -> None:
+        # a redraw of the same game page (a switch in its patch list, Customize, ...) keeps the scroll position;
+        # another page or game starts at the top
+        if not (route == "game" and self.route[:1] == ("game",) and self.route[1:2] == args[:1]):
+            self.game_scroll = 0.0
         self.route = (route, *args)
         self.render()
 

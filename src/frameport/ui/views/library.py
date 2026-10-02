@@ -174,9 +174,12 @@ class LibraryView:
             text_size=T.T_BODY,
             on_change=self._on_search)
         # an X that clears the search at once (shown only while there is text)
-        self.search.suffix = ft.IconButton(ft.Icons.CLOSE_ROUNDED, icon_size=T.px(16), icon_color=T.TEXT_2,
-                                           tooltip=tr("Clear search"), on_click=lambda e: self.clear_search(),
-                                           visible=bool(self.f["q"]), style=ft.ButtonStyle(padding=0))
+        # a small clickable icon, not an IconButton: its 40 px minimum size made the field taller and pushed the
+        # text off-centre
+        self.search.suffix = ft.Container(ft.Icon(ft.Icons.CLOSE_ROUNDED, size=T.px(16), color=T.TEXT_2),
+                                          tooltip=tr("Clear search"), on_click=lambda e: self.clear_search(),
+                                          visible=bool(self.f["q"]), border_radius=T.px(10), ink=True,
+                                          padding=T.px(2))
         app.search_field = self.search
         self.filters = ft.Container()
         self.hint = ft.Container(visible=False)
@@ -300,7 +303,8 @@ class LibraryView:
         self._update_sel_bar()
 
     def select_visible(self) -> None:
-        self.selected |= {pkg for pkg, (_, card) in self.cards.items() if card.visible}
+        shown = filter_games(self.games, self.f, self.app.frame_info, set(self.app.pc_installs()))
+        self.selected |= {g["package"] for g in shown if g["package"] in self.cards}
         self.set_select_mode(True)
 
     def _update_sel_bar(self) -> None:
@@ -388,18 +392,8 @@ class LibraryView:
     def _apply(self, update: bool = False) -> None:
         pc = set(self.app.pc_installs())
         shown = filter_games(self.games, self.f, self.app.frame_info, pc)
-        order = [g["package"] for g in shown]
-        visible = set(order)
-        rest = [p for p in self.cards if p not in visible]
-        controls = []
-        for pkg in order + rest:
-            entry = self.cards.get(pkg)
-            if not entry:
-                continue
-            card = entry[1]
-            card.visible = pkg in visible
-            controls.append(card)
-        self.grid.controls = controls
+        # only the matching cards, in order (hidden cards in between confused the grid's item matching)
+        self.grid.controls = [self.cards[g["package"]][1] for g in shown if g["package"] in self.cards]
         n = len(self.games)
         self.count.value = tr("Showing {len} of {n}").format(len=len(shown), n=n) if len(shown) != n else ""
         if update:
@@ -590,7 +584,9 @@ class LibraryView:
                 circle.scale = 1.0 if on else 0.85
             tile.update()
         tile.on_hover = hover
-        return ft.GestureDetector(content=tile, expand=True,
+        # key: Flutter matches grid items by key, not position, so filtering/sorting never shows a card in the wrong
+        # slot (without it, a search could hide a matching game and sorting looked wrong)
+        return ft.GestureDetector(content=tile, expand=True, key=pkg,
                                   on_secondary_tap_down=lambda e: self.open_menu(pkg, e.global_position))
 
     def open_menu(self, pkg: str, position=None) -> None:
