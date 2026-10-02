@@ -60,6 +60,10 @@ CONFLICTS = {"patch_vrapi_openxr": ("patch_remove_vrapi", "frame.vrapi_bridge"),
              "patch_ac_nexus_no_appsw_72": ("patch_ac_nexus_no_appsw_90",),
              "patch_ac_nexus_no_appsw_90": ("patch_ac_nexus_no_appsw_72",)}
 AC_NEXUS = "com.Ubisoft.ACNexusVR"
+AC_NEXUS_BUILD = "MAIN.450412.207706.final"  # OVRPort's AC Nexus patches check this build's libil2cpp.so (SHA-256)
+# patches that fail the whole overport run when used outside their game/build: a catalog recipe only gets them where
+# applies() is true (recommend/engine.py)
+STRICT = {"patch_ac_nexus_no_appsw_72", "patch_ac_nexus_no_appsw_90", "patch_vrapi_openxr"}
 DEFAULT_OVERPORT = [pid for pid, _, default, _ in OVERPORT_PATCHES if default]
 
 
@@ -70,6 +74,7 @@ class OverportPatch(Patch):
     def __init__(self, pid: str, title: str, default: bool, detail: str):
         self.id, self.title, self.default_on, self.description = pid, title, default, detail
         self.conflicts = CONFLICTS.get(pid, ())
+        self.strict = pid in STRICT
 
     def detect(self, analysis: Analysis) -> Suggestion | None:
         from . import applicability as ap
@@ -100,8 +105,8 @@ class OverportPatch(Patch):
             "patch_disable_space_warp": lambda a: "libOVRPlugin.so" in a.libs,
             "patch_vrapi_openxr": lambda a: a.direct_vrapi and "arm64-v8a" in a.abis,
             "patch_disable_meta_xr_audio_telemetry": lambda a: False,  # emulators only; the Frame is arm64
-            "patch_ac_nexus_no_appsw_72": lambda a: a.package == AC_NEXUS,
-            "patch_ac_nexus_no_appsw_90": lambda a: a.package == AC_NEXUS,
+            "patch_ac_nexus_no_appsw_72": lambda a: a.package == AC_NEXUS and a.version == AC_NEXUS_BUILD,
+            "patch_ac_nexus_no_appsw_90": lambda a: a.package == AC_NEXUS and a.version == AC_NEXUS_BUILD,
         }
         rule = rules.get(self.id)
         return rule(analysis) if rule else True

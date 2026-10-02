@@ -33,6 +33,8 @@ def suggest(analysis: Analysis, use_catalog: bool = True) -> Recipe:
         for pid in entry.overport_remove:
             recipe.patches.pop(pid, None)
         for pid in entry.overport_extra + entry.frame:
+            if getattr(base.get(pid), "strict", False) and not base.get(pid).applies(analysis):
+                continue  # e.g. a patch for one exact game build: another build of the game would fail to patch
             recipe.patches.setdefault(pid, {})
             recipe.reasons[pid] = why
         # heuristic-only suggestions the catalog didn't choose are dropped for exact reproducibility

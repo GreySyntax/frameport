@@ -278,6 +278,12 @@ the **unpatched** upstream of our `frame.vrapi_bridge` (`native/vrapi` unchanged
 experimental CLI built with `-PwithVrApi=true` (stable jars list it but fail). The owner prefers OVRPort's fixes over
 ours where they work as well (less to maintain): compare in the headset before switching a default.
 `frameport install <pkg> --apk <file>` installs a specific (test) build signed with the game's key.
+Headset results (2026-10-02, `PATCHED/_test-ovrport-1.2.5/TESTING.md`): OVRPort's own VrApi translator fails on the
+Frame (Climb 2: requests VkFormat 37 → crash; POTW: no GLES path, missing `vrapi_GetTextureSwapChainHandle`) → keep
+`frame.vrapi_bridge`; those two changes are upstream candidates. 1.2.5 builds (its platform compat, new permissions)
+work. AC Nexus: `patch_ac_nexus_no_appsw_90` is the catalog default (owner preferred 90 Hz); `STRICT` patches are only
+taken from a catalog recipe where `applies()` holds (the AC Nexus ones need build MAIN.450412.207706.final, else the
+whole overport run fails).
 
 **Patching gotchas:**
 - UnityPy re-serialization breaks scene loading → patch QualitySettings ints in place.

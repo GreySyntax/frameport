@@ -241,7 +241,8 @@ def test_ovrport_125_patches():
     from frameport.recommend import engine
 
     quest = _analysis()
-    nexus = _analysis(package="com.Ubisoft.ACNexusVR")
+    nexus = _analysis(package="com.Ubisoft.ACNexusVR", version="MAIN.450412.207706.final")
+    other_nexus = _analysis(package="com.Ubisoft.ACNexusVR", version="MAIN.999.1.final")
     vrapi = _analysis(direct_vrapi=True, libs=["libvrapi.so"])
     for pid in ("patch_vrapi_openxr", "patch_disable_meta_xr_audio_telemetry", "patch_ac_nexus_no_appsw_72",
                 "patch_ac_nexus_no_appsw_90"):
@@ -249,6 +250,10 @@ def test_ovrport_125_patches():
         assert not base.get(pid).applies(quest)
     assert base.get("patch_ac_nexus_no_appsw_90").applies(nexus) and base.get("patch_vrapi_openxr").applies(vrapi)
     assert not base.get("patch_disable_meta_xr_audio_telemetry").applies(nexus)  # emulators only
+    assert not base.get("patch_ac_nexus_no_appsw_90").applies(other_nexus)  # OVRPort checks the exact build
+    from frameport.recommend import engine as eng
+    assert "patch_ac_nexus_no_appsw_90" in eng.suggest(nexus).patches  # catalog default (owner, 2026-10-02)
+    assert "patch_ac_nexus_no_appsw_90" not in eng.suggest(other_nexus).patches  # other builds would fail to patch
     recipe = Recipe(package="com.Ubisoft.ACNexusVR", patches=["patch_copy_libraries", "frame.adapter",
                                                               "patch_ac_nexus_no_appsw_72", "patch_ac_nexus_no_appsw_90"])
     assert any("conflicts" in w for w in engine.warnings(recipe))
@@ -266,3 +271,14 @@ def test_overport_release_sources(monkeypatch):
     assert toolchain.latest_overport() == ("1.2.5", "https://example.invalid/OVRPort.jar")
     replies["overport-release-ovrport.json"] = None  # fork unreachable: the original project
     assert toolchain.latest_overport() == ("1.2.3", "https://example.invalid/z")
+
+
+def test_every_bundled_catalog_file_loads():
+    """A YAML error silently drops a recipe from the catalog: catch it here."""
+    from pathlib import Path
+
+    from frameport.recommend import catalog
+
+    files = sorted((Path(__file__).resolve().parents[1] / "catalog/games").glob("*.yaml"))
+    loaded = {e.package for e in catalog.load(refresh=True).values() if e.origin == "bundled"}
+    assert {f.stem for f in files} <= loaded

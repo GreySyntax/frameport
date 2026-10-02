@@ -70,6 +70,9 @@ OVRPORT_METADATA = ("android.hardware.xr.input.hand_tracking", "android.hardware
                     "android.permission.FACE_TRACKING", "android.permission.HAND_TRACKING",
                     "android.permission.SCENE_UNDERSTANDING_COARSE", "android.permission.SCENE_UNDERSTANDING_FINE")
 COMPAT = "libovrplatformcompat.so"
+# OVRPort's AC Nexus frame-rate patches rewrite this exact libil2cpp.so (build 207706)
+AC_NEXUS_IL2CPP = "5fa8036b2e6469298c0b3f024a8d89b9c5640233544ac23cd9b46278e5e9baf8"
+RECIPE_ONLY_PATCHES = {"patch_ac_nexus_no_appsw_72", "patch_ac_nexus_no_appsw_90"}  # added to recipes after 09-28
 
 
 def _manifest_lines(data: bytes) -> list[str]:
@@ -106,7 +109,11 @@ def _overport_config(new: bytes, old: bytes) -> str | None:
     if not a or not b:
         return None
     by_a, by_b = a.get("patched", {}).pop("by", None), b.get("patched", {}).pop("by", None)
-    return f"written by overport CLI {by_a} (known-good: {by_b}); same settings" if a == b else None
+    added = [p for p in a.get("patched", {}).get("patches", []) if p not in b.get("patched", {}).get("patches", [])]
+    if added and set(added) <= RECIPE_ONLY_PATCHES:
+        a["patched"]["patches"] = [p for p in a["patched"]["patches"] if p not in added]
+    extra = f"; recipe now adds {', '.join(added)}" if added else ""
+    return f"written by overport CLI {by_a} (known-good: {by_b}){extra}; same settings" if a == b else None
 
 
 def _compat_export(data: bytes) -> bool:
@@ -123,6 +130,8 @@ def classify(name: str, new: bytes, old: bytes) -> tuple[str, str]:
         why = _ovrport_manifest(new, old)
         if why:
             return "expected", why
+    if base == "libil2cpp.so" and hashlib.sha256(old).hexdigest() == AC_NEXUS_IL2CPP:
+        return "expected", "OVRPort's AC Nexus frame-rate patch (recipe: no application space warp at 90 Hz)"
     if base == "liboverport.config.so":
         why = _overport_config(new, old)
         if why:
