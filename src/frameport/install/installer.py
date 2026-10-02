@@ -112,7 +112,7 @@ def install(frame: Frame, plan: InstallPlan, reporter: Reporter) -> dict:
         tags=_tags(plan.package),
         apk_name=plan.apk.name, settings=ctx.adapter_settings,
         files={k: v.decode() if isinstance(v, bytes) else v for k, v in ctx.files.items()}, env=ctx.env,
-        obb_manifest=manifest or None,
+        obb_manifest=manifest or None, flatscreen=_flatscreen(plan.package),
         recipe={"patches": sorted(plan.recipe.patches), "source": plan.recipe.source, "alt": plan.recipe.use_alt},
     )
     reporter.log(f"installed at {result['base']} (Steam shortcut id {result['appid']})")
@@ -323,6 +323,14 @@ def _tags(package: str) -> list[str]:
 
     entry = library.game(package)
     return steam_tags(entry) if entry else []
+
+
+def _flatscreen(package: str) -> bool:
+    """An Android app without VR: Lepton must show it as a flat window (it never draws through OpenXR)."""
+    from ..core import library
+
+    g = library.game(package) or {}
+    return bool(g.get("analysis")) and library.analysis_from_dict(g["analysis"]).vr_kind == "none"
 
 
 def upload_steam_art(frame: Frame, package: str, base: str, reporter: Reporter) -> None:

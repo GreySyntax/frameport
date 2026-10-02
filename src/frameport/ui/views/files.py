@@ -78,7 +78,7 @@ class FilesView:
         self.game_locs: dict[str, dict] = {}  # package -> resolved location (agent storage_targets, cached)
         self.shared: list[dict] = []
         self.locations = ft.Column(spacing=T.px(2), scroll=ft.ScrollMode.AUTO, expand=True)
-        self.crumb_row = ft.Row(spacing=T.px(2), wrap=True, expand=True)
+        self.crumb_row = ft.Row(spacing=T.px(2), wrap=True)
         self.where = C.meta("")
         self.listing = ft.Column(spacing=0, scroll=ft.ScrollMode.AUTO, expand=True)
         self.status = C.meta("")
@@ -87,7 +87,7 @@ class FilesView:
             C.secondary(tr("Upload folder"), ft.Icons.DRIVE_FOLDER_UPLOAD_ROUNDED, self.upload_folder),
             C.ghost(tr("New folder"), ft.Icons.CREATE_NEW_FOLDER_OUTLINED, lambda e: self.new_folder()),
             C.icon_btn(ft.Icons.REFRESH_ROUNDED, tr("Refresh"), lambda e: self.load()),
-        ], spacing=T.S2)
+        ], spacing=T.S2, wrap=True, run_spacing=T.S2)
         self.hidden_switch = C.switch(tr("Show hidden files"), value=False, on_change=self._toggle_hidden)
         self.selected: set[str] = set()  # paths of checked entries in the current folder
         self.checks: dict[str, ft.Checkbox] = {}
@@ -124,8 +124,10 @@ class FilesView:
                     C.card(ft.Column([C.meta(tr("Locations").upper()), self.locations], spacing=T.S2, expand=True),
                            padding=T.S3, width=T.px(260), expand=False),
                     ft.Column([
-                        ft.Row([self.crumb_row, self.toolbar], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Row([self.select_all, self.where, ft.Container(expand=True), self.hidden_switch],
+                        # the folder path on its own line: next to the buttons a narrow window squeezed it
+                        self.crumb_row,
+                        self.toolbar,
+                        ft.Row([self.select_all, ft.Container(self.where, expand=True), self.hidden_switch],
                                vertical_alignment=ft.CrossAxisAlignment.CENTER),
                         self.sel_bar,
                         self._drop_area(ft.Stack([C.card(self.listing, padding=T.px(4), expand=True),

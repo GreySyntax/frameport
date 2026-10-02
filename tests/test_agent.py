@@ -653,3 +653,13 @@ def test_prune_also_matches_the_earlier_tag_name(monkeypatch, tmp_path):
     vdf = str(tmp_path / "shortcuts.vdf")
     old = a.upsert_shortcut(vdf, '"C:\\Revive\\ReviveInjector.exe"', "Vader", "/d", tag="Rift via Revive")
     assert a.prune_shortcuts(vdf, "Vader", '"C:\\game\\WKND.exe"', ("FramePort PC VR", "Rift via Revive")) == [old]
+
+
+def test_flatscreen_marker_for_android_apps_without_vr(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    a.set_flatscreen(str(tmp_path), True)
+    assert (tmp_path / "lepton-show-flatscreen").exists()
+    a.set_flatscreen(str(tmp_path), True)  # idempotent
+    a.set_flatscreen(str(tmp_path), False)
+    assert not (tmp_path / "lepton-show-flatscreen").exists()
+    a.set_flatscreen(str(tmp_path), False)

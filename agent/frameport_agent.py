@@ -33,7 +33,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 27
+AGENT_VERSION = 28
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1155,6 +1155,16 @@ def data_files_dir(base, pkg):
     return os.path.join(base, "lepton-data/external/Android/data", pkg, "files")
 
 
+def set_flatscreen(app_dir, on):
+    """Lepton shows an app as a flat (2D) window only when its app folder holds this marker
+    (liblepton/app_metadata.sh); otherwise the app runs headless and only OpenXR output reaches the headset."""
+    marker = os.path.join(app_dir, "lepton-show-flatscreen")
+    if on:
+        open(marker, "a").close()
+    elif os.path.exists(marker):
+        os.remove(marker)
+
+
 def cmd_finalize(args):
     """Move uploaded files into place, write launcher/settings/config files/deployment.json. Keeps saves."""
     pkg = check_pkg(args["package"])
@@ -1201,6 +1211,8 @@ def cmd_finalize(args):
             os.replace(src, dst)
             moved += 1
     shutil.rmtree(incoming, ignore_errors=True)
+    if "flatscreen" in args:  # older clients don't send it: leave the marker as it is
+        set_flatscreen(app, args["flatscreen"])
     # settings: settings.conf (read by the adapter via LEPTON_ENV_FRAMEBRIDGE_CONFIG) + framebridge.conf copy
     files_dir = data_files_dir(base, pkg)
     os.makedirs(files_dir, exist_ok=True)
