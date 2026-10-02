@@ -11,8 +11,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path, monkeypatch):
     """Never touch the real user data dir (tools, keystores, library) from tests."""
+    from frameport.core import paths
+
     monkeypatch.setenv("FRAMEPORT_HOME", str(tmp_path / "home"))
     yield
+    paths._removed.clear()  # an uninstall test marks the data folder as removed for the rest of the process
 
 
 # ---------------------------------------------------------------------------------------------- AXML builder

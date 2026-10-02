@@ -154,8 +154,12 @@ def system_revive(max_age: float = 60) -> Path | None:
         if not found:
             for hive in ("HKLM", "HKCU"):
                 v = winhost.reg_query(hive + r"\Software\Revive", "")
-                if v and _usable(winhost.to_local(v.strip('"'))):
-                    found = winhost.to_local(v.strip('"'))
+                try:
+                    candidate = winhost.to_local(v.strip('"')) if v else None
+                except ValueError:
+                    candidate = None
+                if candidate and _usable(candidate):
+                    found = candidate
                     break
     _system_cache = (time.time(), found)
     return found

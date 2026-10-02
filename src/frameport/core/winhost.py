@@ -62,7 +62,10 @@ def to_windows(path: Path | str) -> str:
     m = re.match(r"^/mnt/([a-zA-Z])(/.*)?$", p)
     if m:
         return f"{m[1].upper()}:" + (m[2] or "/").replace("/", "\\")
-    r = subprocess.run(["wslpath", "-w", p], capture_output=True, text=True)
+    try:
+        r = subprocess.run(["wslpath", "-w", p], capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ValueError(f"{p} is not reachable from Windows ({exc})") from None
     if r.returncode:
         raise ValueError(f"{p} is not reachable from Windows")
     return r.stdout.strip()
@@ -75,7 +78,12 @@ def to_local(winpath: str) -> Path:
     m = re.match(r"^([a-zA-Z]):[\\/](.*)$", winpath.strip())
     if m:
         return Path(f"/mnt/{m[1].lower()}") / m[2].replace("\\", "/")
-    r = subprocess.run(["wslpath", "-u", winpath], capture_output=True, text=True)
+    try:
+        r = subprocess.run(["wslpath", "-u", winpath], capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ValueError(f"can't map {winpath} to a local path ({exc})") from None
+    if r.returncode or not r.stdout.strip():  # never Path("") (= the current folder)
+        raise ValueError(f"can't map {winpath} to a local path")
     return Path(r.stdout.strip())
 
 
@@ -115,7 +123,12 @@ def env_path(name: str) -> Path | None:
     except (OSError, subprocess.TimeoutExpired):
         return None
     v = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""
-    return to_local(v) if v and "%" not in v else None
+    if not v or "%" in v:
+        return None
+    try:
+        return to_local(v)
+    except ValueError:
+        return None
 
 
 # ------------------------------------------------------------------------------------------ Steam

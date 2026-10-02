@@ -32,7 +32,9 @@ def app_log_path() -> Path:
 
 def setup(component: str = "app") -> None:
     """Log to <data>/logs/app.log (2 MB × 3). Safe to call more than once; also records uncaught exceptions."""
-    if any(getattr(h, "_frameport", False) for h in log.handlers):
+    from .paths import removed
+
+    if removed() or any(getattr(h, "_frameport", False) for h in log.handlers):
         return
     try:
         handler = logging.handlers.RotatingFileHandler(app_log_path(), maxBytes=2 << 20, backupCount=3,
@@ -58,8 +60,19 @@ def _version() -> str:
     return __version__
 
 
+def shutdown() -> None:
+    """Close the log file (uninstall: an open file can't be deleted on Windows)."""
+    for h in [h for h in log.handlers if getattr(h, "_frameport", False)]:
+        log.removeHandler(h)
+        h.close()
+
+
 def save_job_log(kind: str, package: str | None, state: str, text: str) -> Path | None:
     """Keep a finished job's log (the GUI only holds it in memory); the last KEEP_JOB_LOGS are kept."""
+    from .paths import removed
+
+    if removed():
+        return None
     try:
         d = jobs_dir()
         name = re.sub(r"[^A-Za-z0-9._-]+", "_", f"{kind}-{package or 'app'}-{state}")[:120]

@@ -11,12 +11,14 @@ The FramePort program itself: delete its folder (portable app) or `uv tool unins
 """
 from __future__ import annotations
 
+import os
 import shutil
 import time
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .core import applog, paths
 from .core.events import Reporter
 from .core.paths import user_data_dir
 
@@ -139,20 +141,29 @@ def remove_pc_shortcuts(reporter: Reporter) -> None:
             winhost.start_steam(root)
 
 
+PURGE_STATUS = "~/.cache/frameport-purge.json"  # written by the agent's detached purge worker (outside its folder)
+
+
 def purge_frame(frame, reporter: Reporter, keep_saves: bool = True, wait: float = 180) -> dict:
+    """Remove FramePort's games and files from the Frame and wait for the detached worker to finish. The status file
+    is read directly (the agent deletes itself at the end, so asking it would re-upload it)."""
+    import json
+
     reporter.stage("Removing FramePort from the Frame")
     frame.agent("purge", keep_saves=keep_saves)
     end = time.time() + wait
-    st = {}
+    st: dict = {}
     while time.time() < end:
         time.sleep(3)
-        try:
-            st = frame.agent("purge_status", timeout=30)
-        except Exception:  # noqa: BLE001 - the agent deletes itself at the end; SSH may hiccup while Steam restarts
-            st = {"state": "done?"}
-            break
+        try:  # SSH may hiccup while Steam restarts on the Frame: keep trying until the deadline
+            code, out, _ = frame.run(f"cat {PURGE_STATUS}", timeout=30)
+            st = json.loads(out) if code == 0 and out.strip() else st
+        except Exception:  # noqa: BLE001
+            continue
         if st.get("state") in ("done", "failed"):
             break
+    if st.get("state") not in ("done", "failed"):
+        reporter.check("Frame", False, "couldn't confirm that the removal finished; check the Frame's Steam library")
     for r in st.get("removed", []):
         reporter.check(r, True)
     for e in st.get("errors", []):
@@ -188,6 +199,34 @@ def run(reporter: Reporter, frame=None, keep_frame_saves: bool = True, backup_di
         reporter.check("Revive copy for Windows", True, str(rv))
     reporter.stage("Removing FramePort's data")
     data = user_data_dir()
-    shutil.rmtree(data, ignore_errors=True)
-    reporter.check("FramePort data", not data.exists(), str(data))
+    applog.shutdown()     # the open log file would block the delete on Windows
+    paths.mark_removed()  # from now on nothing writes into the data folder (job logs, library, caches)
+    left = remove_data_dir(data)
+    reporter.check("FramePort data", not left, str(data) if not left else
+                   f"{data}: not removed: {', '.join(left[:5])}" + (" …" if len(left) > 5 else ""))
     return out
+
+
+# what FramePort creates in its data folder (a custom FRAMEPORT_HOME may hold other files: those stay)
+DATA_ENTRIES = {"artwork", "cache", "catalog", "frames.json", "library.json", "logs", "output", "overport-workspace",
+                "pc", "ssh", "tools", "work", "updates", "xrlayer"}
+
+
+def remove_data_dir(data: Path) -> list[str]:
+    """Delete FramePort's data folder. The default folder is FramePort's own and goes entirely; with FRAMEPORT_HOME
+    only FramePort's entries are removed. Returns what is left (couldn't be deleted, or isn't FramePort's)."""
+    if not data.is_dir():
+        return []
+    own_folder = not os.environ.get("FRAMEPORT_HOME")
+    for entry in list(data.iterdir()):
+        ours = own_folder or entry.name in DATA_ENTRIES or entry.name.startswith(("library.json.", "."))
+        if not ours:
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry, ignore_errors=True)
+        else:
+            entry.unlink(missing_ok=True)
+    left = sorted(e.name for e in data.iterdir()) if data.is_dir() else []
+    if not left:
+        data.rmdir()
+    return left

@@ -126,7 +126,7 @@ def update_cmd(check: bool = typer.Option(False, "--check", help="Only say wheth
         return
     for cmd in cmds:
         typer.echo("$ " + " ".join(cmd))
-        if subprocess.call(cmd):
+        if subprocess.call(cmd, timeout=updates.UPGRADE_TIMEOUT, env=updates.upgrade_env()):
             typer.echo("Update failed.", err=True)
             raise typer.Exit(1)
     typer.echo(f"Updated to FramePort {up.version}.")

@@ -1301,6 +1301,9 @@ class FramePortApp:
             frame = self.target.frame if (cb_frame.value and connected) else None
             keep = cb_saves.value
 
+            for pending in self.jobs.pending():  # nothing else may run after (or during) the uninstall
+                self.jobs.cancel(pending)
+
             def run(job: Job):
                 out = un.run(job.reporter, frame, keep, keys, remove_frame=frame is not None)
                 self.target, self.frame_info, self.frame_state = None, None, "none"

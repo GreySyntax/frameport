@@ -193,6 +193,14 @@ def wheel_installer() -> str:
     return "pip"
 
 
+UPGRADE_TIMEOUT = 1800  # seconds for one git/uv/pip step of a source or wheel update
+
+
+def upgrade_env() -> dict:
+    """Environment for git/uv/pip during an update: never stop at a credential or confirmation prompt."""
+    return {**os.environ, "GIT_TERMINAL_PROMPT": "0", "PIP_NO_INPUT": "1"}
+
+
 def upgrade_commands(up: Update, kind: str | None = None) -> list[list[str]]:
     """Commands that update a wheel or source install (bundles use prepare()/apply())."""
     kind = kind or install_kind()
@@ -250,7 +258,7 @@ def _extract(archive: Path, dest: Path, platform: str) -> Path:
     dest.mkdir(parents=True)
     if platform == "darwin":
         # ditto keeps the app bundle's symlinks and permissions (Python's zipfile doesn't)
-        subprocess.run(["ditto", "-x", "-k", str(archive), str(dest)], check=True)
+        subprocess.run(["ditto", "-x", "-k", str(archive), str(dest)], check=True, timeout=900)
         app = next((p for p in dest.iterdir() if p.suffix == ".app"), None)
         if not app or not (app / "Contents/MacOS").is_dir():
             raise UpdateError("the downloaded archive doesn't contain FramePort.app")

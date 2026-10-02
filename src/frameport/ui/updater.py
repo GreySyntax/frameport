@@ -148,7 +148,11 @@ class Updater:
             else:
                 for cmd in updates.upgrade_commands(up, kind):
                     rep.stage(" ".join(cmd[:3]))
-                    out = subprocess.run(cmd, capture_output=True, text=True)
+                    try:
+                        out = subprocess.run(cmd, capture_output=True, text=True, timeout=updates.UPGRADE_TIMEOUT,
+                                             env=updates.upgrade_env(), stdin=subprocess.DEVNULL)
+                    except subprocess.TimeoutExpired:
+                        raise RuntimeError(f"{cmd[0]} took too long; update by hand: {' '.join(cmd)}") from None
                     for line in (out.stdout + out.stderr).splitlines()[-20:]:
                         rep.log(line)
                     if out.returncode:

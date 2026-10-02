@@ -157,6 +157,25 @@ def test_uninstall_backs_up_keys_and_removes_data(tmp_path, monkeypatch):
     z = zipfile.ZipFile(out["backup"])
     assert {"overport-workspace/signatures/com.x.keystore", "ssh/id_ed25519", "README.txt"} <= set(z.namelist())
     assert not data.exists()
+    # what still runs after the uninstall (the job's log, a late setting, the poll) must not bring the folder back
+    from frameport.core import applog
+
+    applog.save_job_log("uninstall-app", None, "done", "log")
+    library.set_setting("ui.scale", 1.0)
+    user_data_dir()
+    assert not data.exists()
+
+
+def test_uninstall_keeps_foreign_files_in_a_custom_data_folder(tmp_path):
+    from frameport import uninstall
+    from frameport.core.paths import user_data_dir
+
+    data = user_data_dir()  # tests run with FRAMEPORT_HOME: a folder the user chose, maybe shared
+    library.upsert_game("com.x", title="X")
+    (data / "tools").mkdir()
+    (data / "my-notes.txt").write_text("not FramePort's")
+    assert uninstall.remove_data_dir(data) == ["my-notes.txt"]
+    assert (data / "my-notes.txt").exists() and not (data / "library.json").exists()
 
 
 # ------------------------------------------------------------------------------------------ details / Steam art
