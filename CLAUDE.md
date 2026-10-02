@@ -132,7 +132,9 @@ Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
     [--yes]`, once-a-day stderr hint read from the cache only (`refresh_cache()` in a daemon thread writes no
     settings, to avoid read-modify-write races). `scripts/update_smoke.py <archive>` runs the real extract + swap script
     (no relaunch) — CI runs it on all three OS with the archive it just built.
-    Verified: Linux + Windows (native, signer check) smoke with the v0.2.0 bundles; macOS only via the CI smoke.
+    Verified end to end (2026-10-02): real 0.3.3 bundles on Windows and Linux (Ubuntu 22.04/WSLg) found, staged and
+    installed 0.3.4 ("Install updates automatically" path) and relaunched as 0.3.4 with settings kept. Not yet clicked
+    by hand: the "Update now" button path (same apply(), called from the running app). macOS: CI smoke only.
 - `agent/frameport_agent.py` — runs **on the Frame** (python3 stdlib only), JSON over SSH. Owns the install layout,
   launch.sh template, Steam shortcuts (binary VDF), launch tests. Bump `AGENT_VERSION` when changing it.
 - `bootstrap/bootstrap.sh` — one-time Frame setup served by the pairing server (sshd, app key, avahi service, Lepton).
