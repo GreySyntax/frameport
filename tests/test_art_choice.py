@@ -29,3 +29,20 @@ def test_pick_replaces_art_but_keeps_screenshots_and_title(art, monkeypatch):
     names = {p.name for p in art.iterdir() if p.is_file()}
     assert names == {"square.jpg", "shot_0.jpg", "t_shot_0_480_bbbb.jpg", "title.txt", ".picked"}  # .picked: the pick
     assert not any(p.name.startswith(".pick") for p in art.parent.iterdir())
+
+
+def test_meta_pick_uses_the_picture_the_picker_showed(art, monkeypatch):
+    """The store service by package can serve other covers (e.g. a 'dogfooding' placeholder) than the OculusDB
+    picture the picker shows: the picked picture wins, the service only adds the logo and icon."""
+    monkeypatch.setattr(sources, "apply_oculusdb", lambda pkg, app: (sources._save(pkg, "square", JPEG), True)[1])
+
+    def store(pkg, **kw):
+        d = fetch.artwork_dir(pkg)
+        for kind in ("portrait", "landscape", "hero", "logo", "icon"):
+            (d / f"{kind}.jpg").write_bytes(b"placeholder")
+        return d, None
+    monkeypatch.setattr(fetch, "fetch", store)
+    assert sources.apply_choice("com.x", {"source": "Meta (Quest)", "package": "com.x", "app": {"id": "1"}}) is True
+    names = {p.name for p in art.iterdir() if p.is_file()}
+    assert {"square.jpg", "logo.jpg", "icon.jpg"} <= names
+    assert not names & {"portrait.jpg", "landscape.jpg", "hero.jpg"}

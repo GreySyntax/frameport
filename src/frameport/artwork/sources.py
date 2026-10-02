@@ -227,9 +227,15 @@ def apply_choice(package: str, choice: dict) -> bool:
         if choice["source"] == "Steam":
             apply_steam(tmp, choice["id"])
         elif choice.get("package"):
+            # the picture the picker showed (OculusDB) is the cover; the store service by package adds the logo
+            # and icon. Its covers can differ from the picked picture (e.g. a "dogfooding" placeholder), so they're
+            # dropped when the picked picture arrived: the Steam shapes are composed from it instead.
+            picked = apply_oculusdb(tmp, choice["app"]) if choice.get("app") else False
             fetch.fetch(tmp, lookup=choice["package"], refresh=True)
-            if not has_art(tmp):
-                apply_oculusdb(tmp, choice["app"])
+            if picked:
+                for f in stage.iterdir():
+                    if f.stem in ("portrait", "landscape", "hero"):
+                        f.unlink()
         else:
             apply_oculusdb(tmp, choice["app"])
         if not has_art(tmp):
