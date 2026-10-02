@@ -7,6 +7,7 @@ import flet as ft
 
 from ... import REPO_URL, __version__
 from ...core.paths import user_data_dir
+from ...i18n import tr
 from ...recommend import catalog
 from .. import components as C
 from .. import theme as T
@@ -14,9 +15,9 @@ from .. import theme as T
 if TYPE_CHECKING:
     from ..app import FramePortApp
 
-TOOL_TITLES = {"java": "Java runtime", "overport": "overport", "apksigner": "apksigner", "revive": "Revive"}
-TOOL_WHY = {"java": "Runs overport and apksigner", "overport": "Converts Quest games to OpenXR",
-            "apksigner": "Signs rebuilt games", "revive": "Runs Oculus Rift games on OpenXR"}
+TOOL_TITLES = {"java": tr("Java runtime"), "overport": "overport", "apksigner": "apksigner", "revive": tr("Revive")}
+TOOL_WHY = {"java": tr("Runs overport and apksigner"), "overport": tr("Converts Quest games to OpenXR"),
+            "apksigner": tr("Signs rebuilt games"), "revive": tr("Runs Oculus Rift games on OpenXR")}
 
 
 class SettingsView:
@@ -33,11 +34,11 @@ class SettingsView:
             newer = s.latest and s.version and s.latest != s.version and s.version not in ("external", "system")
             detail = TOOL_WHY.get(s.name, "")
             if s.installed:
-                detail += f" · {s.version or 'installed'}" + (f" (update: {s.latest})" if newer else "")
+                detail += f" · {s.version or 'installed'}" + (tr(" (update: {latest})").format(latest=s.latest) if newer else "")
                 if s.name == "revive" and "using" in (s.detail or ""):
                     detail += " · " + s.detail.split("·")[-1].strip()
             else:
-                detail += " · downloaded when first needed" if s.optional else " · not installed yet"
+                detail += tr(" · downloaded when first needed") if s.optional else tr(" · not installed yet")
             rows.append(C.status_row(True if s.installed else (None if s.optional else False),
                                      TOOL_TITLES.get(s.name, s.name), detail,
                                      help="revive" if s.name == "revive" else None))
@@ -48,24 +49,24 @@ class SettingsView:
         from ...core import winhost
 
         if not winhost.available():
-            self.pc.controls = [C.status_row(None, "Windows not detected",
-                                             "PC VR games can run on this PC only with Windows (or WSL on Windows)")]
+            self.pc.controls = [C.status_row(None, tr("Windows not detected"),
+                                             tr("PC VR games can run on this PC only with Windows (or WSL on Windows)"))]
         else:
             try:
                 from ...targets.pc_revive import PcReviveTarget
 
                 d = PcReviveTarget().describe()
                 self.pc.controls = [
-                    C.status_row(bool(d["steam"]), "Steam", "Found" if d["steam"] else "Steam for Windows not found"),
-                    C.status_row(d["steamvr"] or None, "SteamVR",
-                                 "Installed" if d["steamvr"] else "Install SteamVR from Steam to play PC VR games",
+                    C.status_row(bool(d["steam"]), tr("Steam"), tr("Found") if d["steam"] else tr("Steam for Windows not found")),
+                    C.status_row(d["steamvr"] or None, tr("SteamVR"),
+                                 tr("Installed") if d["steamvr"] else tr("Install SteamVR from Steam to play PC VR games"),
                                  help="steamvr_pc"),
-                    C.status_row(bool(d["revive"]), "Revive", (f"{d['revive_version']} · {d['revive']}"
-                                                              if d["revive"] else "Downloaded when first needed"),
+                    C.status_row(bool(d["revive"]), tr("Revive"), (f"{d['revive_version']} · {d['revive']}"
+                                                              if d["revive"] else tr("Downloaded when first needed")),
                                  help="revive"),
                 ]
             except Exception as exc:  # noqa: BLE001
-                self.pc.controls = [C.status_row(False, "Couldn't check this PC", str(exc))]
+                self.pc.controls = [C.status_row(False, tr("Couldn't check this PC"), str(exc))]
         C.update(self.pc)
 
     def installing(self) -> ft.Control:
@@ -73,8 +74,8 @@ class SettingsView:
 
         def changed(e):
             library.set_setting("install.launch_test", bool(e.control.value))
-        return C.switch("Launch test after installing on the Frame (starts the game once without the headset "
-                               "and checks its log)", value=bool(library.setting("install.launch_test", True)),
+        return C.switch(tr("Launch test after installing on the Frame (starts the game once without the headset "
+                               "and checks its log)"), value=bool(library.setting("install.launch_test", True)),
                          on_change=changed)
 
     def updates_card(self) -> ft.Control:
@@ -88,10 +89,10 @@ class SettingsView:
         last = library.setting("update.last_check")
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(last)) if last else "never"
         found = app.updater.found
-        status = (C.callout(ft.Row([C.body(f"FramePort {found.version} is available.", T.TEXT, expand=True),
-                                    C.primary("Update now", ft.Icons.SYSTEM_UPDATE_ROUNDED,
+        status = (C.callout(ft.Row([C.body(tr("FramePort {version} is available.").format(version=found.version), T.TEXT, expand=True),
+                                    C.primary(tr("Update now"), ft.Icons.SYSTEM_UPDATE_ROUNDED,
                                               lambda e: app.updater.install())], spacing=T.S3), "info")
-                  if found else C.meta(f"You have the latest version as of the last check ({when})."))
+                  if found else C.meta(tr("You have the latest version as of the last check ({when}).").format(when=when)))
 
         def auto_check(e):
             library.set_setting("update.auto_check", bool(e.control.value))
@@ -101,15 +102,15 @@ class SettingsView:
         kind = {"bundle": "the downloaded app", "source": "a source checkout (git pull + uv sync)",
                 "wheel": "an installed Python package (reinstalled from the release)"}[updates.install_kind()]
         return ft.Column([
-            ft.Row([C.kv("Installed", f"FramePort {__version__} · {kind}"),
+            ft.Row([C.kv(tr("Installed"), tr("FramePort {version} · {kind}").format(version=__version__, kind=kind)),
                     ft.Container(expand=True),
-                    C.secondary("Check for updates", ft.Icons.REFRESH_ROUNDED, lambda e: app.updater.check_now())],
+                    C.secondary(tr("Check for updates"), ft.Icons.REFRESH_ROUNDED, lambda e: app.updater.check_now())],
                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
             status,
-            C.switch("Check for new versions automatically", value=bool(library.setting("update.auto_check", True)),
+            C.switch(tr("Check for new versions automatically"), value=bool(library.setting("update.auto_check", True)),
                       on_change=auto_check),
-            C.switch("Install updates automatically (downloads in the background, installs when FramePort "
-                            "next starts)", value=bool(library.setting("update.auto_install", False)),
+            C.switch(tr("Install updates automatically (downloads in the background, installs when FramePort "
+                            "next starts)"), value=bool(library.setting("update.auto_install", False)),
                       on_change=auto_install),
         ], spacing=T.S3)
 
@@ -120,16 +121,16 @@ class SettingsView:
         auto = T.detect_scale()
         options = [ft.dropdown.Option("auto", f"Automatic ({auto:.0%})")] + [
             ft.dropdown.Option(str(f), f"{f:.0%}") for f in T.SCALE_CHOICES]
-        note = C.meta(f"Now {T.SCALE:.0%}. Changes apply the next time FramePort starts.")
+        note = C.meta(tr("Now {scale:.0%}. Changes apply the next time FramePort starts.").format(scale=T.SCALE))
 
         def changed(e):
             library.set_setting("ui.scale", e.control.value)
             new = T.scale_from_setting(e.control.value)
-            note.value = (f"Now {T.SCALE:.0%}; {new:.0%} after restarting FramePort." if abs(new - T.SCALE) > 0.01
-                          else f"Now {T.SCALE:.0%}.")
+            note.value = (tr("Now {scale:.0%}; {new:.0%} after restarting FramePort.").format(scale=T.SCALE, new=new) if abs(new - T.SCALE) > 0.01
+                          else tr("Now {scale:.0%}.").format(scale=T.SCALE))
             C.update(note)
 
-        dd = ft.Dropdown(label="Text and layout size", value=str(current) if current != "auto" else "auto",
+        dd = ft.Dropdown(label=tr("Text and layout size"), value=str(current) if current != "auto" else "auto",
                          options=options, width=T.px(260), on_select=changed)
         return ft.Column([dd, note], spacing=T.S2)
 
@@ -143,60 +144,60 @@ class SettingsView:
         info = self.app.frame_info or {}
         remote = info.get("agent_version")
         if self.app.frame_state == "connected" and remote:
-            text += " · on the Frame: " + (f"v{remote}" if remote == mine else f"v{remote} (updates on the next action)")
+            text += tr(" · on the Frame: ") + (f"v{remote}" if remote == mine else tr("v{remote} (updates on the next action)").format(remote=remote))
         else:
-            text += " · Frame not connected"
+            text += tr(" · Frame not connected")
         return text
 
     def build(self) -> ft.Control:
         app = self.app
         self.tools.controls = [ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT),
-                                       C.meta("Checking tools…")], spacing=T.S2)]
+                                       C.meta(tr("Checking tools…"))], spacing=T.S2)]
         app.run_bg(self.fill_tools)
         self.pc.controls = [ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT),
-                                    C.meta("Checking this PC…")], spacing=T.S2)]
+                                    C.meta(tr("Checking this PC…"))], spacing=T.S2)]
         app.run_bg(self.fill_pc)
         from ... import __version__ as ver
         data = str(user_data_dir())
         return ft.Column([
-            app.top_bar("Settings", "Updates, tools, this PC and where FramePort keeps its data"),
-            C.section("Updates", C.card(self.updates_card(), padding=T.S4), help="app_updates"),
-            C.section("Tools", C.card(self.tools, padding=ft.Padding(T.S4, T.S2, T.S4, T.S2)),
-                      subtitle="FramePort manages its own copies; nothing is installed system-wide",
-                      action=ft.Row([C.ghost("Update tools", ft.Icons.UPDATE_ROUNDED,
+            app.top_bar(tr("Settings"), tr("Updates, tools, this PC and where FramePort keeps its data")),
+            C.section(tr("Updates"), C.card(self.updates_card(), padding=T.S4), help="app_updates"),
+            C.section(tr("Tools"), C.card(self.tools, padding=ft.Padding(T.S4, T.S2, T.S4, T.S2)),
+                      subtitle=tr("FramePort manages its own copies; nothing is installed system-wide"),
+                      action=ft.Row([C.ghost(tr("Update tools"), ft.Icons.UPDATE_ROUNDED,
                                              lambda e: app.update_tools(update=True)),
-                                     C.secondary("Install missing", ft.Icons.DOWNLOAD_ROUNDED,
+                                     C.secondary(tr("Install missing"), ft.Icons.DOWNLOAD_ROUNDED,
                                                  lambda e: app.update_tools())], spacing=T.S2)),
-            C.section("This PC (for PC VR games)", C.card(self.pc, padding=ft.Padding(T.S4, T.S2, T.S4, T.S2))),
-            C.section("Data", C.card(ft.Column([
-                C.kv("Data folder", ft.Row([C.body(data, T.TEXT, selectable=True, expand=True),
-                                            C.icon_btn(ft.Icons.CONTENT_COPY_ROUNDED, "Copy path",
+            C.section(tr("This PC (for PC VR games)"), C.card(self.pc, padding=ft.Padding(T.S4, T.S2, T.S4, T.S2))),
+            C.section(tr("Data"), C.card(ft.Column([
+                C.kv(tr("Data folder"), ft.Row([C.body(data, T.TEXT, selectable=True, expand=True),
+                                            C.icon_btn(ft.Icons.CONTENT_COPY_ROUNDED, tr("Copy path"),
                                                        lambda e: app.copy(data))]), "data_folder"),
-                C.kv("Catalog", f"{len(catalog.load())} known-good recipes (bundled, remote and yours)", "catalog"),
+                C.kv(tr("Catalog"), tr("{len} known-good recipes (bundled, remote and yours)").format(len=len(catalog.load())), "catalog"),
             ], spacing=T.S2))),
-            C.section("Problems & feedback", C.card(ft.Row([
-                C.body("Something not working? Collect a diagnostics zip (logs, settings, device info; personal "
-                       "data removed) and attach it to a GitHub issue. For one game, use its menu instead.",
+            C.section(tr("Problems & feedback"), C.card(ft.Row([
+                C.body(tr("Something not working? Collect a diagnostics zip (logs, settings, device info; personal "
+                       "data removed) and attach it to a GitHub issue. For one game, use its menu instead."),
                        expand=True),
-                C.ghost("Collect app logs", ft.Icons.FOLDER_ZIP_OUTLINED, lambda e: app.collect_logs()),
-                C.secondary("Report a problem…", ft.Icons.BUG_REPORT_OUTLINED, lambda e: app.report_problem_dialog()),
+                C.ghost(tr("Collect app logs"), ft.Icons.FOLDER_ZIP_OUTLINED, lambda e: app.collect_logs()),
+                C.secondary(tr("Report a problem…"), ft.Icons.BUG_REPORT_OUTLINED, lambda e: app.report_problem_dialog()),
             ], spacing=T.S3)), help="diag_bundle"),
-            C.section("Remove FramePort", C.card(ft.Row([
-                C.body("Removes everything FramePort created: its data and tools on this PC, the Steam entries it "
-                       "added, and (optionally) its games and files on the Frame. Your game dumps aren't touched.",
+            C.section(tr("Remove FramePort"), C.card(ft.Row([
+                C.body(tr("Removes everything FramePort created: its data and tools on this PC, the Steam entries it "
+                       "added, and (optionally) its games and files on the Frame. Your game dumps aren't touched."),
                        expand=True),
-                ft.OutlinedButton("Uninstall FramePort…", icon=ft.Icons.DELETE_FOREVER_ROUNDED,
+                ft.OutlinedButton(tr("Uninstall FramePort…"), icon=ft.Icons.DELETE_FOREVER_ROUNDED,
                                   on_click=lambda e: app.uninstall_app(),
                                   style=ft.ButtonStyle(color=T.ERROR, side=ft.BorderSide(1, T.soft(T.ERROR, 0.6)),
                                                        shape=ft.RoundedRectangleBorder(radius=T.RADIUS_SM))),
             ], spacing=T.S4))),
-            C.section("Installing", C.card(self.installing(), padding=T.S4), help="launch_test"),
-            C.section("Appearance", C.card(self.appearance(), padding=T.S4), help="ui_scale"),
-            C.section("About", C.card(ft.Column([
-                C.kv("Version", ver),
-                C.kv("Frame agent", self.agent_text(), "frame_agent"),
-                C.kv("Source", ft.TextButton(REPO_URL.removeprefix("https://"), icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
+            C.section(tr("Installing"), C.card(self.installing(), padding=T.S4), help="launch_test"),
+            C.section(tr("Appearance"), C.card(self.appearance(), padding=T.S4), help="ui_scale"),
+            C.section(tr("About"), C.card(ft.Column([
+                C.kv(tr("Version"), ver),
+                C.kv(tr("Frame agent"), self.agent_text(), "frame_agent"),
+                C.kv(tr("Source"), ft.TextButton(REPO_URL.removeprefix("https://"), icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                                              url=REPO_URL)),
-                C.meta("Uses overport, Revive (LibreVR), Valve's Lepton and Proton. Not affiliated with Valve or Meta."),
+                C.meta(tr("Uses overport, Revive (LibreVR), Valve's Lepton and Proton. Not affiliated with Valve or Meta.")),
             ], spacing=T.S2))),
         ], spacing=T.S5, scroll=ft.ScrollMode.AUTO, expand=True)

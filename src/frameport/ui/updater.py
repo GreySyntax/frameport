@@ -12,6 +12,7 @@ import flet as ft
 
 from .. import __version__, updates
 from ..core import applog, library
+from ..i18n import tr
 from . import components as C
 from . import theme as T
 
@@ -30,10 +31,10 @@ class Updater:
         self._version = C.meta("", color=T.ON_ACCENT)
         self.card = ft.Container(
             ft.Row([ft.Icon(ft.Icons.SYSTEM_UPDATE_ROUNDED, size=T.px(18), color=T.ON_ACCENT),
-                    ft.Column([C.body("Update available", T.ON_ACCENT, weight=ft.FontWeight.W_600), self._version],
+                    ft.Column([C.body(tr("Update available"), T.ON_ACCENT, weight=ft.FontWeight.W_600), self._version],
                               spacing=0, expand=True)], spacing=T.S2),
             padding=T.S3, border_radius=T.RADIUS_SM, bgcolor=T.ACCENT, ink=True, visible=False,
-            tooltip="A new FramePort version is ready to install", on_click=lambda e: self.show_dialog())
+            tooltip=tr("A new FramePort version is ready to install"), on_click=lambda e: self.show_dialog())
 
     # ---------------------------------------------------------------- checking
     def start(self) -> None:
@@ -57,13 +58,13 @@ class Updater:
             if up:
                 self.app.page.run_thread(self.show_dialog)
             else:
-                self.app.toast(f"FramePort {__version__} is the latest version")
+                self.app.toast(tr("FramePort {version} is the latest version").format(version=__version__))
         self.app.run_bg(work)
 
     def _set(self, up: updates.Update | None) -> None:
         self.found = up
         self.card.visible = bool(up)
-        self._version.value = f"FramePort {up.version} · click to install" if up else ""
+        self._version.value = tr("FramePort {version} · click to install").format(version=up.version) if up else ""
         C.update(self.card)
         self.app.refresh_view()
         if up and library.setting("update.auto_install", False) and updates.install_kind() == "bundle":
@@ -76,8 +77,8 @@ class Updater:
         self.preparing = True
         try:
             updates.prepare(up)
-            self.app.toast(f"FramePort {up.version} is downloaded and installs the next time FramePort starts",
-                           action="Restart now", on_action=lambda e: self.install())
+            self.app.toast(tr("FramePort {version} is downloaded and installs the next time FramePort starts").format(version=up.version),
+                           action=tr("Restart now"), on_action=lambda e: self.install())
         except Exception as exc:  # noqa: BLE001
             applog.log.warning("automatic update download failed: %s", exc)
         finally:
@@ -94,7 +95,7 @@ class Updater:
                          "settings and Frame connection stay as they are.",
                "source": "Updates this source checkout (git pull + uv sync), then restarts FramePort.",
                "wheel": "Reinstalls FramePort from the release, then restarts it."}[kind]
-        notes = up.notes.strip() or "No release notes."
+        notes = up.notes.strip() or tr("No release notes.")
 
         def later(e):
             updates.skip(up.version)
@@ -105,18 +106,18 @@ class Updater:
             page.pop_dialog()
             self.install()
         page.show_dialog(ft.AlertDialog(
-            title=ft.Text(f"FramePort {up.version} is available", color=T.TEXT, weight=ft.FontWeight.W_600), bgcolor=T.SURFACE_2,
+            title=ft.Text(tr("FramePort {version} is available").format(version=up.version), color=T.TEXT, weight=ft.FontWeight.W_600), bgcolor=T.SURFACE_2,
             content=ft.Container(ft.Column([
-                C.body(f"You have {__version__}. {how}", T.TEXT_2),
+                C.body(tr("You have {version}. {how}").format(version=__version__, how=how), T.TEXT_2),
                 ft.Container(ft.Markdown(notes, selectable=True, extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
                                          md_style_sheet=_notes_style(),
                                          on_tap_link=lambda e: page.launch_url(e.data)),
                              padding=T.S3, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE, border=ft.Border.all(1, T.BORDER)),
             ], spacing=T.S3, scroll=ft.ScrollMode.AUTO, tight=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
                 width=T.px(560), height=T.px(min(420, 130 + 26 * len(notes.splitlines())))),
-            actions=[C.ghost("Skip this version", on_click=later),
-                     C.ghost("Release page", ft.Icons.OPEN_IN_NEW_ROUNDED, lambda e: page.launch_url(up.page)),
-                     C.primary("Update and restart", ft.Icons.SYSTEM_UPDATE_ROUNDED, go)]))
+            actions=[C.ghost(tr("Skip this version"), on_click=later),
+                     C.ghost(tr("Release page"), ft.Icons.OPEN_IN_NEW_ROUNDED, lambda e: page.launch_url(up.page)),
+                     C.primary(tr("Update and restart"), ft.Icons.SYSTEM_UPDATE_ROUNDED, go)]))
 
     # ---------------------------------------------------------------- installing
     def install(self) -> None:
@@ -128,15 +129,14 @@ class Updater:
         if kind == "bundle":
             target = updates.bundle_root()
             if not target or not updates.can_replace(target):
-                self.app.toast(f"FramePort can't replace itself in {target or 'this folder'} (no permission): opening "
-                               "the release page to download it", error=True)
+                self.app.toast(tr("FramePort can't replace itself in {value} (no permission): opening the release page to download it").format(value=target or 'this folder'), error=True)
                 page.launch_url(up.page)
                 return
         if kind == "source" and updates.source_is_dirty():
-            self.app.toast("This source checkout has uncommitted changes: commit or stash them, then update", error=True)
+            self.app.toast(tr("This source checkout has uncommitted changes: commit or stash them, then update"), error=True)
             return
         if page.web:
-            self.app.toast("Updating works in the desktop app")
+            self.app.toast(tr("Updating works in the desktop app"))
             return
 
         def run(job):
@@ -152,17 +152,17 @@ class Updater:
                         out = subprocess.run(cmd, capture_output=True, text=True, timeout=updates.UPGRADE_TIMEOUT,
                                              env=updates.upgrade_env(), stdin=subprocess.DEVNULL)
                     except subprocess.TimeoutExpired:
-                        raise RuntimeError(f"{cmd[0]} took too long; update by hand: {' '.join(cmd)}") from None
+                        raise RuntimeError(tr("{value} took too long; update by hand: {join}").format(value=cmd[0], join=' '.join(cmd))) from None
                     for line in (out.stdout + out.stderr).splitlines()[-20:]:
                         rep.log(line)
                     if out.returncode:
-                        raise RuntimeError(f"{cmd[0]} failed ({out.returncode})")
+                        raise RuntimeError(tr("{value} failed ({returncode})").format(value=cmd[0], returncode=out.returncode))
                 self.restart = self._restart_process
             rep.stage("Restarting")
-            return f"FramePort {up.version} is ready: restarting"
-        self.app.submit(f"Update FramePort to {up.version}", run, None, kind="app-update", open_panel=True)
+            return tr("FramePort {version} is ready: restarting").format(version=up.version)
+        self.app.submit(tr("Update FramePort to {version}").format(version=up.version), run, None, kind="app-update", open_panel=True)
         if self.app.jobs.current() and self.app.jobs.current().kind != "app-update":
-            self.app.toast("FramePort updates and restarts after the current job")
+            self.app.toast(tr("FramePort updates and restarts after the current job"))
 
     def on_jobs_changed(self) -> None:
         """Called when a job finishes: once nothing else runs, install and restart."""
@@ -174,7 +174,7 @@ class Updater:
         try:
             updates.apply(app)
         except Exception as exc:  # noqa: BLE001
-            self.app.toast(f"Update failed: {exc}", error=True)
+            self.app.toast(tr("Update failed: {exc}").format(exc=exc), error=True)
             return
         self._quit()
 
@@ -212,10 +212,10 @@ def library_bar(app: FramePortApp) -> ft.Control | None:
     if not up:
         return None
     return C.callout(ft.Row([
-        C.body(f"FramePort {up.version} is available (you have {__version__}).", T.TEXT, expand=True),
-        C.primary("Update now", ft.Icons.SYSTEM_UPDATE_ROUNDED, lambda e: app.updater.install()),
-        C.ghost("What's new", on_click=lambda e: app.updater.show_dialog()),
-        C.ghost("Later", on_click=lambda e: (updates.skip(up.version), app.updater._set(None))),
+        C.body(tr("FramePort {version} is available (you have {version2}).").format(version=up.version, version2=__version__), T.TEXT, expand=True),
+        C.primary(tr("Update now"), ft.Icons.SYSTEM_UPDATE_ROUNDED, lambda e: app.updater.install()),
+        C.ghost(tr("What's new"), on_click=lambda e: app.updater.show_dialog()),
+        C.ghost(tr("Later"), on_click=lambda e: (updates.skip(up.version), app.updater._set(None))),
     ], spacing=T.S3), "info", ft.Icons.SYSTEM_UPDATE_ROUNDED)
 
 

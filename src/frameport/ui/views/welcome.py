@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import flet as ft
 
 from ...core import library
+from ...i18n import tr
 from .. import components as C
 from .. import theme as T
 
@@ -51,34 +52,34 @@ class WelcomeView:
             app.welcome_started = True
             tool_job = app.update_tools(quiet=True)
         t_state = "done" if tools_done else "busy" if tool_job else "error"
-        t_text = ("Java, overport and apksigner are ready." if tools_done else
-                  (tool_job.message or tool_job.stage or "Downloading…") if tool_job else
-                  "The download didn't finish. Check your internet connection.")
+        t_text = (tr("Java, overport and apksigner are ready.") if tools_done else
+                  (tool_job.message or tool_job.stage or tr("Downloading…")) if tool_job else
+                  tr("The download didn't finish. Check your internet connection."))
         f_state = {"connected": "done", "connecting": "busy"}.get(app.frame_state, "todo")
-        f_text = (f"Connected to {app.target.label}." if app.frame_state == "connected" else
-                  "Looking for your Frame…" if app.frame_state == "connecting" else
-                  "FramePort installs games on the Frame over your network.")
+        f_text = (tr("Connected to {label}.").format(label=app.target.label) if app.frame_state == "connected" else
+                  tr("Looking for your Frame…") if app.frame_state == "connecting" else
+                  tr("FramePort installs games on the Frame over your network."))
         g_state = "done" if library.games() else "todo"
         return ft.Column([
             ft.Container(height=T.S5),
             ft.Row([ft.Container(ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(30), color=T.ON_ACCENT), width=T.px(56),
                                  height=T.px(56), border_radius=T.px(16), bgcolor=T.ACCENT, alignment=ft.Alignment.CENTER),
-                    ft.Column([C.title("Welcome to FramePort"),
-                               C.body("Play your Quest and Oculus Rift games on the Steam Frame. Three steps and "
-                                      "you're set.")], spacing=T.px(2))], spacing=T.S4),
+                    ft.Column([C.title(tr("Welcome to FramePort")),
+                               C.body(tr("Play your Quest and Oculus Rift games on the Steam Frame. Three steps and "
+                                      "you're set."))], spacing=T.px(2))], spacing=T.S4),
             ft.Container(height=T.S3),
-            self.step(1, "Getting FramePort ready", t_text, t_state,
+            self.step(1, tr("Getting FramePort ready"), t_text, t_state,
                       *([C.progress_bar(tool_job.fraction)] if tool_job else []),
-                      *([C.secondary("Try again", ft.Icons.REFRESH_ROUNDED, lambda e: app.update_tools())]
+                      *([C.secondary(tr("Try again"), ft.Icons.REFRESH_ROUNDED, lambda e: app.update_tools())]
                         if t_state == "error" else [])),
-            self.step(2, "Connect your Steam Frame", f_text, f_state,
-                      *([] if f_state == "done" else [C.secondary("Set up the Frame", ft.Icons.ARROW_FORWARD_ROUNDED,
+            self.step(2, tr("Connect your Steam Frame"), f_text, f_state,
+                      *([] if f_state == "done" else [C.secondary(tr("Set up the Frame"), ft.Icons.ARROW_FORWARD_ROUNDED,
                                                                   lambda e: app.go("frame"))])),
-            self.step(3, "Add your games", "A folder with Quest game dumps (APK + OBB) or Oculus Rift PC games.",
-                      g_state, ft.Row([C.primary("Scan a folder", ft.Icons.FOLDER_OPEN_ROUNDED, app.pick_folder),
-                                       C.ghost("Add an APK file", ft.Icons.ANDROID_ROUNDED, app.pick_apk)],
+            self.step(3, tr("Add your games"), tr("A folder with Quest game dumps (APK + OBB) or Oculus Rift PC games."),
+                      g_state, ft.Row([C.primary(tr("Scan a folder"), ft.Icons.FOLDER_OPEN_ROUNDED, app.pick_folder),
+                                       C.ghost(tr("Add an APK file"), ft.Icons.ANDROID_ROUNDED, app.pick_apk)],
                                       spacing=T.S2)),
             ft.Row([ft.Container(expand=True),
-                    C.primary("Go to my library", ft.Icons.ARROW_FORWARD_ROUNDED, lambda e: app.finish_welcome())
-                    if g_state == "done" else C.ghost("Skip for now", on_click=lambda e: app.finish_welcome())]),
+                    C.primary(tr("Go to my library"), ft.Icons.ARROW_FORWARD_ROUNDED, lambda e: app.finish_welcome())
+                    if g_state == "done" else C.ghost(tr("Skip for now"), on_click=lambda e: app.finish_welcome())]),
         ], spacing=T.S4, scroll=ft.ScrollMode.AUTO, expand=True, width=T.px(760))

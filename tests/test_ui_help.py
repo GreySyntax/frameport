@@ -79,8 +79,12 @@ def test_right_click_menu_while_busy_and_on_game_page(monkeypatch):
 def test_play_is_the_quick_action_when_installed(monkeypatch):
     g = {"package": "com.q", "title": "Q", "recipe": {"status": "works"}, "build": {"sha256": "x"}}
     app = _app(monkeypatch, g, {"installed": [{"package": "com.q", "sha256": "x"}]})
-    assert app.quick_action(g)[0] == "Play"
-    assert app.quick_action(g) != _app(monkeypatch, g, {"installed": []}).quick_action(g)
+    assert app.quick_action(g) == ("Play on Frame", "play")
+    assert _app(monkeypatch, g, {"installed": []}).quick_action(g) == ("Install on Frame", "install")
+    old = _app(monkeypatch, g, {"installed": [{"package": "com.q", "sha256": "older"}]})
+    old.pc_installs = lambda: {}
+    assert old.quick_action(g) == ("Play on Frame", "play")  # installed (even outdated): playing comes first
+    assert _app(monkeypatch, g).quick_action(g) == (None, None)  # no Frame: "Connect" isn't a quick action
     r = {"package": "rift.r", "kind": "rift", "title": "R", "recipe": {}}
     assert [o[0] for o in _app(monkeypatch, r, {"installed": []}, pc=("rift.r",)).play_options(r)] == ["Play on this PC"]
 

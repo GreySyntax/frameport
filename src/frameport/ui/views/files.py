@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import flet as ft
 
+from ...i18n import tr, tr_n
 from .. import components as C
 from .. import theme as T
 from .files_dialog import human
@@ -82,26 +83,26 @@ class FilesView:
         self.listing = ft.Column(spacing=0, scroll=ft.ScrollMode.AUTO, expand=True)
         self.status = C.meta("")
         self.toolbar = ft.Row([
-            C.primary("Upload files", ft.Icons.UPLOAD_FILE_ROUNDED, self.upload_files),
-            C.secondary("Upload folder", ft.Icons.DRIVE_FOLDER_UPLOAD_ROUNDED, self.upload_folder),
-            C.ghost("New folder", ft.Icons.CREATE_NEW_FOLDER_OUTLINED, lambda e: self.new_folder()),
-            C.icon_btn(ft.Icons.REFRESH_ROUNDED, "Refresh", lambda e: self.load()),
+            C.primary(tr("Upload files"), ft.Icons.UPLOAD_FILE_ROUNDED, self.upload_files),
+            C.secondary(tr("Upload folder"), ft.Icons.DRIVE_FOLDER_UPLOAD_ROUNDED, self.upload_folder),
+            C.ghost(tr("New folder"), ft.Icons.CREATE_NEW_FOLDER_OUTLINED, lambda e: self.new_folder()),
+            C.icon_btn(ft.Icons.REFRESH_ROUNDED, tr("Refresh"), lambda e: self.load()),
         ], spacing=T.S2)
-        self.hidden_switch = C.switch("Show hidden files", value=False, on_change=self._toggle_hidden)
+        self.hidden_switch = C.switch(tr("Show hidden files"), value=False, on_change=self._toggle_hidden)
         self.selected: set[str] = set()  # paths of checked entries in the current folder
         self.checks: dict[str, ft.Checkbox] = {}
         self.select_all = ft.Checkbox(value=False, active_color=T.ACCENT, check_color=T.ON_ACCENT,
-                                      tooltip="Select all", on_change=self._toggle_all)
+                                      tooltip=tr("Select all"), on_change=self._toggle_all)
         self.sel_label = C.body("", T.TEXT, weight=ft.FontWeight.W_500)
         self.sel_bar = ft.Container(ft.Row([
             self.sel_label, ft.Container(expand=True),
-            C.secondary("Download", ft.Icons.DOWNLOAD_ROUNDED, self._download_selected),
-            C.ghost("Delete", ft.Icons.DELETE_OUTLINE_ROUNDED, lambda e: self._delete_selected()),
-            C.ghost("Clear", ft.Icons.CLOSE_ROUNDED, lambda e: self._clear_selection()),
+            C.secondary(tr("Download"), ft.Icons.DOWNLOAD_ROUNDED, self._download_selected),
+            C.ghost(tr("Delete"), ft.Icons.DELETE_OUTLINE_ROUNDED, lambda e: self._delete_selected()),
+            C.ghost(tr("Clear"), ft.Icons.CLOSE_ROUNDED, lambda e: self._clear_selection()),
         ], spacing=T.S2), padding=ft.Padding(T.S3, T.px(6), T.S2, T.px(6)), border_radius=T.RADIUS_SM,
             bgcolor=T.ACCENT_SOFT, visible=False)
         self.drop_hint = ft.Container(
-            ft.Column([ft.Icon(ft.Icons.UPLOAD_ROUNDED, size=T.px(48), color=T.ACCENT), C.h2("Drop to upload"),
+            ft.Column([ft.Icon(ft.Icons.UPLOAD_ROUNDED, size=T.px(48), color=T.ACCENT), C.h2(tr("Drop to upload")),
                        C.meta("")], horizontal_alignment=ft.CrossAxisAlignment.CENTER, tight=True),
             left=0, right=0, top=0, bottom=0, alignment=ft.Alignment.CENTER, bgcolor=T.soft("#000000", 0.7),
             border_radius=T.RADIUS, border=ft.Border.all(2, T.ACCENT), visible=False)
@@ -112,15 +113,15 @@ class FilesView:
         app = self.app
         if not (app.target and app.frame_state == "connected"):
             return ft.Column([
-                app.top_bar("Files", "Videos, documents, mods and saves on your Steam Frame"),
-                C.empty_state(ft.Icons.FOLDER_OFF_OUTLINED, "Connect your Frame first",
-                              "Files on the Frame can be browsed once FramePort is connected to it.",
-                              C.primary("Connect", ft.Icons.LINK_ROUNDED, lambda e: app.go("frame")))], expand=True)
+                app.top_bar(tr("Files"), tr("Videos, documents, mods and saves on your Steam Frame")),
+                C.empty_state(ft.Icons.FOLDER_OFF_OUTLINED, tr("Connect your Frame first"),
+                              tr("Files on the Frame can be browsed once FramePort is connected to it."),
+                              C.primary(tr("Connect"), ft.Icons.LINK_ROUNDED, lambda e: app.go("frame")))], expand=True)
         if self.root is None:
             self.root = ft.Column([
-                app.top_bar("Files", "Videos, documents, mods and saves on your Steam Frame"),
+                app.top_bar(tr("Files"), tr("Videos, documents, mods and saves on your Steam Frame")),
                 ft.Row([
-                    C.card(ft.Column([C.meta("LOCATIONS"), self.locations], spacing=T.S2, expand=True),
+                    C.card(ft.Column([C.meta(tr("Locations").upper()), self.locations], spacing=T.S2, expand=True),
                            padding=T.S3, width=T.px(260), expand=False),
                     ft.Column([
                         ft.Row([self.crumb_row, self.toolbar], vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -144,7 +145,7 @@ class FilesView:
         import flet_dropzone as ftd
 
         def entered(e):
-            self.drop_hint.content.controls[2].value = f"into {self.where.value or self.path}"
+            self.drop_hint.content.controls[2].value = tr("into {value}").format(value=self.where.value or self.path)
             self.drop_hint.visible = True
             C.update(self.drop_hint)
 
@@ -173,14 +174,14 @@ class FilesView:
                 for loc_ in self.shared]
         games = self._installed_games()
         if games:
-            rows.append(ft.Container(C.meta("GAME STORAGE"), padding=ft.Padding(T.S2, T.S3, 0, T.px(2))))
+            rows.append(ft.Container(C.meta(tr("Game storage").upper()), padding=ft.Padding(T.S2, T.S3, 0, T.px(2))))
             for pkg, title in games:
-                loc = self.game_locs.get(pkg) or {"id": f"app:{pkg}", "label": title, "package": pkg}
+                loc = self.game_locs.get(pkg) or {"id": tr("app:{pkg}").format(pkg=pkg), "label": title, "package": pkg}
                 rows.append(self._location_row(loc, ft.Icons.SPORTS_ESPORTS_OUTLINED))
-        rows.append(ft.Container(C.meta("ADVANCED"), padding=ft.Padding(T.S2, T.S3, 0, T.px(2))))
-        home = {"id": "home", "label": "Home folder", "path": self.app.target.frame.home, "android": "",
+        rows.append(ft.Container(C.meta(tr("Advanced").upper()), padding=ft.Padding(T.S2, T.S3, 0, T.px(2))))
+        home = {"id": "home", "label": tr("Home folder"), "path": self.app.target.frame.home, "android": "",
                 "shared": False}
-        rows.append(self._location_row(home, ft.Icons.HOME_OUTLINED, "everything in ~ (not seen by games)"))
+        rows.append(self._location_row(home, ft.Icons.HOME_OUTLINED, tr("everything in ~ (not seen by games)")))
         self.locations.controls = rows
         C.update(self.locations)
 
@@ -202,14 +203,15 @@ class FilesView:
         frame = self.app.target.frame
         try:
             if not self.shared:
-                self.shared = [{**t, "label": t["id"].capitalize(), "package": None}
+                names = {"videos": tr("Videos"), "downloads": tr("Downloads"), "documents": tr("Documents")}
+                self.shared = [{**t, "label": names.get(t["id"], t["id"]), "package": None}
                                for t in files.storage_targets(frame)]
         except Exception as exc:  # noqa: BLE001
-            self.status.value = f"Couldn't read the Frame's folders: {exc}"
+            self.status.value = tr("Couldn't read the Frame's folders: {exc}").format(exc=exc)
             C.update(self.status)
         self._render_locations()
         if package:
-            self.open_location({"id": f"app:{package}", "package": package,
+            self.open_location({"id": tr("app:{package}").format(package=package), "package": package,
                                 "label": dict(self._installed_games()).get(package, package)})
         elif self.loc is None and self.shared:
             self.open_location(self.shared[0])
@@ -225,7 +227,7 @@ class FilesView:
                 try:
                     t = {x["id"]: x for x in files.storage_targets(self.app.target.frame, loc["package"])}["app"]
                 except Exception as exc:  # noqa: BLE001
-                    self.app.toast(f"Couldn't open the game's storage: {exc}", error=True)
+                    self.app.toast(tr("Couldn't open the game's storage: {exc}").format(exc=exc), error=True)
                     return
                 loc = {**loc, "path": t["path"], "android": t["android"], "shared": False}
                 self.game_locs[loc["package"]] = loc
@@ -238,7 +240,7 @@ class FilesView:
         if not self.loc:
             return
         loc, path = self.loc, self.path
-        self.status.value = "Loading…"
+        self.status.value = tr("Loading…")
         C.update(self.status)
 
         def work():
@@ -247,7 +249,7 @@ class FilesView:
             try:
                 entries = files.list_dir(self.app.target.frame, loc["path"], path, hidden=self.hidden)
             except Exception as exc:  # noqa: BLE001
-                self.status.value = f"Couldn't list {path}: {exc}"
+                self.status.value = tr("Couldn't list {path}: {exc}").format(path=path, exc=exc)
                 C.update(self.status)
                 return
             if (self.loc, self.path) != (loc, path):
@@ -269,7 +271,7 @@ class FilesView:
                                                                               else T.TEXT_2)))
         android = loc.get("android")
         rel = posixpath.relpath(self.path, loc["path"]) if self.path != loc["path"] else ""
-        self.where.value = (f"Games see this folder as {posixpath.join(android, rel) if rel else android}"
+        self.where.value = (tr("Games see this folder as {value}").format(value=posixpath.join(android, rel) if rel else android)
                             if android else self.path)
         rows = []
         self.checks = {}
@@ -277,12 +279,12 @@ class FilesView:
             rows.append(self._row(None))
         rows += [self._row(e) for e in self.entries]
         if not self.entries:
-            rows.append(ft.Container(C.meta("This folder is empty. Upload files with the buttons above."),
+            rows.append(ft.Container(C.meta(tr("This folder is empty. Upload files with the buttons above.")),
                                      padding=T.S4))
         self.listing.controls = rows
         n_dirs = sum(e.is_dir for e in self.entries)
         size = sum(e.size for e in self.entries if not e.is_dir)
-        self.status.value = f"{n_dirs} folder(s), {len(self.entries) - n_dirs} file(s), {human(size)}"
+        self.status.value = ", ".join([tr_n("{n} folder", "{n} folders", n_dirs), tr_n("{n} file", "{n} files", len(self.entries) - n_dirs), human(size)])
         self._update_selection(render=False)
         for c in (self.crumb_row, self.where, self.listing, self.status):
             C.update(c)
@@ -294,11 +296,11 @@ class FilesView:
                                 padding=ft.Padding(T.S3, T.px(8), T.S3, T.px(8)), border_radius=T.RADIUS_SM, ink=True,
                                 on_click=lambda ev: self.cd(posixpath.dirname(self.path)))
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(e.mtime)) if e.mtime else ""
-        info = ("folder" if e.is_dir else human(e.size)) + (" · link" if e.link else "") + (f" · {when}" if when else "")
-        actions = [C.icon_btn(ft.Icons.DOWNLOAD_ROUNDED, "Download to this PC", lambda ev, x=e: self.download([x]))]
+        info = ("folder" if e.is_dir else human(e.size)) + (tr(" · link") if e.link else "") + (f" · {when}" if when else "")
+        actions = [C.icon_btn(ft.Icons.DOWNLOAD_ROUNDED, tr("Download to this PC"), lambda ev, x=e: self.download([x]))]
         if not self._protected(e):
-            actions += [C.icon_btn(ft.Icons.DRIVE_FILE_RENAME_OUTLINE_ROUNDED, "Rename", lambda ev, x=e: self.rename(x)),
-                        C.icon_btn(ft.Icons.DELETE_OUTLINE_ROUNDED, "Delete", lambda ev, x=e: self.delete([x]))]
+            actions += [C.icon_btn(ft.Icons.DRIVE_FILE_RENAME_OUTLINE_ROUNDED, tr("Rename"), lambda ev, x=e: self.rename(x)),
+                        C.icon_btn(ft.Icons.DELETE_OUTLINE_ROUNDED, tr("Delete"), lambda ev, x=e: self.delete([x]))]
         check = ft.Checkbox(value=e.path in self.selected, active_color=T.ACCENT, check_color=T.ON_ACCENT,
                             on_change=lambda ev, p=e.path: self._toggle(p, ev.control.value),
                             disabled=self._protected(e))
@@ -343,7 +345,7 @@ class FilesView:
     def _update_selection(self, render: bool = True) -> None:
         n = len(self.selected)
         size = sum(x.size for x in self.entries if x.path in self.selected and not x.is_dir)
-        self.sel_label.value = f"{n} selected" + (f" · {human(size)} in files" if size else "")
+        self.sel_label.value = tr("{n} selected").format(n=n) + (tr(" · {human} in files").format(human=human(size)) if size else "")
         self.sel_bar.visible = bool(n)
         self.select_all.value = bool(self.entries) and n == len([x for x in self.entries if self._selectable(x)])
         if render:
@@ -374,7 +376,7 @@ class FilesView:
             self.upload(paths)
 
     async def upload_folder(self, e=None):
-        path = await ft.FilePicker().get_directory_path(dialog_title="Folder to upload to the Frame")
+        path = await ft.FilePicker().get_directory_path(dialog_title=tr("Folder to upload to the Frame"))
         if path:
             self.upload([Path(path)])
 
@@ -387,11 +389,11 @@ class FilesView:
             from ...install import files
 
             sent, skipped, total = files.upload(app.target.frame, paths, dest, job.reporter)
-            return f"Uploaded {len(sent)} file(s)" + (f", {len(skipped)} already there" if skipped else "")
-        app.submit(f"Upload to {loc['label']}", run, loc.get("package"), kind="tool-frame", open_panel=True)
+            return tr_n("Uploaded {n} file", "Uploaded {n} files", len(sent)) + (tr_n(", {n} already there", ", {n} already there", len(skipped)) if skipped else "")
+        app.submit(tr("Upload to {label}").format(label=loc['label']), run, loc.get("package"), kind="tool-frame", open_panel=True)
 
     async def download(self, items: list) -> None:
-        folder = await ft.FilePicker().get_directory_path(dialog_title="Download to which folder on this PC?")
+        folder = await ft.FilePicker().get_directory_path(dialog_title=tr("Download to which folder on this PC?"))
         if not folder:
             return
         app, root = self.app, self.loc["path"]
@@ -400,23 +402,23 @@ class FilesView:
             from ...install import files
 
             r = files.download(app.target.frame, root, [x.path for x in items], Path(folder), job.reporter)
-            return f"Downloaded {r['files']} file(s) to {r['folder']}"
-        app.submit(f"Download {items[0].name}" + (f" and {len(items) - 1} more" if len(items) > 1 else ""), run,
+            return tr_n("Downloaded {n} file to {folder}", "Downloaded {n} files to {folder}", r["files"], folder=r["folder"])
+        app.submit(tr("Download {name}").format(name=items[0].name) + (tr_n(" and {n} more", " and {n} more", len(items) - 1) if len(items) > 1 else ""), run,
                    None, kind="tool-frame", open_panel=True)
 
     def new_folder(self) -> None:
-        self._ask_name("New folder", "Folder name", "", "Create", lambda name: self._fs(
+        self._ask_name(tr("New folder"), tr("Folder name"), "", tr("Create"), lambda name: self._fs(
             lambda files, frame: files.make_dir(frame, self.loc["path"], self.path, name)))
 
     def rename(self, e) -> None:
-        self._ask_name(f"Rename {e.name}", "New name", e.name, "Rename", lambda name: self._fs(
+        self._ask_name(tr("Rename {name}").format(name=e.name), tr("New name"), e.name, tr("Rename"), lambda name: self._fs(
             lambda files, frame: files.rename(frame, self.loc["path"], e.path, name)))
 
     def delete(self, items: list) -> None:
         names = ", ".join(x.name for x in items[:3]) + (" …" if len(items) > 3 else "")
-        what = "folder and everything in it" if any(x.is_dir for x in items) else "file"
-        C.confirm(self.app.page, f"Delete {names}?", f"This deletes the {what} on the Frame. It can't be undone.",
-                  "Delete", lambda: (self.selected.difference_update(x.path for x in items),
+        what = tr("folder and everything in it") if any(x.is_dir for x in items) else "file"
+        C.confirm(self.app.page, tr("Delete {names}?").format(names=names), tr("This deletes the {what} on the Frame. It can't be undone.").format(what=what),
+                  tr("Delete"), lambda: (self.selected.difference_update(x.path for x in items),
                                      self._fs(lambda files, frame: files.delete(frame, self.loc["path"],
                                                                                 [x.path for x in items]))),
                   danger=True)
@@ -444,5 +446,5 @@ class FilesView:
         field.on_submit = go
         page.show_dialog(ft.AlertDialog(title=ft.Text(heading, color=T.TEXT, weight=ft.FontWeight.W_600),
                                         bgcolor=T.SURFACE_2, content=field,
-                                        actions=[C.ghost("Cancel", on_click=lambda e: page.pop_dialog()),
+                                        actions=[C.ghost(tr("Cancel"), on_click=lambda e: page.pop_dialog()),
                                                  C.primary(ok, on_click=go)]))

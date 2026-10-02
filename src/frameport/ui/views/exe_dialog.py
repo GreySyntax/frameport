@@ -8,6 +8,7 @@ import flet as ft
 
 from ... import pipeline
 from ...core import library
+from ...i18n import tr
 from .. import components as C
 from .. import theme as T
 
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def _size(n: int) -> str:
-    return f"{n / 2**20:.0f} MB" if n < 2**30 else f"{n / 2**30:.1f} GB"
+    return tr("{value:.0f} MB").format(value=n / 2**20) if n < 2**30 else tr("{value:.1f} GB").format(value=n / 2**30)
 
 
 def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,
@@ -32,14 +33,14 @@ def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,
                        T.WARN if r in ("Steam build", "Unreal launcher (starts the real game build)") else T.TEXT_2)
                 for r in c.get("reasons", [])]
         if i == 0:
-            tags.insert(0, C.pill("Best guess", T.ACCENT, ft.Icons.AUTO_AWESOME_ROUNDED))
+            tags.insert(0, C.pill(tr("Best guess"), T.ACCENT, ft.Icons.AUTO_AWESOME_ROUNDED))
         folder, _, name = c["path"].rpartition("/")
         group.content.controls.append(ft.Container(ft.Row([
             ft.Radio(value=c["path"], active_color=T.ACCENT),
             ft.Column([
                 ft.Row([C.body(name, T.TEXT, weight=ft.FontWeight.W_600), C.meta(_size(c.get("size") or 0))],
                        spacing=T.S2),
-                C.meta(folder or "(top folder)", selectable=True),
+                C.meta(folder or tr("(top folder)"), selectable=True),
                 ft.Row(tags, spacing=T.px(6), wrap=True) if tags else ft.Container(),
             ], spacing=T.px(4), expand=True),
         ], vertical_alignment=ft.CrossAxisAlignment.START), padding=ft.Padding(T.S2, T.S2, T.S3, T.S2),
@@ -53,9 +54,9 @@ def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,
         def work():
             try:
                 pipeline.set_exe(package, choice)
-                app.toast(f"{g.get('title')} starts with {choice.rsplit('/', 1)[-1]}")
+                app.toast(tr("{get} starts with {value}").format(get=g.get('title'), value=choice.rsplit('/', 1)[-1]))
             except Exception as exc:  # noqa: BLE001
-                app.toast(f"Couldn't use {choice}: {exc}", error=True)
+                app.toast(tr("Couldn't use {choice}: {exc}").format(choice=choice, exc=exc), error=True)
             app.refresh_view()
             if on_done:
                 on_done()
@@ -66,13 +67,13 @@ def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,
         if on_done:
             on_done()
 
-    title = f"Which program starts {g.get('title')}?"
-    lead = ("FramePort found more than one program that could start this game. Pick the one you'd double-click to "
-            "play it. Oculus builds usually work better with Revive than Steam builds.")
+    title = tr("Which program starts {get}?").format(get=g.get('title'))
+    lead = (tr("FramePort found more than one program that could start this game. Pick the one you'd double-click to "
+            "play it. Oculus builds usually work better with Revive than Steam builds."))
     app.page.show_dialog(ft.AlertDialog(
         title=ft.Row([ft.Text(title, weight=ft.FontWeight.W_600, expand=True)]
-                     + ([C.meta(f"{remaining} more after this")] if remaining else [])),
+                     + ([C.meta(tr("{remaining} more after this").format(remaining=remaining))] if remaining else [])),
         content=ft.Container(ft.Column([C.body(lead), group], spacing=T.S4, scroll=ft.ScrollMode.AUTO, tight=True),
                              width=T.px(620), height=min(120 + 96 * len(cands), 520)),
         bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
-        actions=[C.ghost("Decide later", on_click=later), C.primary("Use this program", on_click=use)]))
+        actions=[C.ghost(tr("Decide later"), on_click=later), C.primary(tr("Use this program"), on_click=use)]))

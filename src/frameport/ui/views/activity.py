@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import flet as ft
 
+from ...i18n import tr
 from .. import components as C
 from .. import theme as T
 from ..jobs import Job
@@ -16,11 +17,11 @@ if TYPE_CHECKING:
 
 CHECK_ICON = {True: (ft.Icons.CHECK_CIRCLE_ROUNDED, T.OK), False: (ft.Icons.CANCEL_ROUNDED, T.ERROR),
               None: (ft.Icons.WARNING_AMBER_ROUNDED, T.WARN)}
-STATE_STYLE = {"queued": (ft.Icons.SCHEDULE_ROUNDED, T.TEXT_3, "Waiting"),
-               "running": (ft.Icons.SYNC_ROUNDED, T.ACCENT, "Working"),
-               "done": (ft.Icons.CHECK_CIRCLE_ROUNDED, T.OK, "Done"),
-               "failed": (ft.Icons.ERROR_ROUNDED, T.ERROR, "Failed"),
-               "cancelled": (ft.Icons.DO_NOT_DISTURB_ON_OUTLINED, T.TEXT_3, "Cancelled")}
+STATE_STYLE = {"queued": (ft.Icons.SCHEDULE_ROUNDED, T.TEXT_3, tr("Waiting")),
+               "running": (ft.Icons.SYNC_ROUNDED, T.ACCENT, tr("Working")),
+               "done": (ft.Icons.CHECK_CIRCLE_ROUNDED, T.OK, tr("Done")),
+               "failed": (ft.Icons.ERROR_ROUNDED, T.ERROR, tr("Failed")),
+               "cancelled": (ft.Icons.DO_NOT_DISTURB_ON_OUTLINED, T.TEXT_3, tr("Cancelled"))}
 
 
 def _dur(job: Job) -> str:
@@ -46,9 +47,9 @@ class ActivityPanel:
         self.list = ft.Column(spacing=T.S3, scroll=ft.ScrollMode.AUTO, expand=True)
         self.root = ft.Container(
             ft.Column([
-                ft.Row([C.h2("Activity"), ft.Container(expand=True),
-                        C.ghost("Clear finished", on_click=lambda e: (app.jobs.clear_finished(), self.refresh())),
-                        C.icon_btn(ft.Icons.CLOSE_ROUNDED, "Close", lambda e: app.show_activity(False))]),
+                ft.Row([C.h2(tr("Activity")), ft.Container(expand=True),
+                        C.ghost(tr("Clear finished"), on_click=lambda e: (app.jobs.clear_finished(), self.refresh())),
+                        C.icon_btn(ft.Icons.CLOSE_ROUNDED, tr("Close"), lambda e: app.show_activity(False))]),
                 self.list,
             ], spacing=T.S3, expand=True),
             width=0, bgcolor=T.SIDEBAR, padding=ft.Padding(T.S4, T.S4, T.S4, T.S4),
@@ -93,7 +94,7 @@ class ActivityPanel:
             tiles.append(cached[1])
         self._tiles = {j.id: self._tiles[j.id] for j in jobs}
         self.list.controls = tiles or [
-            ft.Container(C.body("Nothing running. Installs, launch tests and downloads show up here.",
+            ft.Container(C.body(tr("Nothing running. Installs, launch tests and downloads show up here."),
                                 text_align=ft.TextAlign.CENTER), padding=T.S6, alignment=ft.Alignment.CENTER)]
         if update:
             C.update(self.root)
@@ -101,7 +102,7 @@ class ActivityPanel:
     def tile(self, job: Job) -> ft.Control:
         icon, color, word = STATE_STYLE[job.state]
         if job.state == "done" and (job.summary or {}).get("verdict") == "fail":
-            icon, color, word = ft.Icons.WARNING_AMBER_ROUNDED, T.WARN, "Installed · launch test failed"
+            icon, color, word = ft.Icons.WARNING_AMBER_ROUNDED, T.WARN, tr("Installed · launch test failed")
         running = job.state == "running"
         expanded = running or job.id in self.expanded
         meta = C.meta(job.stage if running and job.stage else
@@ -113,7 +114,7 @@ class ActivityPanel:
             ft.Column([C.body(job.title, T.TEXT, weight=ft.FontWeight.W_600, max_lines=2,
                               overflow=ft.TextOverflow.ELLIPSIS), meta],
                       spacing=T.px(2), expand=True),
-            *([C.icon_btn(ft.Icons.CLOSE_ROUNDED, "Cancel", lambda e: self.app.jobs.cancel(job))] if job.active else []),
+            *([C.icon_btn(ft.Icons.CLOSE_ROUNDED, tr("Cancel"), lambda e: self.app.jobs.cancel(job))] if job.active else []),
         ], vertical_alignment=ft.CrossAxisAlignment.START, spacing=T.S3)
         parts: list[ft.Control] = [head]
         if running:
@@ -141,10 +142,10 @@ class ActivityPanel:
                 parts.append(ft.Row(extra, spacing=T.S2, wrap=True))
             show_log = job.id in self.logs
             parts.append(ft.Row([
-                C.ghost("Hide log" if show_log else "Show log", ft.Icons.TERMINAL_ROUNDED,
+                C.ghost(tr("Hide log") if show_log else tr("Show log"), ft.Icons.TERMINAL_ROUNDED,
                         lambda e: self._toggle(self.logs, job.id)),
-                C.ghost("Copy log", ft.Icons.CONTENT_COPY_ROUNDED, lambda e: self.app.copy(self.job_text(job))),
-                *([C.ghost("Full launch log", ft.Icons.DESCRIPTION_ROUNDED,
+                C.ghost(tr("Copy log"), ft.Icons.CONTENT_COPY_ROUNDED, lambda e: self.app.copy(self.job_text(job))),
+                *([C.ghost(tr("Full launch log"), ft.Icons.DESCRIPTION_ROUNDED,
                            lambda e: self.app.show_log_file(job.log_path, job.title))] if job.log_path else []),
             ], spacing=0, wrap=True))
             if show_log:

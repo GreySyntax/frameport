@@ -5,21 +5,22 @@ from collections.abc import Callable
 
 import flet as ft
 
+from ..i18n import tr
 from . import theme as T
 from .help import HELP
 
 STATUS_STYLE = {
-    "works": ("Works", T.OK),
-    "issues": ("Works with issues", T.WARN),
-    "unsupported": ("Can't run", T.ERROR),
-    "unknown": ("Untested", T.TEXT_3),
+    "works": (tr("Works"), T.OK),
+    "issues": (tr("Works with issues"), T.WARN),
+    "unsupported": (tr("Can't run"), T.ERROR),
+    "unknown": (tr("Untested"), T.TEXT_3),
 }
 # per-game state on a target: label, icon, color
 INSTALL_STYLE = {
-    "installed": ("On Frame", ft.Icons.CHECK_CIRCLE_ROUNDED, T.OK),
-    "outdated": ("Update ready", ft.Icons.UPDATE_ROUNDED, T.WARN),
-    "missing": ("Not installed", ft.Icons.CLOUD_OFF_ROUNDED, T.TEXT_3),
-    "on_pc": ("On this PC", ft.Icons.COMPUTER_ROUNDED, T.PC),
+    "installed": (tr("On Frame"), ft.Icons.CHECK_CIRCLE_ROUNDED, T.OK),
+    "outdated": (tr("Update ready"), ft.Icons.UPDATE_ROUNDED, T.WARN),
+    "missing": (tr("Not installed"), ft.Icons.CLOUD_OFF_ROUNDED, T.TEXT_3),
+    "on_pc": (tr("On this PC"), ft.Icons.COMPUTER_ROUNDED, T.PC),
 }
 
 
@@ -44,13 +45,13 @@ def platform(g: dict) -> tuple[str, str, str]:
     if g.get("kind") == "rift":
         extra = ((g.get("analysis") or {}).get("extra") or {})
         oculus = extra.get("needs_revive") or extra.get("libovr")
-        return "PC VR", "PC VR · Oculus" if oculus else "PC VR", "platform_pcvr"
+        return tr("PC VR"), tr("PC VR · Oculus") if oculus else tr("PC VR"), "platform_pcvr"
     kind = (((g.get("analysis") or {}).get("extra") or {}).get("vr_kind")) or "quest"
     if kind == "quest":
-        return "Quest", "Meta Quest", "platform_quest"
+        return tr("Quest"), tr("Meta Quest"), "platform_quest"
     if kind == "none":
-        return "Android", "Android app", "platform_android"
-    return "Android VR", {"openxr": "Android VR · OpenXR", "pico_sdk": "Pico", "wave": "HTC Vive (Wave)",
+        return tr("Android"), tr("Android app"), "platform_android"
+    return tr("Android VR"), {"openxr": "Android VR · OpenXR", "pico_sdk": "Pico", "wave": "HTC Vive (Wave)",
                           "android_xr": "Android XR"}.get(kind, "Android VR"), "platform_android_vr"
 
 
@@ -293,7 +294,7 @@ def confirm(page: ft.Page, heading: str, text: str, ok_label: str, on_ok: Callab
     page.show_dialog(ft.AlertDialog(
         title=ft.Text(heading, weight=ft.FontWeight.W_600), content=ft.Container(body(text), width=T.px(420)),
         bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
-        actions=[ghost("Cancel", on_click=lambda e: page.pop_dialog()),
+        actions=[ghost(tr("Cancel"), on_click=lambda e: page.pop_dialog()),
                  ft.FilledButton(ok_label, on_click=go, style=ft.ButtonStyle(
                      shape=_shape(), bgcolor=T.ERROR if danger else T.ACCENT, color=T.ON_ACCENT))]))
 
