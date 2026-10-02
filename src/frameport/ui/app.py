@@ -1315,13 +1315,14 @@ class FramePortApp:
                 rep.check(s.name, True, "ready")
             from ..patches import overport as op
             from ..tools import overport as ov
+            from .views.settings import TOOL_TITLES
 
             try:
                 op.refresh(ov.list_patches)
             except Exception:  # noqa: BLE001
                 pass
             return tr("Tools are up to date") if not todo else \
-                tr("Installed {join}").format(join=', '.join(s.name for s in todo))
+                tr("Installed {join}").format(join=", ".join(TOOL_TITLES.get(s.name, s.name) for s in todo))
         return self.submit(tr("Update tools") if update else tr("Get FramePort ready"), run, kind="tools",
                            open_panel=not quiet)
 

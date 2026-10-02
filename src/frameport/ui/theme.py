@@ -102,7 +102,8 @@ def apply(page: ft.Page) -> None:
              "headline_medium": 28, "headline_small": 24, "title_large": 22, "title_medium": 16, "title_small": 14,
              "body_large": 16, "body_medium": 14, "body_small": 12, "label_large": 14, "label_medium": 12,
              "label_small": 11}
-    text_theme = ft.TextTheme(**{k: ft.TextStyle(size=px(v)) for k, v in sizes.items()})
+    # with a colour: without one Flutter draws these styles dark (e.g. radio/checkbox labels, dialog titles)
+    text_theme = ft.TextTheme(**{k: ft.TextStyle(size=px(v), color=TEXT) for k, v in sizes.items()})
     theme = ft.Theme(color_scheme=scheme, visual_density=ft.VisualDensity.COMFORTABLE, use_material3=True,
                      text_theme=text_theme,
                      divider_theme=ft.DividerTheme(color=BORDER, thickness=1, space=1),

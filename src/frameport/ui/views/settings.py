@@ -15,8 +15,8 @@ from .. import theme as T
 if TYPE_CHECKING:
     from ..app import FramePortApp
 
-TOOL_TITLES = {"java": tr("Java runtime"), "overport": "overport", "apksigner": "apksigner", "revive": tr("Revive")}
-TOOL_WHY = {"java": tr("Runs overport and apksigner"), "overport": tr("Converts Quest games to OpenXR"),
+TOOL_TITLES = {"java": tr("Java runtime"), "overport": "OVRPort", "apksigner": "apksigner", "revive": tr("Revive")}
+TOOL_WHY = {"java": tr("Runs OVRPort and apksigner"), "overport": tr("Converts Quest games to OpenXR"),
             "apksigner": tr("Signs rebuilt games"), "revive": tr("Runs Oculus PC games on OpenXR")}
 
 
