@@ -238,6 +238,7 @@ class LibraryView:
             tw = twins(games)
             self._update_header(games, pc)
             self.update_update_bar()
+            self.update_resume_bar()  # also after Dismiss / Resume and when installs finish or fail
             if not games:
                 self.body.content = C.empty_state(
                     ft.Icons.LIBRARY_ADD_ROUNDED, tr("Add your games"),
