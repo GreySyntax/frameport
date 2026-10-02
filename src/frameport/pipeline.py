@@ -348,7 +348,9 @@ def prepare_as_is(package: str, reporter: Reporter) -> dict:
         checks.append({"name": name, "ok": ok, "message": msg})
         reporter.check(name, ok, msg)
     check("APK", apk.is_file(), str(apk))
-    check("64-bit (arm64-v8a)", "arm64-v8a" in (a.get("abis") or []) or None, ", ".join(a.get("abis") or []))
+    abis = a.get("abis") or []
+    check("64-bit (arm64-v8a)", "arm64-v8a" in abis or not abis or None,
+          ", ".join(abis) if abis else "no native code (Java/Kotlin only): runs on any CPU")
     try:
         import zipfile
 
