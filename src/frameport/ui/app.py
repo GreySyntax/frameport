@@ -11,6 +11,7 @@ from __future__ import annotations
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
 
 import flet as ft
@@ -553,10 +554,12 @@ class FramePortApp:
         return None
 
     # ---------------------------------------------------------------- queueing several installs
-    def install_many(self, pkgs: list[str], to: str = "frame", allow_blocked: bool = False) -> None:
-        """Queue installs. Everything that needs a decision is asked first, one game at a time (which program
-        starts a Rift game; games that check their Oculus license), then all of them run in the background.
-        Games marked "Can't run" are skipped unless allow_blocked (the user chose "Install anyway")."""
+    def install_many(self, pkgs: list[str], to: str = "frame", allow_blocked: bool = False,
+                     then: Callable[[], None] | None = None) -> None:
+        """Queue installs. Everything that needs a decision is asked first (which program starts each Rift game, one
+        at a time; then one dialog per question with a checkbox per game), then all of them run in the background.
+        Games marked "Can't run" are skipped unless allow_blocked (the user chose "Install anyway"). `then` runs once
+        the installs are queued or there was nothing to queue (not when the user cancels)."""
         from .views.exe_dialog import show_exe_dialog
 
         games = [library.game(p) for p in pkgs]
@@ -568,6 +571,8 @@ class FramePortApp:
         if not games:
             why = tr(" ({len} can't be installed there)").format(len=len(skipped)) if skipped else ""
             self.toast(tr("Nothing to install") + why)
+            if then:
+                then()
             return
         need_exe = [g["package"] for g in games if g.get("kind") == "rift" and g.get("exe_confirmed") is False]
 
@@ -596,6 +601,8 @@ class FramePortApp:
                 if not games:
                     self.toast(tr("Nothing to install on the Frame — "
                                   "those Oculus games need PC mode (SteamVR + Revive)."))
+                    if then:
+                        then()
                     return
                 ask_license()
             self.page.show_dialog(ft.AlertDialog(
@@ -648,6 +655,8 @@ class FramePortApp:
                            action=tr("Activity"), on_action=lambda e: self.show_activity(True))
             if self.library_view:
                 self.library_view.set_select_mode(False)
+            if then:
+                then()
         ask_exe()
 
     def show_failures(self, jobs: list[Job]) -> None:
@@ -816,10 +825,20 @@ class FramePortApp:
         if not todo:
             self.toast(tr("Everything is up to date"))
             return
+        # one batch per target, so every question (e.g. Oculus games on the Frame) is asked once for all games instead
+        # of once per game; games marked "Can't run" are included (the user installed them already)
+        groups: dict[str, list[str]] = {}
         for pkg, to in todo:
-            self.install(pkg, to)
-        self.toast(tr_n("Updating {n} game", "Updating {n} games", len(todo)))
-        self.show_activity(True)
+            groups.setdefault(to, []).append(pkg)
+        batches = list(groups.items())
+
+        def next_batch(i: int = 0) -> None:
+            if i < len(batches):
+                to, pkgs = batches[i]
+                self.install_many(pkgs, to, allow_blocked=True, then=lambda: next_batch(i + 1))
+            else:
+                self.show_activity(True)
+        next_batch()
 
     def install_blocked(self, pkg: str) -> None:
         """Install a game marked "Can't run" after saying why it's marked so."""

@@ -729,10 +729,6 @@
  "Updates every game marked \"Update ready\" (a newer build, or patch settings changed since it was installed), one after another.": "",
  "Updates, tools, this PC and where FramePort keeps its data": "",
  "Updating works in the desktop app": "",
- "Updating {n} game": [
-  "",
-  ""
- ],
  "Upload files": "",
  "Upload folder": "",
  "Upload to {label}": "",

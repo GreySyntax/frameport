@@ -264,3 +264,39 @@ def test_pairing_server_needs_the_code_and_stops_after_pairing_or_guessing(monke
             break
         time.sleep(0.05)
     assert not g.running
+
+
+def test_update_all_asks_each_question_once_for_all_games(monkeypatch):
+    """Update all = one batch per target: the Oculus-on-Frame question is one dialog with a checkbox per game (it used
+    to come once per game, each with a single checkbox), "Can't run" games are updated too."""
+    from types import SimpleNamespace
+
+    from frameport.core import library
+    from frameport.ui.app import FramePortApp
+
+    games = {f"rift.g{i}": {"package": f"rift.g{i}", "kind": "rift", "title": f"G{i}", "analysis": {},
+                            "recipe": {"patches": {"pcvr.revive": {}}, "status": "unsupported" if i == 2 else "works"}}
+             for i in range(3)}
+    games["com.quest"] = {"package": "com.quest", "title": "Q", "analysis": {}, "recipe": {"patches": {}}}
+    monkeypatch.setattr(library, "game", games.get)
+    dialogs, submitted = [], []
+    app = object.__new__(FramePortApp)
+    app.page = SimpleNamespace(show_dialog=dialogs.append, pop_dialog=lambda: None)
+    app.jobs = SimpleNamespace(busy_with=lambda p: None)
+    app.library_view = None
+    app.toast = lambda *a, **k: None
+    app.show_activity = lambda *a: None
+    app._title = lambda p: games[p]["title"]
+    app._submit_install = lambda p, to: submitted.append((p, to))
+    app.updatable = lambda: [("rift.g0", "frame"), ("com.quest", "frame"), ("rift.g1", "frame"), ("rift.g2", "frame"),
+                             ("rift.g0", "pc")]
+    app.update_all()
+    assert len(dialogs) == 1  # one question for the three Oculus games on the Frame
+    boxes = [c for c in dialogs[0].content.content.controls if c.__class__.__name__ == "Checkbox"]
+    assert sorted(b.label for b in boxes) == ["G0", "G1", "G2"]
+    for b in boxes:
+        b.value = True
+    ok = dialogs[0].actions[-1]
+    ok.on_click(None)
+    assert {p for p, to in submitted if to == "frame"} == {"rift.g0", "rift.g1", "rift.g2", "com.quest"}
+    assert ("rift.g0", "pc") in submitted  # the PC batch follows once the Frame batch is queued
