@@ -719,13 +719,10 @@ def main() -> None:
 
 
 def _describe(exc: BaseException) -> str:
-    """A readable one-line reason, naming the error type when the message alone says little."""
-    from paramiko.ssh_exception import NoValidConnectionsError
+    """A readable one-line reason (shared with the GUI: frameport.errors)."""
+    from .errors import explain
 
-    msg = " ".join(str(exc).split()).removeprefix("[Errno None] ")
-    if isinstance(exc, (NoValidConnectionsError, TimeoutError, ConnectionError)):
-        return f"can't reach the device ({msg or type(exc).__name__}). Is it on and on the same network?"
-    return f"{type(exc).__name__}: {msg}" if msg else type(exc).__name__
+    return explain(exc)
 
 
 if __name__ == "__main__":  # pragma: no cover

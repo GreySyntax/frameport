@@ -18,6 +18,7 @@ import flet as ft
 
 from .. import pipeline
 from ..core import applog, library
+from ..errors import explain
 from ..i18n import fmt_size, tr, tr_n
 from ..recommend import catalog
 from . import components as C
@@ -252,7 +253,7 @@ class FramePortApp:
                               vertical_alignment=ft.CrossAxisAlignment.START)
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
-            view = C.empty_state(ft.Icons.ERROR_OUTLINE_ROUNDED, tr("Something went wrong"), str(exc),
+            view = C.empty_state(ft.Icons.ERROR_OUTLINE_ROUNDED, tr("Something went wrong"), explain(exc),
                                  C.primary(tr("Back to library"), on_click=lambda e: self.go("library")))
         self.body.content = view
         self._refresh_sidebar(update=False)
@@ -301,7 +302,7 @@ class FramePortApp:
             except Exception as exc:  # noqa: BLE001
                 traceback.print_exc()
                 applog.log.exception("background task failed")
-                self.toast(f"{exc}", error=True)
+                self.toast(explain(exc), error=True)
         self.page.run_thread(wrapper)
 
     def copy(self, text: str) -> None:
@@ -742,7 +743,7 @@ class FramePortApp:
         try:
             text = Path(path).read_text(encoding="utf-8", errors="replace") if path else ""
         except OSError as exc:
-            text = tr("Couldn't read {path}: {exc}").format(path=path, exc=exc)
+            text = tr("Couldn't read {path}: {exc}").format(path=path, exc=explain(exc))
         lines = text.splitlines()
         shown = "\n".join(lines[-4000:])
         self.page.show_dialog(ft.AlertDialog(
@@ -1250,7 +1251,7 @@ class FramePortApp:
                 self.frame_state = "offline"
                 self.frame_info = None
                 if not quiet:
-                    self.toast(tr("Couldn't connect: {exc}").format(exc=exc), error=True)
+                    self.toast(tr("Couldn't connect: {exc}").format(exc=explain(exc)), error=True)
             if self.route[0] in ("frame", "library", "game", "welcome"):
                 self.refresh_view()
             else:
@@ -1266,7 +1267,7 @@ class FramePortApp:
         try:
             target = parse_target(address)
         except ValueError as exc:
-            self.toast(str(exc), error=True)
+            self.toast(explain(exc), error=True)
             return
         self.connect(target, password or None)
 
@@ -1298,7 +1299,7 @@ class FramePortApp:
                 except Exception:  # noqa: BLE001
                     pass
                 if not quiet:
-                    self.toast(tr("The Frame went offline: {exc}").format(exc=exc), error=True)
+                    self.toast(tr("The Frame went offline: {exc}").format(exc=explain(exc)), error=True)
             if changed and rerender and self.route[0] in ("frame", "library", "game"):
                 self.refresh_view()
             else:

@@ -12,6 +12,7 @@ import flet as ft
 
 from .. import __version__, updates
 from ..core import applog, library
+from ..errors import explain
 from ..i18n import tr
 from . import components as C
 from . import theme as T
@@ -183,7 +184,7 @@ class Updater:
         try:
             updates.apply(app)
         except Exception as exc:  # noqa: BLE001
-            self.app.toast(tr("Update failed: {exc}").format(exc=exc), error=True)
+            self.app.toast(tr("Update failed: {exc}").format(exc=explain(exc)), error=True)
             return
         self._quit()
 

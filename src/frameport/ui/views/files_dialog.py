@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import flet as ft
 
+from ...errors import explain
 from ...i18n import tr, tr_n
 from .. import components as C
 from .. import theme as T
@@ -182,7 +183,7 @@ def show_files_dialog(app: FramePortApp, package: str, title: str) -> None:
         try:
             load()
         except Exception as exc:  # noqa: BLE001
-            status.value = tr("Couldn't read the file list: {exc}").format(exc=exc)
+            status.value = tr("Couldn't read the file list: {exc}").format(exc=explain(exc))
             body.controls = [status]
             C.update(body)
     app.run_bg(run)

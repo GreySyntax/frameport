@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import flet as ft
 
+from ...errors import explain
 from ...i18n import tr, tr_n
 from .. import components as C
 from .. import theme as T
@@ -209,7 +210,7 @@ class FilesView:
                 self.shared = [{**t, "label": names.get(t["id"], t["id"]), "package": None}
                                for t in files.storage_targets(frame)]
         except Exception as exc:  # noqa: BLE001
-            self.status.value = tr("Couldn't read the Frame's folders: {exc}").format(exc=exc)
+            self.status.value = tr("Couldn't read the Frame's folders: {exc}").format(exc=explain(exc))
             C.update(self.status)
         self._render_locations()
         if package:
@@ -229,7 +230,7 @@ class FilesView:
                 try:
                     t = {x["id"]: x for x in files.storage_targets(self.app.target.frame, loc["package"])}["app"]
                 except Exception as exc:  # noqa: BLE001
-                    self.app.toast(tr("Couldn't open the game's storage: {exc}").format(exc=exc), error=True)
+                    self.app.toast(tr("Couldn't open the game's storage: {exc}").format(exc=explain(exc)), error=True)
                     return
                 loc = {**loc, "path": t["path"], "android": t["android"], "shared": False}
                 self.game_locs[loc["package"]] = loc
@@ -251,7 +252,7 @@ class FilesView:
             try:
                 entries = files.list_dir(self.app.target.frame, loc["path"], path, hidden=self.hidden)
             except Exception as exc:  # noqa: BLE001
-                self.status.value = tr("Couldn't list {path}: {exc}").format(path=path, exc=exc)
+                self.status.value = tr("Couldn't list {path}: {exc}").format(path=path, exc=explain(exc))
                 C.update(self.status)
                 return
             if (self.loc, self.path) != (loc, path):
@@ -445,7 +446,7 @@ class FilesView:
             try:
                 op(files, self.app.target.frame)
             except Exception as exc:  # noqa: BLE001
-                self.app.toast(str(exc), error=True)
+                self.app.toast(explain(exc), error=True)
             self.load()
         self.app.run_bg(work)
 

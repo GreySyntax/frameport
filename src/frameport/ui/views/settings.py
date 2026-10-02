@@ -7,6 +7,7 @@ import flet as ft
 
 from ... import REPO_URL, __version__, i18n
 from ...core.paths import user_data_dir
+from ...errors import explain
 from ...i18n import tr
 from ...recommend import catalog
 from .. import components as C
@@ -70,7 +71,7 @@ class SettingsView:
                                  help="revive"),
                 ]
             except Exception as exc:  # noqa: BLE001
-                self.pc.controls = [C.status_row(False, tr("Couldn't check this PC"), str(exc))]
+                self.pc.controls = [C.status_row(False, tr("Couldn't check this PC"), explain(exc))]
         C.update(self.pc)
 
     def installing(self) -> ft.Control:

@@ -15,7 +15,7 @@ def test_errors_are_one_line_on_stderr(monkeypatch, capsys):
     with pytest.raises(SystemExit) as e:
         cli.main()
     err = capsys.readouterr().err
-    assert e.value.code == 1 and err.startswith("Error: can't reach the device") and "Traceback" not in err
+    assert e.value.code == 1 and err.startswith("Error: Can't reach your Frame") and "Traceback" not in err
     monkeypatch.setenv("FRAMEPORT_DEBUG", "1")
     with pytest.raises(NoValidConnectionsError):
         cli.main()

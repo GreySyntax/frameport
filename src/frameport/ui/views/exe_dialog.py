@@ -8,6 +8,7 @@ import flet as ft
 
 from ... import pipeline
 from ...core import library
+from ...errors import explain
 from ...i18n import fmt_size, tr
 from .. import components as C
 from .. import theme as T
@@ -56,7 +57,7 @@ def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,
                 pipeline.set_exe(package, choice)
                 app.toast(tr("{get} starts with {value}").format(get=g.get('title'), value=choice.rsplit('/', 1)[-1]))
             except Exception as exc:  # noqa: BLE001
-                app.toast(tr("Couldn't use {choice}: {exc}").format(choice=choice, exc=exc), error=True)
+                app.toast(tr("Couldn't use {choice}: {exc}").format(choice=choice, exc=explain(exc)), error=True)
             app.refresh_view()
             if on_done:
                 on_done()

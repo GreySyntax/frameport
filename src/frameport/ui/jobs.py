@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from ..core import applog
 from ..core.events import Cancelled, Event, Reporter
+from ..errors import explain
 
 _ids = itertools.count(1)
 
@@ -175,7 +176,8 @@ class JobManager:
             except Exception as exc:  # noqa: BLE001
                 traceback.print_exc()
                 applog.log.exception("job %r failed", job.title)
-                job.state, job.error = "failed", f"{exc}" or type(exc).__name__
+                job.state, job.error = "failed", explain(exc)
+                job.log.append(f"error: {type(exc).__name__}: {exc}")  # the exact error stays in the log
             job.finished = time.time()
             job.version += 1
             applog.log.info("job %r (%s, %s): %s", job.title, job.kind, job.package or "-", job.state)
