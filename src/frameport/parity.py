@@ -242,7 +242,7 @@ def run_parity(known_good: Path, sources: Path, outdir: Path, report: Path, only
     previous = outdir / "parity.json"
     if only and previous.exists():  # partial re-run: keep the other games' earlier results
         results = [r for r in json.loads(previous.read_text())
-                   if not any(o.lower() in r["game"].lower() for o in only)]
+                   if not _wanted(r, only)]
     folders = sorted(p for p in known_good.iterdir() if (p / "game.json").exists())
     if only:
         folders = [f for f in folders if any(o.lower() in f.name.lower() for o in only)]
@@ -316,6 +316,11 @@ def write_report(results: list[dict], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _wanted(row: dict, only: list[str]) -> bool:
+    """--only matches a game's folder name or its package id (case-insensitive substring)."""
+    return any(o.lower() in row["game"].lower() or o.lower() in row.get("package", "").lower() for o in only)
+
+
 def install_and_test(results_json: Path, target, baseline: Path | None, report: Path, reporter: Reporter,
                      only: list[str] | None = None, seconds: int = 45, test_only: bool = False) -> bool:
     """Device half of the parity test: install every rebuilt APK through the normal installer (APK only; the game
@@ -335,13 +340,15 @@ def install_and_test(results_json: Path, target, baseline: Path | None, report: 
     previous = {}
     if report.with_suffix(".json").exists():
         previous = {r["package"]: r for r in json.loads(report.with_suffix(".json").read_text())}
+    if test_only and not previous:
+        raise ValueError(f"--test-only re-uses an earlier full run's results: {report.with_suffix('.json')} not found")
     if test_only:  # re-run launch tests only; keep install/shortcut results from the previous run
         out = [dict(previous[r["package"]]) for r in rows if r["package"] in previous
-               and (not only or any(o.lower() in r["game"].lower() for o in only))]
+               and (not only or _wanted(r, only))]
         rows = []
     for row in rows:
         pkg = row["package"]
-        if only and not any(o.lower() in row["game"].lower() for o in only):
+        if only and not _wanted(row, only):
             continue
         if "error" in row:
             out.append({**row, "install": "skipped (build error)"})

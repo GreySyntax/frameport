@@ -170,6 +170,7 @@ class DeviceFiles(Patch):
                    "features the Frame doesn't support (e.g. a CryEngine user.cfg with r_variable_rate_shading = 0, "
                    "as The Climb 2 needs).")
     category = "device"
+    needs_vr = False
     stage = "install"
     params = [Param("files", "text", {}, "path relative to files/ -> content")]
 
@@ -192,6 +193,7 @@ class LeptonEnv(Patch):
     description = ("Environment variables exported by the launcher (e.g. VK_INSTANCE_LAYERS=\"\" to test without "
                    "Valve's layers).")
     category = "device"
+    needs_vr = False
     stage = "install"
     params = [Param("env", "text", {}, "NAME -> value")]
 

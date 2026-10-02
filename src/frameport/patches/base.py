@@ -70,6 +70,7 @@ class Patch:
     requires: tuple[str, ...] = ()
     default_on: bool = False  # part of the always-recommended baseline
     experimental: bool = False
+    needs_vr: bool = True  # only matters for VR apps (hidden for Android apps without VR)
 
     def detect(self, analysis: Analysis) -> Suggestion | None:
         return Suggestion(True, "Recommended for every game.") if self.default_on else None

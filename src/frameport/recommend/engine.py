@@ -204,5 +204,8 @@ def visible_patches(analysis: Analysis, recipe: Recipe | None = None) -> tuple[l
         if not base.for_game(p, analysis):
             continue  # other kind of game entirely (Quest vs Rift): not even offered under "show all"
         on = recipe is not None and p.id in recipe.patches
+        if p.needs_vr and analysis.vr_kind == "none" and not on:
+            hidden.append(p)  # an Android app without VR: VR patches can't take effect
+            continue
         (shown if on and not p.default_on or p.applies(analysis) else hidden).append(p)
     return shown, hidden

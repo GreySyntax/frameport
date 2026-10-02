@@ -9,6 +9,7 @@ MANIFEST = "AndroidManifest.xml"
 
 class Launcher(Patch):
     id = "frame.launcher"
+    needs_vr = False
     title = "Launcher category (INFO → LAUNCHER)"
     description = ("Lepton only launches an activity with category LAUNCHER (Quest apps often use INFO). "
                    "Symptom when missing: launch.log says 'APP_ACTIVITY is empty' and nothing starts.")
@@ -33,6 +34,7 @@ class Launcher(Patch):
 
 class NoDebuggable(Patch):
     id = "frame.nodebug"
+    needs_vr = False
     title = "Clear android:debuggable"
     description = ("overport marks apps debuggable; that turns on CheckJNI, which aborts some Unreal games on sloppy "
                    "JNI calls ('JNI DETECTED ERROR', e.g. 'GetStringUTFChars ... NULL' in Time Stall). Clear it for "

@@ -314,6 +314,8 @@ def test_android_app_without_vr_gets_no_vr_translation():
                                is_overport_output=False, extra={"size": 1, "vr_kind": "none"})
     r = engine.suggest(needs_launcher)
     assert not r.as_is and not r.overport and list(r.patches) == ["frame.launcher"]
+    shown, _ = engine.visible_patches(needs_launcher, r)  # VR patches can't take effect in a 2D app
+    assert "frame.launcher" in {p.id for p in shown} and all(not p.needs_vr for p in shown)
     pico = _analysis(package="com.pico.game", libs=["libPvr_UnitySDK.so"], extra={"size": 1, "vr_kind": "pico_sdk"})
     assert engine.suggest(pico).status == "unsupported"
     x86 = _analysis(package="org.example.x86", abis=["x86_64"], extra={"size": 1, "vr_kind": "none"})
