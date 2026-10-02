@@ -31,7 +31,8 @@ jobs:
         include:
           - os: windows-latest
             archive: FramePort-windows-x64.zip
-          - os: macos-15  # Apple Silicon; pinned (macos-latest went unassigned on 2026-10-02)
+          - os: macos-26  # Apple Silicon + Xcode 26 (macos-15's Xcode 16.4 fails a Flutter plugin; macos-latest
+            # went unassigned on 2026-10-02)
             archive: FramePort-macos-arm64.zip
           - os: ubuntu-22.04  # oldest supported: the bundle needs the build host's GLib/glibc or newer
             archive: FramePort-linux-x64.tar.gz
