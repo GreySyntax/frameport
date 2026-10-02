@@ -56,7 +56,10 @@ def main() -> int:
             sep = ";" if TARGET == "windows" else ":"
             # --yes: a failed flet build's folder doesn't stop it
             cmd = ["flet", "pack", str(ROOT / "src/main.py"), "--name", "FramePort", "--product-name", "FramePort",
-                   "--add-data", f"{DATA}{sep}frameport/_data", "--distpath", str(ROOT / "dist"), "--yes"]
+                   "--add-data", f"{DATA}{sep}frameport/_data",
+                   # translations (data files PyInstaller doesn't pick up from the imports)
+                   "--add-data", f"{ROOT / 'src/frameport/locales'}{sep}frameport/locales",
+                   "--distpath", str(ROOT / "dist"), "--yes"]
         else:
             # --yes: install the Flutter SDK etc. without prompting; --no-rich-output: plain logs (CI, Windows consoles)
             cmd = ["flet", "build", TARGET, str(ROOT), "--project", "FramePort", "--product", "FramePort",

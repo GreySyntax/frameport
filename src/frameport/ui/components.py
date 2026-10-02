@@ -194,7 +194,12 @@ def with_help(control: ft.Control, key: str | None) -> ft.Control:
     if not key:
         return control
     if getattr(control, "data", None) == "switch":
-        control.expand = True  # a wrapping label needs the row's width
+        # the "?" goes right after the label (which takes only the width it needs and still wraps when long)
+        label = control.controls[1]
+        label.expand, label.expand_loose = True, True
+        control.controls.append(help_icon(key))
+        control.expand = True
+        return control
     return ft.Row([control, help_icon(key)], spacing=T.px(4), tight=True,
                   vertical_alignment=ft.CrossAxisAlignment.CENTER)
 

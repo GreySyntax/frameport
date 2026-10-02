@@ -72,3 +72,9 @@ def test_help_lookups_translate_and_unknown_keys_fail():
 
 def test_sizes():
     assert i18n.fmt_size(3 * 2**30) == "3.0 GiB" and i18n.fmt_size(5 * 2**20) == "5 MiB"
+
+
+def test_bundles_contain_the_translations():
+    """Both packaging paths ship locales/*.json (flet build packages src/; PyInstaller needs --add-data)."""
+    text = (ROOT / "scripts" / "package.py").read_text(encoding="utf-8")
+    assert "src/frameport/locales" in text and "frameport/locales" in text

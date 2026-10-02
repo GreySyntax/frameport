@@ -172,6 +172,10 @@ class LibraryView:
             focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(8), T.px(12), T.px(8)),
             text_size=T.T_BODY,
             on_change=self._on_search)
+        # an X that clears the search at once (shown only while there is text)
+        self.search.suffix = ft.IconButton(ft.Icons.CLOSE_ROUNDED, icon_size=T.px(16), icon_color=T.TEXT_2,
+                                           tooltip=tr("Clear search"), on_click=lambda e: self.clear_search(),
+                                           visible=bool(self.f["q"]), style=ft.ButtonStyle(padding=0))
         app.search_field = self.search
         self.filters = ft.Container()
         self.hint = ft.Container(visible=False)
@@ -356,8 +360,17 @@ class LibraryView:
         self.app.page.run_thread(self.reload)
 
     # ---------------------------------------------------------------- filtering (no rebuilds)
+    def clear_search(self) -> None:
+        self.search.value = self.f["q"] = ""
+        self.search.suffix.visible = False
+        C.update(self.search)
+        self._apply(update=True)
+
     def _on_search(self, e):
         self.f["q"] = e.control.value
+        if self.search.suffix.visible != bool(self.f["q"]):
+            self.search.suffix.visible = bool(self.f["q"])
+            C.update(self.search)
         if self._search_timer:
             self._search_timer.cancel()
         self._search_timer = threading.Timer(0.18, lambda: self._apply(update=True))

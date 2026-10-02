@@ -196,23 +196,23 @@ class SettingsView:
                 C.kv(tr("Catalog"), tr("{len} known-good recipes (bundled, remote and yours)")
                      .format(len=len(catalog.load())), "catalog"),
             ], spacing=T.S2))),
-            C.section(tr("Problems and feedback"), C.card(ft.Row([
+            # text above, buttons below (side by side, the buttons squeezed the text in a narrow window)
+            C.section(tr("Problems and feedback"), C.card(ft.Column([
                 C.body(tr("Something not working? Collect a diagnostics zip (logs, settings, device info; personal "
-                       "data removed) and attach it to a GitHub issue. For one game, use its menu instead."),
-                       expand=True),
-                C.ghost(tr("Collect app logs"), ft.Icons.FOLDER_ZIP_OUTLINED, lambda e: app.collect_logs()),
-                C.secondary(tr("Report a problem…"), ft.Icons.BUG_REPORT_OUTLINED,
-                            lambda e: app.report_problem_dialog()),
+                       "data removed) and attach it to a GitHub issue. For one game, use its menu instead.")),
+                ft.Row([C.secondary(tr("Report a problem…"), ft.Icons.BUG_REPORT_OUTLINED,
+                                    lambda e: app.report_problem_dialog()),
+                        C.ghost(tr("Collect app logs"), ft.Icons.FOLDER_ZIP_OUTLINED, lambda e: app.collect_logs())],
+                       spacing=T.S3, run_spacing=T.S2, wrap=True),
             ], spacing=T.S3)), help="diag_bundle"),
-            C.section(tr("Remove FramePort"), C.card(ft.Row([
+            C.section(tr("Remove FramePort"), C.card(ft.Column([
                 C.body(tr("Removes everything FramePort created: its data and tools on this PC, the Steam entries it "
-                       "added, and (optionally) its games and files on the Frame. Your game dumps aren't touched."),
-                       expand=True),
+                       "added, and (optionally) its games and files on the Frame. Your game dumps aren't touched.")),
                 ft.OutlinedButton(tr("Uninstall FramePort…"), icon=ft.Icons.DELETE_FOREVER_ROUNDED,
                                   on_click=lambda e: app.uninstall_app(),
                                   style=ft.ButtonStyle(color=T.ERROR, side=ft.BorderSide(1, T.soft(T.ERROR, 0.6)),
                                                        shape=ft.RoundedRectangleBorder(radius=T.RADIUS_SM))),
-            ], spacing=T.S4))),
+            ], spacing=T.S3, horizontal_alignment=ft.CrossAxisAlignment.START))),
             C.section(tr("Installing"), C.card(self.installing(), padding=T.S4), help="launch_test"),
             C.section(tr("Appearance"), C.card(self.appearance(), padding=T.S4), help="ui_scale"),
             C.section(tr("About"), C.card(ft.Column([
