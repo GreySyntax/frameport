@@ -64,7 +64,9 @@ unchanged. FramePort uses an installed Revive, or downloads a portable copy.
 
 The **Files** tab manages files on the Frame over the same connection as installs; no other transfer app is needed.
 Pick a location, browse folders, and use **Upload files** / **Upload folder**, **New folder**, or the download, rename
-and delete buttons on each entry. Uploads and downloads run in the Activity panel, resume after an interruption and
+and delete buttons on each entry. Tick several entries (or the box above the list for all) to download or delete them
+together. In the downloaded app you can also drag files and folders from Explorer / Finder / your file manager onto
+the list to upload them into the open folder. Uploads and downloads run in the Activity panel, resume after an interruption and
 skip files that are already there.
 
 - **Videos**, **Downloads** and **Documents** appear inside every Quest game as `/sdcard/Movies`, `/sdcard/Download`

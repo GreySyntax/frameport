@@ -27,6 +27,22 @@ VIDEO_EXT = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".ts"}
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
 
+def dropzone_available() -> bool:
+    """Drag-and-drop from the file manager needs flet-dropzone's Flutter code, which only a `flet build` app has (not
+    `flet run`/the desktop client used from source, nor the PyInstaller fallback)."""
+    import sys
+
+    from ... import updates
+
+    if getattr(sys, "frozen", False) or updates.install_kind() != "bundle":
+        return False
+    try:
+        import flet_dropzone  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def file_icon(name: str, is_dir: bool) -> str:
     if is_dir:
         return ft.Icons.FOLDER_ROUNDED
@@ -72,6 +88,23 @@ class FilesView:
             C.icon_btn(ft.Icons.REFRESH_ROUNDED, "Refresh", lambda e: self.load()),
         ], spacing=T.S2)
         self.hidden_switch = C.switch("Show hidden files", value=False, on_change=self._toggle_hidden)
+        self.selected: set[str] = set()  # paths of checked entries in the current folder
+        self.checks: dict[str, ft.Checkbox] = {}
+        self.select_all = ft.Checkbox(value=False, active_color=T.ACCENT, check_color=T.ON_ACCENT,
+                                      tooltip="Select all", on_change=self._toggle_all)
+        self.sel_label = C.body("", T.TEXT, weight=ft.FontWeight.W_500)
+        self.sel_bar = ft.Container(ft.Row([
+            self.sel_label, ft.Container(expand=True),
+            C.secondary("Download", ft.Icons.DOWNLOAD_ROUNDED, self._download_selected),
+            C.ghost("Delete", ft.Icons.DELETE_OUTLINE_ROUNDED, lambda e: self._delete_selected()),
+            C.ghost("Clear", ft.Icons.CLOSE_ROUNDED, lambda e: self._clear_selection()),
+        ], spacing=T.S2), padding=ft.Padding(T.S3, T.px(6), T.S2, T.px(6)), border_radius=T.RADIUS_SM,
+            bgcolor=T.ACCENT_SOFT, visible=False)
+        self.drop_hint = ft.Container(
+            ft.Column([ft.Icon(ft.Icons.UPLOAD_ROUNDED, size=T.px(48), color=T.ACCENT), C.h2("Drop to upload"),
+                       C.meta("")], horizontal_alignment=ft.CrossAxisAlignment.CENTER, tight=True),
+            left=0, right=0, top=0, bottom=0, alignment=ft.Alignment.CENTER, bgcolor=T.soft("#000000", 0.7),
+            border_radius=T.RADIUS, border=ft.Border.all(2, T.ACCENT), visible=False)
         self.root = None
 
     # ---------------------------------------------------------------- building
@@ -91,14 +124,40 @@ class FilesView:
                            padding=T.S3, width=T.px(260), expand=False),
                     ft.Column([
                         ft.Row([self.crumb_row, self.toolbar], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Row([self.where, ft.Container(expand=True), self.hidden_switch]),
-                        C.card(self.listing, padding=T.px(4), expand=True),
+                        ft.Row([self.select_all, self.where, ft.Container(expand=True), self.hidden_switch],
+                               vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        self.sel_bar,
+                        self._drop_area(ft.Stack([C.card(self.listing, padding=T.px(4), expand=True),
+                                                  self.drop_hint], expand=True)),
                         self.status,
                     ], spacing=T.S2, expand=True),
                 ], spacing=T.S4, expand=True, vertical_alignment=ft.CrossAxisAlignment.STRETCH),
             ], spacing=T.S3, expand=True)
         self.app.run_bg(self._load_locations, package)
         return self.root
+
+    def _drop_area(self, content: ft.Control) -> ft.Control:
+        """Files and folders dragged in from the computer's file manager are uploaded to the open folder. Needs the
+        flet-dropzone extension, which only the packaged app contains (flet build); elsewhere: no drop area."""
+        if not dropzone_available():
+            return content
+        import flet_dropzone as ftd
+
+        def entered(e):
+            self.drop_hint.content.controls[2].value = f"into {self.where.value or self.path}"
+            self.drop_hint.visible = True
+            C.update(self.drop_hint)
+
+        def exited(e):
+            self.drop_hint.visible = False
+            C.update(self.drop_hint)
+
+        def dropped(e):
+            exited(e)
+            paths = [Path(f.path) for f in e.files if f.path and not f.path.startswith("blob:")]
+            if paths:
+                self.upload(paths)
+        return ftd.Dropzone(content=content, expand=True, on_entered=entered, on_exited=exited, on_dropped=dropped)
 
     def _location_row(self, loc: dict, icon: str, sub: str = "") -> ft.Control:
         selected = self.loc is not None and self.loc["id"] == loc["id"]
@@ -194,6 +253,7 @@ class FilesView:
             if (self.loc, self.path) != (loc, path):
                 return  # the user moved on meanwhile
             self.entries = entries
+            self.selected &= {e.path for e in entries}
             self._render_listing()
         self.app.run_bg(work)
 
@@ -212,6 +272,7 @@ class FilesView:
         self.where.value = (f"Games see this folder as {posixpath.join(android, rel) if rel else android}"
                             if android else self.path)
         rows = []
+        self.checks = {}
         if self.path != loc["path"]:
             rows.append(self._row(None))
         rows += [self._row(e) for e in self.entries]
@@ -222,6 +283,7 @@ class FilesView:
         n_dirs = sum(e.is_dir for e in self.entries)
         size = sum(e.size for e in self.entries if not e.is_dir)
         self.status.value = f"{n_dirs} folder(s), {len(self.entries) - n_dirs} file(s), {human(size)}"
+        self._update_selection(render=False)
         for c in (self.crumb_row, self.where, self.listing, self.status):
             C.update(c)
 
@@ -234,12 +296,16 @@ class FilesView:
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(e.mtime)) if e.mtime else ""
         info = ("folder" if e.is_dir else human(e.size)) + (" · link" if e.link else "") + (f" · {when}" if when else "")
         actions = [C.icon_btn(ft.Icons.DOWNLOAD_ROUNDED, "Download to this PC", lambda ev, x=e: self.download([x]))]
-        if not (e.link and posixpath.dirname(e.path) == posixpath.normpath(self.loc["path"])):
-            # Lepton's links in a game's storage (Movies → ~/Videos, …) stay: renaming or deleting them breaks them
+        if not self._protected(e):
             actions += [C.icon_btn(ft.Icons.DRIVE_FILE_RENAME_OUTLINE_ROUNDED, "Rename", lambda ev, x=e: self.rename(x)),
                         C.icon_btn(ft.Icons.DELETE_OUTLINE_ROUNDED, "Delete", lambda ev, x=e: self.delete([x]))]
+        check = ft.Checkbox(value=e.path in self.selected, active_color=T.ACCENT, check_color=T.ON_ACCENT,
+                            on_change=lambda ev, p=e.path: self._toggle(p, ev.control.value),
+                            disabled=self._protected(e))
+        self.checks[e.path] = check
         return ft.Container(
-            ft.Row([ft.Icon(file_icon(e.name, e.is_dir), size=T.px(20), color=T.ACCENT if e.is_dir else T.TEXT_2),
+            ft.Row([check,
+                    ft.Icon(file_icon(e.name, e.is_dir), size=T.px(20), color=T.ACCENT if e.is_dir else T.TEXT_2),
                     ft.Column([C.body(e.name, T.TEXT, weight=ft.FontWeight.W_500, max_lines=1,
                                       overflow=ft.TextOverflow.ELLIPSIS), C.meta(info)], spacing=0, expand=True),
                     *actions], spacing=T.S3),
@@ -248,7 +314,53 @@ class FilesView:
 
     def cd(self, path: str) -> None:
         self.path = path
+        self.selected.clear()
         self.load()
+
+    def _toggle(self, path: str, on: bool) -> None:
+        (self.selected.add if on else self.selected.discard)(path)
+        check = self.checks.get(path)
+        if check is not None and check.value != on:
+            check.value = on
+            C.update(check)
+        self._update_selection()
+
+    def _toggle_all(self, e) -> None:
+        self.selected = {x.path for x in self.entries if self._selectable(x)} if e.control.value else set()
+        self._render_listing()
+
+    def _clear_selection(self) -> None:
+        self.selected.clear()
+        self._render_listing()
+
+    def _selectable(self, e) -> bool:
+        return not self._protected(e)
+
+    def _protected(self, e) -> bool:
+        """Lepton's links at the top of a game's storage (Movies → ~/Videos, …): renaming/deleting them breaks them."""
+        return e.link and posixpath.dirname(e.path) == posixpath.normpath(self.loc["path"])
+
+    def _update_selection(self, render: bool = True) -> None:
+        n = len(self.selected)
+        size = sum(x.size for x in self.entries if x.path in self.selected and not x.is_dir)
+        self.sel_label.value = f"{n} selected" + (f" · {human(size)} in files" if size else "")
+        self.sel_bar.visible = bool(n)
+        self.select_all.value = bool(self.entries) and n == len([x for x in self.entries if self._selectable(x)])
+        if render:
+            for c in (self.sel_bar, self.select_all):
+                C.update(c)
+
+    def _chosen(self) -> list:
+        return [x for x in self.entries if x.path in self.selected]
+
+    async def _download_selected(self, e=None):
+        if self.selected:
+            await self.download(self._chosen())
+
+    def _delete_selected(self) -> None:
+        items = [x for x in self._chosen() if not self._protected(x)]
+        if items:
+            self.delete(items)
 
     def _toggle_hidden(self, e) -> None:
         self.hidden = bool(e.control.value)
@@ -304,8 +416,10 @@ class FilesView:
         names = ", ".join(x.name for x in items[:3]) + (" …" if len(items) > 3 else "")
         what = "folder and everything in it" if any(x.is_dir for x in items) else "file"
         C.confirm(self.app.page, f"Delete {names}?", f"This deletes the {what} on the Frame. It can't be undone.",
-                  "Delete", lambda: self._fs(lambda files, frame: files.delete(frame, self.loc["path"],
-                                                                              [x.path for x in items])), danger=True)
+                  "Delete", lambda: (self.selected.difference_update(x.path for x in items),
+                                     self._fs(lambda files, frame: files.delete(frame, self.loc["path"],
+                                                                                [x.path for x in items]))),
+                  danger=True)
 
     def _fs(self, op) -> None:
         """A quick file operation in the background, then reload the folder (errors become a toast)."""

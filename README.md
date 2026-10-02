@@ -61,8 +61,9 @@ switched on or off under **Customize**.
 
 ![Steam Frame](docs/images/frame.png)
 
-The **Files** tab manages files on the Frame: upload videos, documents, mods or saves from the computer, download,
-rename and delete, in the shared folders every game sees or in one game's own storage.
+The **Files** tab manages files on the Frame: upload videos, documents, mods or saves from the computer (buttons or
+drag-and-drop), download, rename and delete (one entry or a selection), in the shared folders every game sees or in
+one game's own storage.
 
 ![Files](docs/images/files.png)
 

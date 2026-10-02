@@ -151,6 +151,8 @@ def main() -> int:
             steps += [("game", lambda a: a.open_game(game)), ("game-customize", lambda a: a.open_game(game, advanced=True))]
         steps.append(("frame", lambda a: a.navigate(1)))
         steps.append(("files", lambda a: a.go("files")))
+        steps.append(("files-select", lambda a: [a.files_view._toggle(e.path, True)
+                                                 for e in a.files_view.entries[1:3]]))
     if args.update:
         from frameport import updates
 

@@ -694,6 +694,18 @@ wheels = [
 ]
 
 [[package]]
+name = "flet-dropzone"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "flet" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/74/a3/fc72d64a7f3756d21636715a80b9632aca58ac3751550d96b0db929dd26b/flet_dropzone-0.4.0.tar.gz", hash = "sha256:dede0c401dd20d0d90c950d1dcb396664b11da25da8a152b2770ee2bc825c44b", size = 17839 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/df/67/1d07086500987ec47454d558ec408405498ac2ac9ac4896039cec3cfdc4b/flet_dropzone-0.4.0-py3-none-any.whl", hash = "sha256:d7e47c5ffed70d09ecd9079454f7678f9d4d4bd88cf1432f7e12489ca4987a6d", size = 19032 },
+]
+
+[[package]]
 name = "flet-platform-assets"
 version = "1.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -756,12 +768,13 @@ wheels = [
 
 [[package]]
 name = "frameport"
-version = "0.2.0"
+version = "0.3.4"
 source = { editable = "." }
 dependencies = [
     { name = "capstone" },
     { name = "flet" },
     { name = "flet-desktop" },
+    { name = "flet-dropzone" },
     { name = "paramiko" },
     { name = "psutil" },
     { name = "pyaxmlparser" },
@@ -787,6 +800,7 @@ requires-dist = [
     { name = "flet", specifier = ">=1.0" },
     { name = "flet-cli", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "flet-desktop", specifier = ">=1.0" },
+    { name = "flet-dropzone", specifier = ">=0.4.0" },
     { name = "flet-web", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "paramiko", specifier = ">=3.4" },
     { name = "playwright", marker = "extra == 'dev'", specifier = ">=1.40" },

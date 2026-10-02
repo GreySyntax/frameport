@@ -8,6 +8,7 @@ requires-python = ">=3.11"
 dependencies = [
     "flet>=1.0",
     "flet-desktop>=1.0",
+    "flet-dropzone>=0.4.0",  # drag-and-drop uploads in the Files tab (packaged app only; Apache-2.0)
     "paramiko>=3.4",
     "zeroconf>=0.132",
     "psutil>=5.9",

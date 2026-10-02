@@ -18,8 +18,10 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
     like the library; locations = Videos/Downloads/Documents from agent `storage_targets`, each installed Quest game's
     storage, the home folder; SFTP via `install/files.py` list_dir/upload/download/make_dir/rename/delete, all
     confined to the location by `files.inside`; Lepton's links in a game's storage can't be renamed/deleted; replaced
-    the "Send files" dialog, game menu → "Add videos & files…" = `go("files", pkg)`); settings; welcome; activity
-    panel).
+    the "Send files" dialog, game menu → "Add videos & files…" = `go("files", pkg)`; multi-select bar (download/
+    delete); drag-and-drop from the OS via the `flet-dropzone` extension (Apache-2.0, Flutter `desktop_drop`), which
+    only a `flet build` bundle contains: `files.dropzone_available()` keeps it out of source runs and the PyInstaller
+    fallback, which would show an unknown control); settings; welcome; activity panel).
     User tags live in library entries (`tags`), filters in library setting `ui.library`.
     **Performance rules** (the app froze before): never put image bytes in controls — artwork is served by URL from the
     GUI assets dir (= user data dir; `ft.run(assets_dir=…)`), as thumbnails (`artwork/thumbs.py`, Pillow); the
