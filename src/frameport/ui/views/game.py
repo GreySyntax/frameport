@@ -234,7 +234,7 @@ class GameView:
                                  for k, v in facts], spacing=T.S6, wrap=True))
         if d.get("genres"):
             parts.append(ft.Row([C.pill(g, T.TEXT_2) for g in d["genres"][:8]], spacing=T.px(6), wrap=True))
-        text = d.get("description") or d.get("short") or ""
+        text = det.plain_description(d.get("description") or d.get("short") or "")
         if text:
             long = len(text) > 480
             body = C.body(text if not long else text[:480].rsplit(" ", 1)[0] + "…", T.TEXT, selectable=True)
@@ -362,7 +362,7 @@ class GameView:
             r.source = "user"
             pipeline.set_recipe(self.package, r)
             self.app.open_game(self.package, advanced=self.advanced)
-        switch = C.with_help(ft.Switch(value=as_is, active_color=T.PC, on_change=toggle_as_is,
+        switch = C.with_help(C.switch(value=as_is, active_color=T.PC, on_change=toggle_as_is,
                                        label=("Already patched: don't change the game's files" if self.rift else
                                               "Already patched: install as is (skip patching)")), "as_is")
         return C.section(
@@ -470,11 +470,11 @@ class GameView:
             save(state["recipe"])
         top = []
         if recipe.alt_patches:
-            top.append(C.with_help(ft.Switch(label="Install the alternate build (" + ", ".join(recipe.alt_patches)
+            top.append(C.with_help(C.switch(label="Install the alternate build (" + ", ".join(recipe.alt_patches)
                                              + ")", value=recipe.use_alt, on_change=set_alt, active_color=T.ACCENT),
                                    "alt_build"))
         if hidden:
-            top.append(C.with_help(ft.Switch(
+            top.append(C.with_help(C.switch(
                 label=f"Show all patches ({len(hidden)} don't apply to this game)", value=self.show_all,
                 active_color=T.ACCENT, on_change=lambda e: app.open_game(package, advanced=True,
                                                                          show_all=e.control.value)), "show_all"))

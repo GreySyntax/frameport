@@ -24,8 +24,9 @@ def _lib_bytes(ws) -> dict[str, bytes]:
 class PlatformCompat(Patch):
     id = "frame.ovrplatformcompat"
     title = "Platform compat (ovrMessageType_ToString)"
-    description = ("Adds a real ovrMessageType_ToString (from the Android-XR-Bridge fork) for games whose platform "
-                   "loader lacks it (e.g. The Climb 2).")
+    description = ("Adds a real ovrMessageType_ToString (OVRPort's platform compat library) for games whose platform "
+                   "loader lacks it (e.g. The Climb 2). OVRPort 1.2.5+ adds the same library itself; then this is "
+                   "skipped.")
     order = 30
     default_on = True
 

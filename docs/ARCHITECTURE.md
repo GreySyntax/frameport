@@ -22,8 +22,9 @@
    direct-VrApi, GLAD/eglGetProcAddress, Unity MSAA levels, Meta permissions, telemetry references.
 3. **Recipe** (`recommend/engine.py`): every patch's `detect()` suggests itself with a reason; a catalog entry (exact
    known-good recipe) overrides heuristics. The UI shows toggles; the user confirms.
-4. **Build** (`build.py`): overport (defaults + extras) → apk-stage patches in `order` on an `ApkWorkspace` → apksigner
-   (with the package's own keystore) → static validation. Optional alternate build (e.g. without Unreal ForceQuit).
+4. **Build** (`build.py`): overport CLI (OVRPort; defaults + extras) → apk-stage patches in `order` on an
+   `ApkWorkspace` → apksigner (with the package's own keystore) → static validation. Optional alternate build (e.g.
+   without Unreal ForceQuit).
 5. **Install** (`install/installer.py` + `agent/frameport_agent.py`): `prepare` (paths, what's already there) → SFTP
    uploads with resume → `finalize` (move into place, settings.conf/framebridge.conf, device files, launch.sh,
    deployment.json, artwork) → `shortcuts` (detached systemd unit stops Steam, writes shortcuts.vdf + grid art,
@@ -55,7 +56,7 @@ apart. "Build" = `pipeline.prepare_rift` (checks + Revive). Revive is a portable
   stale files removed), `launch.sh` running the ARM64 Proton chain (built from toolmanifest.vdf; with
   `pcvr.oculus_unreal` the injector runs through `helpers/fp_oculushmd.exe`, which provides Unreal's
   `OculusHMDConnected` event); `proton_status`/`install_proton` manage Proton from Valve's ARM64 compat list.
-- **Native binaries** (`artifacts/`): edit `native/…`, run `native/build.sh`, commit the new artifacts + SHA256SUMS,
+- **Native binaries** (`artifacts/`): edit `native/…`, run `python native/build.py`, commit the new artifacts + SHA256SUMS,
   run `frameport parity` to see which games change.
 
 ## Self-update (`updates.py`, `ui/updater.py`, `cli.py update`)
@@ -80,6 +81,6 @@ GUI: background check 10 s after start + every 6 h → sidebar card + Library ba
 update [--check] [--yes]`. CI runs `scripts/update_smoke.py` on every OS with the archive it just built.
 
 ## Dynamic data (fetched live, cached, bundled fallback)
-overport release + patch list + patch titles (GitHub), Temurin JRE (Adoptium API), apksigner (Google repository index),
+overport CLI release (Android-XR-Bridge/OVRPort, fallback ovrport/app) + patch list + titles, Temurin JRE (Adoptium API), apksigner (Google repository index),
 store artwork/titles (overport image API), catalog (optional remote), Lepton location/appid (Frame appmanifests),
 Steam user (Frame userdata).

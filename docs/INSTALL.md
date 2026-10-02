@@ -1,107 +1,89 @@
 # Installing FramePort
 
-Download the archive for your OS from the [latest release](https://github.com/spoopyghosty0/frameport/releases/latest)
-and extract it anywhere. No installer and no admin rights are needed. On first start, open **Tools → Install
-missing** once: FramePort downloads its own Java runtime, the overport CLI and apksigner into its data folder.
+Download the archive for your computer from the [latest release](https://github.com/spoopyghosty0/frameport/releases/latest)
+and extract it anywhere. No installer or admin rights are needed. On first start FramePort downloads its Java
+runtime, the OVRPort CLI and apksigner into its data folder (Settings → Tools shows them).
 
-| OS | Archive | Start |
+| Computer | Archive | Start |
 |---|---|---|
 | Windows 10/11 (x64) | `FramePort-windows-x64.zip` | `FramePort.exe` |
 | macOS (Apple Silicon) | `FramePort-macos-arm64.zip` | `FramePort.app` |
-| Linux (x64) | `FramePort-linux-x64.tar.gz` | `FramePort/FramePort` (needs GTK 3) |
-| Command line only (any OS with Python 3.11+) | `frameport-<version>-py3-none-any.whl` | `frameport --help` |
+| Linux (x64, GTK 3) | `FramePort-linux-x64.tar.gz` | `FramePort/FramePort` |
+| Command line only (Python 3.11+) | `frameport-<version>-py3-none-any.whl` | `frameport --help` |
 
-The command-line version installs with [uv](https://docs.astral.sh/uv/) (or pipx / pip) straight from a release, e.g.
-`uv tool install https://github.com/spoopyghosty0/frameport/releases/download/v0.3.0/frameport-0.3.0-py3-none-any.whl`
-(copy the wheel's link from the release page). `frameport --version` shows the installed version.
+The command-line version installs from the wheel's release link with `uv tool install <link>` (or pipx / pip).
 
 ## First launch
 
-FramePort is free and signed with its own **self-signed** certificate (Windows) and **ad-hoc** signature (macOS),
-not a paid one, so your OS warns the first time:
+The builds are signed with a free self-signed certificate (Windows) and an ad-hoc signature (macOS), so the first
+start shows a warning:
 
-- **Windows:** SmartScreen shows "Windows protected your PC" → click **More info** → **Run anyway**.
-  Optional, to make Windows show "FramePort" as a verified publisher: import `FramePort-selfsigned.cer` (attached
-  to each release) into **Trusted Root Certification Authorities** (right-click → Install Certificate → Current User →
-  "Place all certificates in the following store"). The certificate is limited to code signing and cannot issue other
-  certificates. SmartScreen is reputation-based, so it may still warn for new versions. Only do this if you trust the
-  builds from this repository; remove it any time with `certmgr.msc`.
-- **macOS:** right-click `FramePort.app` → **Open** → **Open** (only needed once), or run
-  `xattr -dr com.apple.quarantine FramePort.app`.
+- **Windows:** "Windows protected your PC" → **More info** → **Run anyway**. Optional: import
+  `FramePort-selfsigned.cer` (attached to each release) into *Trusted Root Certification Authorities* (Current User) to
+  show FramePort as the publisher; the certificate can only sign code. Remove it with `certmgr.msc`.
+- **macOS:** right-click `FramePort.app` → **Open** → **Open** (once), or `xattr -dr com.apple.quarantine FramePort.app`.
 - **Linux:** `tar xzf FramePort-linux-x64.tar.gz && ./FramePort/FramePort`.
 
+## Connecting the Steam Frame
+
+1. On the Frame: Settings → System → Developer → turn on **Developer Mode**. The Frame and the computer must be on the
+   same network.
+2. In FramePort open **Steam Frame**. A Frame in Developer Mode appears in the list.
+3. First time only: on the Frame switch to Desktop mode (Steam button → Power → Switch to Desktop), open Konsole and
+   run the command FramePort shows. It enables SSH, authorises this computer and installs Valve's Android runtime
+   (Lepton) if needed.
+
 ## Updating
-FramePort checks GitHub for a new release when it starts and every 6 hours (only the release information, nothing about
-you is sent). When there is one, a **Update available** card appears in the sidebar and a bar at the top of the Library:
-click **Update now** (or the card → **Update and restart**). FramePort downloads the new version, checks it against the
-release's `SHA256SUMS.txt` (on Windows also that it carries the same signature as the running copy), closes, replaces
-its program folder / `FramePort.app` and opens again as the new version. Your games, settings, signing keys and Frame
-connection live in FramePort's data folder and are kept. If installs or uploads are running, the update waits until
-they finish. **Later** hides that version (Settings → Updates → **Check for updates** still finds it).
 
-Settings → **Updates**: switch off the automatic check, or turn on **Install updates automatically** (downloads new
-versions in the background and installs them the next time FramePort starts — no clicks at all). If FramePort's folder
-isn't writable (e.g. under Program Files), Update now opens the release page instead; download and extract it as
-above. The update's log is `logs/update.log` in FramePort's data folder; the replaced files of a Windows update are kept
-in `updates/<version>/previous` until the next update.
+FramePort checks for a new release at start and every 6 hours (it only downloads the release information). When one
+exists, the Library shows **Update now**: FramePort downloads the new version, verifies it against the release's
+`SHA256SUMS.txt` (on Windows also the signature), restarts and opens as the new version. Games, settings, signing keys
+and the Frame connection are kept. Running installs finish first. **Later** skips that version.
 
-Command line: commands mention a new version at most once a day (on stderr). `frameport update` shows what's new and
-updates (a bundle the same way as the app; a `uv tool`/pipx/pip install by reinstalling the release's wheel; a source
-checkout with `git pull` + `uv sync`). `frameport update --check` only checks (exit code 10 = an update exists),
-`--yes` skips the question. `FRAMEPORT_NO_UPDATE_CHECK=1` turns all checks off.
+Settings → **Updates**: turn the check off, or turn on **Install updates automatically** (downloads in the background,
+installs at the next start). If FramePort's folder isn't writable, **Update now** opens the release page instead. The
+update log is `logs/update.log` in the data folder.
+
+Command line: `frameport update` (`--check` only checks, exit code 10 = update available; `--yes` doesn't ask).
+`FRAMEPORT_NO_UPDATE_CHECK=1` turns all checks off.
 
 ## Oculus Rift (PC VR) games
-Scan a folder of Rift games (one folder per game; the game may sit a few levels down, next to installers and archives)
-the same way as Quest dumps, or use **Add games → Add one game folder…**. FramePort finds the program that starts
-each game; when it isn't sure (e.g. an Oculus and a Steam build side by side) it asks you. It also fetches artwork, descriptions, genres and
-(for games also sold on Steam) screenshots, and gives each Steam library entry full artwork plus tags for how it
-runs, its original platform (Meta Quest / Oculus Rift) and its genres. If your copies are already patched, switch on **Already patched** on the game page:
-Quest APKs are installed unchanged, Rift games start without Revive. If you installed Revive
-yourself (official installer), FramePort uses that one; otherwise it downloads its own portable copy (Tools shows which;
-nothing is installed system-wide).
-- **Play from this PC:** needs Windows with Steam and SteamVR. "Install on this PC" adds the game to your Steam
-  library (Steam closes and reopens once); stream it to the Frame with Steam Link / SteamVR. If a game stutters
-  because it can't keep up with the headset's refresh rate, FramePort notices from SteamVR's records and, the next
-  time you press Play, lowers that game's refresh rate (e.g. 96 → 80 Hz) and turns on motion smoothing in SteamVR's
-  per-game settings (patch "Automatic SteamVR performance settings" on the game page, where you can also pick a
-  rate yourself).
-- **Play on the Frame (experimental):** Frame → "Install Proton" (confirm the download in the headset), then "Install
-  on Frame (Proton)" on the game page.
-- Games that use the Oculus Platform SDK (FramePort shows a note) check your Oculus license: they need the Oculus app
-  installed on the PC with a license you own, so they can't run on the headset.
 
-## Videos, documents and mods for Quest games
-Frame → **Send files** (or a game's menu → **Send files to this game…**) copies files or whole folders from this PC to
-the Frame. **Videos**, **Downloads** and **Documents** are shared by every Quest game: they appear inside each game as
-`/sdcard/Movies`, `/sdcard/Download` and `/sdcard/Documents` (they are the Frame's own `~/Videos`, `~/Downloads`,
-`~/Documents`). A game's own storage (`/sdcard` of that game only) is for mods and saves. Apps find the files by
-**browsing folders** (e.g. in a video player: local storage → Movies); their "all videos" lists stay empty because
-Android's media index doesn't work on the Frame. Command line: `frameport frame send <files> --to videos` (see
-`frameport frame storage`).
+Scan a folder of Rift games (one folder per game) or use **Add games → Add one game folder…**. FramePort finds the
+game's program and asks when there is more than one candidate. **Already patched** on a game page installs a copy
+unchanged. FramePort uses an installed Revive, or downloads a portable copy.
+
+- **Play from this PC:** Windows with Steam and SteamVR. **Install on this PC** adds the game to Steam; stream it to the
+  Frame with Steam Link. If a game can't keep up with the refresh rate, FramePort lowers the rate and enables motion
+  smoothing in SteamVR's per-game settings the next time you press Play.
+- **Play on the Frame (experimental):** Steam Frame → *PC VR games (Proton)* → **Install**, then **Install on Frame**
+  on the game page.
+- Games that use the Oculus Platform SDK check the licence through the Oculus app, so they run on the PC only.
+
+## Videos, documents and mods
+
+Steam Frame → **Send files** (or a game's menu → **Add videos & files…**) copies files to the Frame. **Videos**,
+**Downloads** and **Documents** appear inside every Quest game as `/sdcard/Movies`, `/sdcard/Download` and
+`/sdcard/Documents`. Apps find them by browsing folders; Android's media index doesn't work on the Frame. Command
+line: `frameport frame send <files> --to videos`.
 
 ## Sharing a working game, reporting a problem
-- **A game works?** Game menu (right-click in the Library, or "…" on its page) → **Share working config…**. FramePort
-  opens a prefilled GitHub issue with the game's recipe (patches and settings); check it and submit. Once accepted it
-  becomes a built-in recipe for everyone. No GitHub token and no game files are involved.
-- **Something doesn't work?** Game menu → **Report a problem…** (or Settings → Problems & feedback for app issues).
-  FramePort saves a diagnostics zip to your Documents folder (logs, recipe, device details; IP addresses, user and
-  host names, home folders and Steam ids replaced by placeholders; no game files), shows it in a folder window and
-  opens a prefilled GitHub issue: drag the zip into the "Diagnostics" box and submit. **Collect logs** only saves the
-  zip. Command line: `frameport diag report <game>`, `frameport diag collect <game>`, `frameport share-recipe <game>`.
+
+- **Share working config…** (game menu): opens a prefilled GitHub issue with the game's patches and settings. Accepted
+  configs become built-in recipes.
+- **Report a problem…** (game menu, or Settings → Problems & feedback): saves a diagnostics zip to Documents (logs,
+  recipe, device details; IP addresses, user names, home folders and Steam ids replaced) and opens a prefilled GitHub
+  issue to attach it to. Command line: `frameport diag report <game>`, `frameport share-recipe <game>`.
 
 ## Uninstalling
-Settings → **Uninstall FramePort…** (or `frameport uninstall-app`) removes everything FramePort created: its data
-folder (tools, library, artwork, cache, builds), the Steam shortcuts it added on this PC and, optionally, its games and
-files on the Frame (saves can be kept). It first saves a zip of your signing keys to Documents (game updates must be
-signed with the same key). Then delete the FramePort program folder.
+
+Settings → **Uninstall FramePort…** (or `frameport uninstall-app`) removes its data folder, the Steam shortcuts it
+added on this computer and, optionally, its games on the Frame (saves can be kept). It first saves your signing keys
+to Documents: game updates must be signed with the same key. Then delete the program folder.
 
 ## Verify a download
 
-Every archive has a GitHub build attestation proving it was built by this repository's CI from a tagged commit:
-
-```
-gh attestation verify FramePort-windows-x64.zip -R spoopyghosty0/frameport
-```
-
-and `SHA256SUMS.txt` lists the checksums (`sha256sum -c SHA256SUMS.txt`). The Windows certificate's SHA-256
-fingerprint is `4E:12:98:91:62:C0:E4:50:FB:65:1D:34:BB:73:00:09:7B:78:BE:88:5C:A7:6C:42:23:46:9B:92:A1:59:A7:6E`.
+Each archive has a GitHub build attestation:
+`gh attestation verify FramePort-windows-x64.zip -R spoopyghosty0/frameport`. `SHA256SUMS.txt` lists the checksums
+(`sha256sum -c SHA256SUMS.txt`). Windows certificate SHA-256 fingerprint:
+`4E:12:98:91:62:C0:E4:50:FB:65:1D:34:BB:73:00:09:7B:78:BE:88:5C:A7:6C:42:23:46:9B:92:A1:59:A7:6E`.

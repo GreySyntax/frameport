@@ -59,6 +59,8 @@ def runtime_versions() -> str:
 def patch(apk: Path, outdir: Path, name: str, patches: list[str], reporter: Reporter,
           version: str = "latest") -> Path:
     """Run `overport patch`; returns the output APK path. version='latest' always uses the newest runtime."""
+    if not patches:  # overport 1.2.5+ refuses an empty --patches= (and without patches it only re-signs)
+        raise ValueError("no overport patches selected")
     outdir.mkdir(parents=True, exist_ok=True)
     target = outdir / name
     target.unlink(missing_ok=True)

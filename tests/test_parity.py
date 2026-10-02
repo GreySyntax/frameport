@@ -30,3 +30,18 @@ def test_report_counts():
 
     works = sum(1 for e in catalog.load().values() if e.status == "works")
     assert f"{works} work" in text and "Path of the Warrior" in text
+
+
+def test_ovrport_125_config_and_compat_are_expected():
+    from frameport import parity
+    from frameport.analysis.stubgen import build_stub_library
+
+    def cfg(by):
+        return b"\0\0" + ('{"version":1,"patched":{"by":"%s","with":"3.4.3-23204ea","patches":["patch_copy_libraries"]}}'
+                          % by).encode() + b"\0"
+    kind, why = parity.classify("lib/arm64-v8a/liboverport.config.so", cfg("1.2.5"), cfg("1.2.3"))
+    assert kind == "expected" and "1.2.5" in why
+    assert parity.classify("lib/arm64-v8a/liboverport.config.so", cfg("1.2.5").replace(b"3.4.3", b"3.4.4"),
+                           cfg("1.2.3"))[0] == "UNEXPLAINED"
+    compat = build_stub_library(["ovrMessageType_ToString"], soname="libovrplatformcompat.so")
+    assert parity._compat_export(compat)

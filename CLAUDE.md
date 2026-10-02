@@ -22,6 +22,7 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
     job/connection events call `app.refresh_view()` (targeted), not `render()`; no I/O in render paths.
     **Never recreate clickable controls on progress ticks** (sidebar, activity tiles): update their properties —
     replacing them 5×/s swallowed clicks (couldn't leave the Library during an upload).
+    Labelled switches: `C.switch(label, …)` (Material's default label colour is dark on our dark theme).
     Help hints: wording for non-obvious terms lives in `ui/help.py` (`HELP`); show it with `C.help_icon(key)` or the
     `help=` argument of `section`/`status_row`/`kv`, tooltips via `C.tip()` (wraps). Game actions for the Library
     right-click menu (one `ft.ContextMenu` around the grid, filled on right-click) and the game page's "…" menu come
@@ -96,6 +97,8 @@ Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
   - `apk/` — `axml.py` (binary manifest editor), `workspace.py` (staged zip edits), `sign.py` (apksigner; it aligns too).
   - `recommend/` — `catalog.py` (known-good recipes: user > remote `FRAMEPORT_CATALOG_URL` > bundled), `engine.py`.
   - `tools/` — portable toolchain (Temurin JRE, overport jar, apksigner) downloaded dynamically into the user data dir.
+    The overport CLI comes from the downstream fork **Android-XR-Bridge/OVRPort** (stable `vX.Y.Z` releases,
+    `OVRPort-<ver>-stable-cli.jar`; fallback ovrport/app `cli-jar.zip`), see "overport" below.
   - `frame/` — SSH (paramiko), mDNS discovery, pairing server; `install/installer.py`; `validate/` (static, device, triage).
   - `targets/` — `Target` interface; `frame_lepton.py` (Quest via Lepton + Rift via Proton), `pc_revive.py` (Rift games
     on this Windows/WSL PC via Revive + local Steam shortcut; `core/winhost.py` = Windows/WSL helpers).
@@ -156,6 +159,13 @@ Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattr
   artwork, frames.json, the app's SSH key which the dev Frame authorizes).
 - Device checks: `frameport test <pkg>` / `frameport parity-device --results <parity.json> --baseline <launch.txt>
   [--test-only]`; the pre-FramePort baseline is `PATCHED/_known-good-2026-09-28/_frame-state/baseline-launch.txt`.
+- Docs screenshots (`docs/images/`): `python scripts/scrub_library.py ~/.local/share/frameport <dir>` (copies
+  library + artwork only; titles replace folder names, local paths → `D:/Games/...`, sort by size) then
+  `FRAMEPORT_HOME=<dir> python scripts/ui_smoke.py --out <shots> --docs --fake-frame --game <pkg>` (set
+  FRAMEPORT_JAVA/_OVERPORT_JAR/_APKSIGNER_JAR so no tool download toast appears; `--viewport 1280x2600` + crop for the
+  patch list). Check every PNG for paths, IPs, user names and repack/scene names before committing.
+  README rules (owner): states the project is a proof of concept, provides no piracy tools, credits the wrapped
+  projects (most functionality is theirs); neutral technical wording; no Quest2Frame mentions anywhere.
 - GUI smoke test: `uv pip install flet-web playwright && playwright install chromium`, then
   `FRAMEPORT_HOME=<test dir> python scripts/ui_smoke.py --out <dir> [--game <pkg>] [--frame steamos@<host>] [--update]` (`--update` = fake release: banner, dialog, Settings → Updates) and look
   at the PNGs. Flet 1.0 notes: `ft.run` must own the main thread; background work via `page.run_thread`; FilePicker is
@@ -256,6 +266,16 @@ stopping Steam kills them → always run that work via `systemd-run --user` (the
 **overport:** always `--version=latest`; `--workspace` holds runtimes and **per-package keystores (password
 "password", alias "key") — never lose them**: updates must be signed with the same key or saves are lost on reinstall.
 Output is deterministic (same input + runtime → same bytes), which is what makes parity testing possible.
+**OVRPort 1.2.5 (2026-10-01, the fork's first release; CLI-only):** same commands (`patches [--json]`, `patch`, `help`,
+`install`), but `patch` rejects unknown/duplicate args, unknown patch ids and an empty `--patches=`
+(`tools/overport.patch` refuses empty lists). After patching it adds `libovrplatformcompat.so` itself when the platform
+loader lacks `ovrMessageType_ToString` (our `frame.ovrplatformcompat` then skips: same library). New patches (all off;
+`patches/overport.py`): `patch_ac_nexus_no_appsw_72/_90` (AC Nexus build 207706 only, exclusive),
+`patch_disable_meta_xr_audio_telemetry` (x86_64 emulators: hidden), `patch_vrapi_openxr` = OVRPort's VrApi adapter =
+the **unpatched** upstream of our `frame.vrapi_bridge` (`native/vrapi` unchanged since our 5e7df52), only usable with an
+experimental CLI built with `-PwithVrApi=true` (stable jars list it but fail). The owner prefers OVRPort's fixes over
+ours where they work as well (less to maintain): compare in the headset before switching a default.
+`frameport install <pkg> --apk <file>` installs a specific (test) build signed with the game's key.
 
 **Patching gotchas:**
 - UnityPy re-serialization breaks scene loading → patch QualitySettings ints in place.
@@ -343,6 +363,10 @@ Installed apps find the release themselves (self-update), so the notes are what 
   Windows console) plus PYTHONUTF8; macOS builds need `--python-version 3.12 --arch arm64` (cryptography has no wheels
   for flet's default Python / x86_64 cross-build), with a PyInstaller fallback step; `astral-sh/setup-uv` has no
   floating major tags after v7 → pin the exact version; force-moving a tag starts duplicate runs (cancel one).
+- Windows PowerShell calls from Python (`updates._powershell()`): use `%SystemRoot%\System32\WindowsPowerShell\v1.0\
+  powershell.exe` with `PSModulePath` removed from the environment — started under PowerShell 7 (CI's default shell,
+  or a user's pwsh terminal) it couldn't run Get-AuthenticodeSignature (v0.3.0's Windows update smoke failed on it).
+  `v0.3.0` is a tag without a release (that failed build); the updater shipped first in v0.3.1.
 - **This project's GitHub identity is `spoopyghosty0`** (a dedicated account; the machine's default gh/git login is a
   different, personal account that must never touch this repo). `gh` (`~/.local/bin/gh`) uses it through
   `GH_CONFIG_DIR=~/.config/gh-spoopyghosty0` (set for Claude Code in the git-ignored `.claude/settings.local.json`);
@@ -379,7 +403,7 @@ issues (Arcsmith/Time Stall eye distortion, AC Nexus some flipped launch text, P
 6 can't run (Sniper Elite VR, Espire 1, HITMAN, and the 32-bit Journey of the Gods / Shadow Point / Sports Scramble).
 Parity: all 34 rebuilt from the dumps match the known-good builds (`docs/parity-report.md`) and were reinstalled +
 launch-tested with 0 regressions (`docs/parity-device-report.md`). `PATCHED/` holds exactly the installed builds.
-Owner preferences: manual installs (no FrameDrop, no Quest2Frame app), Python + Flet, dynamic data over hardcoding,
+Owner preferences: manual installs (no third-party installer apps), Python + Flet, dynamic data over hardcoding,
 free tooling only, public repo scrubbed of personal data, keep the known-good backups.
 Rift/PC VR support (2026-09-29): implemented + unit-tested, not yet tried with a real Rift game on the PC or Frame
 (needs a Rift dump, and Proton installed on the Frame). Open ideas: exe-icon artwork for Rift games, macOS x86_64 bundle, USB-cable connection (Frame `usb0`, untested),

@@ -234,3 +234,35 @@ def test_source_hints_are_generic_and_match_loosely():
     assert source_hint_matches("Marvels Deadpool VR", "Marvel's Deadpool VR v9000+1.1 -XYZ")  # other release, other name
     assert source_hint_matches("The Climb 2 v974+2.2", "the climb 2 (quest) v1000")
     assert not source_hint_matches("The Climb 2", "The Climb v100")
+
+
+def test_ovrport_125_patches():
+    """OVRPort 1.2.5's new patches: off by default, shown only where they can matter, mutual exclusions warned."""
+    from frameport.recommend import engine
+
+    quest = _analysis()
+    nexus = _analysis(package="com.Ubisoft.ACNexusVR")
+    vrapi = _analysis(direct_vrapi=True, libs=["libvrapi.so"])
+    for pid in ("patch_vrapi_openxr", "patch_disable_meta_xr_audio_telemetry", "patch_ac_nexus_no_appsw_72",
+                "patch_ac_nexus_no_appsw_90"):
+        assert not base.get(pid).default_on
+        assert not base.get(pid).applies(quest)
+    assert base.get("patch_ac_nexus_no_appsw_90").applies(nexus) and base.get("patch_vrapi_openxr").applies(vrapi)
+    assert not base.get("patch_disable_meta_xr_audio_telemetry").applies(nexus)  # emulators only
+    recipe = Recipe(package="com.Ubisoft.ACNexusVR", patches=["patch_copy_libraries", "frame.adapter",
+                                                              "patch_ac_nexus_no_appsw_72", "patch_ac_nexus_no_appsw_90"])
+    assert any("conflicts" in w for w in engine.warnings(recipe))
+
+
+def test_overport_release_sources(monkeypatch):
+    from frameport.core import cache
+    from frameport.tools import toolchain
+
+    fork = {"tag_name": "v1.2.5", "assets": [{"name": "OVRPort-1.2.5-stable-cli.jar",
+                                              "browser_download_url": "https://example.invalid/OVRPort.jar"}]}
+    old = {"tag_name": "1.2.3", "assets": [{"name": "cli-jar.zip", "browser_download_url": "https://example.invalid/z"}]}
+    replies = {"overport-release-ovrport.json": fork, "overport-release.json": old}
+    monkeypatch.setattr(cache, "cached_json", lambda name, *a, **k: replies[name])
+    assert toolchain.latest_overport() == ("1.2.5", "https://example.invalid/OVRPort.jar")
+    replies["overport-release-ovrport.json"] = None  # fork unreachable: the original project
+    assert toolchain.latest_overport() == ("1.2.3", "https://example.invalid/z")

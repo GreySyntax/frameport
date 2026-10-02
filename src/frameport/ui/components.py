@@ -87,6 +87,12 @@ def h2(text: str) -> ft.Text:
     return ft.Text(text, size=T.T_H2, weight=ft.FontWeight.W_600, color=T.TEXT)
 
 
+def switch(label: str, **kw) -> ft.Switch:
+    """A labelled switch in the theme's text colour (Material's default label is dark text)."""
+    kw.setdefault("active_color", T.ACCENT)
+    return ft.Switch(label=label, label_text_style=ft.TextStyle(color=T.TEXT, size=T.px(14)), **kw)
+
+
 def body(text: str, color: str = T.TEXT_2, size: int | None = None, **kw) -> ft.Text:
     size = size or T.T_BODY
     return ft.Text(text, size=size, color=color, **kw)

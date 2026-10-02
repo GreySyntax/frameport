@@ -1,6 +1,6 @@
 # Porting playbook: symptom → cause → fix
 
-Everything here was hit for real while porting 34 Quest games to the Steam Frame (Sept 2026). The machine-readable
+Everything here was hit while porting Quest and Rift games to the Steam Frame (Sept–Oct 2026; 38 catalog recipes). The machine-readable
 version is `catalog/triage.yaml` (used by `frameport test` / the Job screen); keep both in sync.
 
 ## Fast path for a new game

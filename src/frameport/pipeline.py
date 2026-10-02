@@ -384,13 +384,14 @@ def build_game(package: str, reporter: Reporter, outdir: Path | None = None) -> 
 
 
 def install_game(package: str, target: Target, reporter: Reporter, apk_only: bool = False,
-                 add_to_library: bool = True) -> dict:
+                 add_to_library: bool = True, apk: Path | None = None) -> dict:
+    """Install the game's last build (or `apk`, e.g. a test build of the same package signed with the same key)."""
     entry = library.game(package)
     if is_rift(entry):
         return install_rift(package, target, reporter, add_to_library)
     b = entry.get("build") or {}
     recipe = library.recipe_from_dict(entry["recipe"])
-    apk = Path(b["alt_apk"] if recipe.use_alt and b.get("alt_apk") else b["apk"])
+    apk = Path(apk) if apk else Path(b["alt_apk"] if recipe.use_alt and b.get("alt_apk") else b["apk"])
     data_dir = Path(entry["data_dir"]) if entry.get("data_dir") else None
     title = steam_title(entry)
     result = target.install(package, title, apk, data_dir, recipe, reporter, apk_only)

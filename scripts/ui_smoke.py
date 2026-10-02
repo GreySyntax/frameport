@@ -25,6 +25,35 @@ PORT = 8557
 ERRORS: list[str] = []
 
 
+class FakeTarget:
+    """--fake-frame: a pretend Steam Frame with the library's working Quest builds installed (no network, no device),
+    for documentation screenshots."""
+
+    def __init__(self, count: int = 8):
+        from frameport.frame.connection import parse_target
+
+        self.label = "steamframe"
+        self.target = parse_target("steamos@steamframe.local")
+        works = [g for g in library.games() if g.get("kind") != "rift" and (g.get("build") or {}).get("sha256")
+                 and (g.get("recipe") or {}).get("status") in ("works", "issues")]
+        works.sort(key=lambda g: -(g.get("data_bytes") or 0))
+        self.games = [{"package": g["package"], "kind": "quest", "title": g.get("title"),
+                       "apk_size": (g.get("data_bytes") or 0) + 2**28, "sha256": g["build"]["sha256"],
+                       "recipe": {"patches": (g.get("recipe") or {}).get("patches", [])}} for g in works[:count]]
+
+    def describe(self) -> dict:
+        return {"hostname": "steamframe", "os": "SteamOS", "os_version": "3.8", "build_id": "20260922",
+                "free_bytes": 312 * 2**30, "installed": self.games, "lepton": True,
+                "proton": {"ready": {"display_name": "Proton 11 (ARM64)"}, "openxr": {"name": "SteamVR"}},
+                "kernel_keys": {"keys": 31, "max_keys": 200}}
+
+    def installed(self) -> list[dict]:
+        return self.games
+
+    def close(self) -> None:
+        pass
+
+
 def driver(app: FramePortApp, steps: list[tuple[str, callable]], ready: threading.Event, done_step: list):
     for name, action in steps:
         try:
@@ -45,6 +74,8 @@ def main() -> int:
     ap.add_argument("--scale", type=float, default=1.0, help="UI scale to render at (e.g. 1.5)")
     ap.add_argument("--viewport", default="1280x820", help="browser size, e.g. 2560x1440")
     ap.add_argument("--update", action="store_true", help="pretend a new FramePort release exists (update UI)")
+    ap.add_argument("--fake-frame", action="store_true", help="pretend a Steam Frame is connected (no device needed)")
+    ap.add_argument("--docs", action="store_true", help="only the screens used in the docs (Library, --game, Frame)")
     args = ap.parse_args()
     from frameport.ui import theme
 
@@ -61,6 +92,11 @@ def main() -> int:
         # last: the right-click menu stays open over whatever comes next
         steps.append(("library-menu", lambda a: (a.page.pop_dialog(), a.navigate(0), time.sleep(3),
                                                  a.library_view.open_menu(game))))
+    if args.docs:
+        steps = [("library", lambda a: a.navigate(0))]
+        if game:
+            steps += [("game", lambda a: a.open_game(game)), ("game-customize", lambda a: a.open_game(game, advanced=True))]
+        steps.append(("frame", lambda a: a.navigate(1)))
     if args.update:
         from frameport import updates
 
@@ -97,6 +133,9 @@ def main() -> int:
     def app_main(page: ft.Page):
         try:
             app = FramePortApp(page)
+            if args.fake_frame:
+                app.target = FakeTarget()
+                app.frame_info, app.frame_state = app.target.describe(), "connected"
         except Exception:  # noqa: BLE001
             ERRORS.append("startup: " + traceback.format_exc())
             return

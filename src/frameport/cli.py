@@ -310,11 +310,15 @@ def install(package: Optional[str] = typer.Argument(None), all_: bool = typer.Op
             frame: Optional[str] = typer.Option(None, help="steamos@host"), password: Optional[str] = None,
             apk_only: bool = typer.Option(False, help="reuse game data already on the Frame"),
             no_library: bool = typer.Option(False, help="don't add to the Steam library now"),
-            to: str = typer.Option("frame", help="frame, or pc (Oculus Rift games only: run on this PC via Revive)")):
+            to: str = typer.Option("frame", help="frame, or pc (Oculus Rift games only: run on this PC via Revive)"),
+            apk: Optional[Path] = typer.Option(None, help="install this APK instead of the last build (one game; e.g. "
+                                                          "a test build signed with the game's key)")):
     target = _target(frame, password, to)
     pkgs = _pkgs(package, all_)
+    if apk and len(pkgs) != 1:
+        raise typer.BadParameter("--apk needs exactly one game")
     for pkg in pkgs:
-        pipeline.install_game(pkg, target, printing_reporter(False), apk_only, add_to_library=False)
+        pipeline.install_game(pkg, target, printing_reporter(False), apk_only, add_to_library=False, apk=apk)
     if not no_library:
         target.add_to_library(pkgs, printing_reporter(False))
 

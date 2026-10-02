@@ -213,3 +213,10 @@ def test_steam_tags():
     assert steam_tags(rift) == ["PC VR on Frame", "Oculus Rift", "Action", "Shooter", "Favorite"]
     assert steam_tags(rift, "pc")[:2] == ["Rift via Revive", "Oculus Rift"]
     assert steam_tags({"package": "com.x"})[:2] == ["Quest on Frame", "Meta Quest"]
+
+
+def test_plain_description_drops_store_markup():
+    from frameport.artwork.details import plain_description
+
+    text = "[media]\n\n# Become The Knight.\n\nIt's **bold** and [a link](https://x.invalid).\n\n\n\n[media]\n\n**Hard**"
+    assert plain_description(text) == "Become The Knight.\n\nIt's bold and a link.\n\nHard"

@@ -18,9 +18,6 @@ TOOL_TITLES = {"java": "Java runtime", "overport": "overport", "apksigner": "apk
 TOOL_WHY = {"java": "Runs overport and apksigner", "overport": "Converts Quest games to OpenXR",
             "apksigner": "Signs rebuilt games", "revive": "Runs Oculus Rift games on OpenXR"}
 
-def switch_label() -> ft.TextStyle:
-    return ft.TextStyle(color=T.TEXT, size=T.px(14))  # Material's default is dark text
-
 
 class SettingsView:
     def __init__(self, app: "FramePortApp"):
@@ -76,9 +73,9 @@ class SettingsView:
 
         def changed(e):
             library.set_setting("install.launch_test", bool(e.control.value))
-        return ft.Switch(label="Launch test after installing on the Frame (starts the game once without the headset "
+        return C.switch("Launch test after installing on the Frame (starts the game once without the headset "
                                "and checks its log)", value=bool(library.setting("install.launch_test", True)),
-                         label_text_style=switch_label(), on_change=changed)
+                         on_change=changed)
 
     def updates_card(self) -> ft.Control:
         """Settings → Updates: FramePort's own updates (ui/updater.py, frameport/updates.py)."""
@@ -109,11 +106,11 @@ class SettingsView:
                     C.secondary("Check for updates", ft.Icons.REFRESH_ROUNDED, lambda e: app.updater.check_now())],
                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
             status,
-            ft.Switch(label="Check for new versions automatically", value=bool(library.setting("update.auto_check", True)),
-                      label_text_style=switch_label(), on_change=auto_check),
-            ft.Switch(label="Install updates automatically (downloads in the background, installs when FramePort "
+            C.switch("Check for new versions automatically", value=bool(library.setting("update.auto_check", True)),
+                      on_change=auto_check),
+            C.switch("Install updates automatically (downloads in the background, installs when FramePort "
                             "next starts)", value=bool(library.setting("update.auto_install", False)),
-                      label_text_style=switch_label(), on_change=auto_install),
+                      on_change=auto_install),
         ], spacing=T.S3)
 
     def appearance(self) -> ft.Control:

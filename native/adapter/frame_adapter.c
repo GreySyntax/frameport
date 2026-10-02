@@ -3,8 +3,6 @@
 //
 // Installed as lib/arm64-v8a/libopenxr_loader_generic.so; overport's real generic
 // loader is renamed to libopenxr_loader_original.so and loaded from the same dir.
-// Hook technique follows Quest2Frame's frame_bridge.c (GPL-3.0-only,
-// github.com/MichaelScottsman/Quest2Frame).
 //
 // Fixes applied:
 //  * adds XR_KHR_android_create_instance when the app chains

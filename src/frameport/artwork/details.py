@@ -125,6 +125,17 @@ def screenshot_files(package: str) -> list:
     return sorted(fetch.artwork_dir(package).glob("shot_*.jpg"), key=lambda p: int(re.sub(r"\D", "", p.stem) or 0))
 
 
+def plain_description(text: str) -> str:
+    """Store descriptions as plain text: OculusDB's carry Markdown and "[media]" placeholders for embedded videos."""
+    import re
+
+    text = re.sub(r"\[media\]", "", text or "")
+    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.M)        # headings
+    text = re.sub(r"(\*\*|__)(.+?)\1", r"\2", text)                  # bold
+    text = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r"\1", text)  # links
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def store_links(details: dict) -> list[tuple[str, str]]:
     out = []
     if details.get("store_url"):

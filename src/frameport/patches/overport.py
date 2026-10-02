@@ -1,7 +1,8 @@
-"""overport CLI patches (https://github.com/ovrport/app). These run inside overport; we only choose which ones.
+"""overport CLI patches. These run inside overport; we only choose which ones. The CLI comes from the downstream fork
+github.com/Android-XR-Bridge/OVRPort (1.2.5+), originally github.com/ovrport/app.
 
-The patch list is discovered dynamically (`overport patches`), and titles are fetched from the overport app's
-strings.xml on GitHub (both cached). The table below is the offline fallback and adds what we learned on the
+The patch list is discovered dynamically (`overport patches`), and titles are fetched from ovrport/app's
+strings.xml on GitHub (both cached; the fork dropped that file, so its new patches are described here). The table below is the offline fallback and adds what we learned on the
 Steam Frame; `default` mirrors overport's recommended set (Patch(..., true) in its sources).
 """
 from __future__ import annotations
@@ -43,7 +44,22 @@ OVERPORT_PATCHES = [
      "Removes overport's controller pose offset if controllers look misplaced."),
     ("patch_remove_vrapi", "Remove VrApi library", False,
      "Not recommended: breaks games that load VrApi through OVRPlugin."),
+    ("patch_vrapi_openxr", "VrApi → OpenXR adapter (OVRPort)", False,
+     "OVRPort's own VrApi→OpenXR adapter for engines that call libvrapi.so directly: the same upstream code as "
+     "FramePort's 'VrApi → OpenXR bridge' without its Frame-specific changes. Only in OVRPort's experimental CLI builds "
+     "(the stable CLI lists it but can't apply it)."),
+    ("patch_disable_meta_xr_audio_telemetry", "Disable Meta XR Audio telemetry", False,
+     "Skips Meta XR Audio's telemetry under x86_64 ARM translation (emulators). Not needed on the Frame, which runs "
+     "games natively."),
+    ("patch_ac_nexus_no_appsw_72", "AC Nexus: no AppSW at 72 Hz", False,
+     "Assassin's Creed Nexus (build 207706 only): turns off application space warp and runs at 72 Hz."),
+    ("patch_ac_nexus_no_appsw_90", "AC Nexus: no AppSW at 90 Hz", False,
+     "Assassin's Creed Nexus (build 207706 only): turns off application space warp and runs at 90 Hz."),
 ]
+CONFLICTS = {"patch_vrapi_openxr": ("patch_remove_vrapi", "frame.vrapi_bridge"),
+             "patch_ac_nexus_no_appsw_72": ("patch_ac_nexus_no_appsw_90",),
+             "patch_ac_nexus_no_appsw_90": ("patch_ac_nexus_no_appsw_72",)}
+AC_NEXUS = "com.Ubisoft.ACNexusVR"
 DEFAULT_OVERPORT = [pid for pid, _, default, _ in OVERPORT_PATCHES if default]
 
 
@@ -53,6 +69,7 @@ class OverportPatch(Patch):
 
     def __init__(self, pid: str, title: str, default: bool, detail: str):
         self.id, self.title, self.default_on, self.description = pid, title, default, detail
+        self.conflicts = CONFLICTS.get(pid, ())
 
     def detect(self, analysis: Analysis) -> Suggestion | None:
         from . import applicability as ap
@@ -81,6 +98,10 @@ class OverportPatch(Patch):
             "patch_copy_ovrplugin_vrapi": ap.has_vrapi, "patch_remove_vrapi": ap.has_vrapi,
             "patch_meta_xr_audio": lambda a: bool(ap.meta_audio_libs(a)),
             "patch_disable_space_warp": lambda a: "libOVRPlugin.so" in a.libs,
+            "patch_vrapi_openxr": lambda a: a.direct_vrapi and "arm64-v8a" in a.abis,
+            "patch_disable_meta_xr_audio_telemetry": lambda a: False,  # emulators only; the Frame is arm64
+            "patch_ac_nexus_no_appsw_72": lambda a: a.package == AC_NEXUS,
+            "patch_ac_nexus_no_appsw_90": lambda a: a.package == AC_NEXUS,
         }
         rule = rules.get(self.id)
         return rule(analysis) if rule else True

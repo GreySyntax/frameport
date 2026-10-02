@@ -22,7 +22,11 @@ from ..core import cache
 from ..core.paths import tools_dir
 
 ADOPTIUM = "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture={arch}&image_type=jre&os={os}"
-OVERPORT_RELEASE = "https://api.github.com/repos/ovrport/app/releases/latest"
+# overport's CLI: maintained in the downstream fork Android-XR-Bridge/OVRPort since 1.2.5 (stable channel = plain
+# vX.Y.Z tags with an `OVRPort-<ver>-stable-cli.jar`); the original ovrport/app (`cli-jar.zip`) is the fallback.
+OVERPORT_RELEASES = [("overport-release-ovrport.json",
+                      "https://api.github.com/repos/Android-XR-Bridge/OVRPort/releases/latest"),
+                     ("overport-release.json", "https://api.github.com/repos/ovrport/app/releases/latest")]
 ANDROID_REPO = "https://dl.google.com/android/repository/"
 
 
@@ -115,12 +119,24 @@ def overport_jar() -> Path | None:
     return None
 
 
+def _overport_asset(rel: dict) -> dict | None:
+    """The CLI asset of a release: a stable `*-cli.jar` (fork) or `cli-jar.zip` (ovrport/app)."""
+    assets = rel.get("assets", [])
+    return (next((a for a in assets if a["name"].endswith("-stable-cli.jar")), None)
+            or next((a for a in assets if a["name"].endswith("-cli.jar")), None)
+            or next((a for a in assets if a["name"] == "cli-jar.zip"), None))
+
+
 def latest_overport() -> tuple[str, str] | None:
-    rel = cache.cached_json("overport-release.json", OVERPORT_RELEASE, max_age=6 * 3600)
-    if not rel:
-        return None
-    asset = next((a for a in rel.get("assets", []) if a["name"] == "cli-jar.zip"), None)
-    return (rel["tag_name"], asset["browser_download_url"]) if asset else None
+    """(version, download url) of the newest overport CLI, from the first source that has one."""
+    for cache_name, url in OVERPORT_RELEASES:
+        rel = cache.cached_json(cache_name, url, max_age=6 * 3600)
+        if not rel or rel.get("draft") or rel.get("prerelease"):
+            continue
+        asset = _overport_asset(rel)
+        if asset:
+            return rel["tag_name"].removeprefix("v"), asset["browser_download_url"]
+    return None
 
 
 def install_overport(progress=None) -> ToolStatus:
@@ -131,14 +147,19 @@ def install_overport(progress=None) -> ToolStatus:
     dest = tools_dir() / f"overport-{version}"
     jar = next(dest.glob("*.jar"), None) if dest.exists() else None
     if not jar:
-        archive = cache.download(url, tools_dir() / f"overport-{version}.zip", progress)
-        with zipfile.ZipFile(archive) as z:
-            members = [m for m in z.namelist() if m.endswith(".jar")]
+        name = url.rsplit("/", 1)[1]
+        if name.endswith(".jar"):
             dest.mkdir(parents=True, exist_ok=True)
-            for m in members:
-                (dest / Path(m).name).write_bytes(z.read(m))
-        archive.unlink(missing_ok=True)
-        jar = next(dest.glob("*.jar"))
+            jar = cache.download(url, dest / name, progress)
+        else:
+            archive = cache.download(url, tools_dir() / f"overport-{version}.zip", progress)
+            with zipfile.ZipFile(archive) as z:
+                members = [m for m in z.namelist() if m.endswith(".jar")]
+                dest.mkdir(parents=True, exist_ok=True)
+                for m in members:
+                    (dest / Path(m).name).write_bytes(z.read(m))
+            archive.unlink(missing_ok=True)
+            jar = next(dest.glob("*.jar"))
     state = _state()
     state["overport"] = {"version": version, "path": str(jar)}
     _save_state(state)
