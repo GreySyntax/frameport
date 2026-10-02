@@ -387,3 +387,18 @@ def test_game_settings_dialog_shows_relevant_settings_and_saves_only_changes():
     assert adapter == {"adapter.refresh_rate": {"value": 90.0}, "adapter.aim_pitch": {"value": -5.0}}  # no defaults
     assert "frame.launcher" in saved["patches"]  # other patches untouched
     assert saved["source"] == "user" and saved["reasons"]["adapter.aim_pitch"] == "Set by you."
+
+
+def test_saving_a_recipe_keeps_works_with_issues():
+    """'Save as known-good' used to store every recipe as 'works', even one marked 'works with issues'."""
+    from dataclasses import asdict
+
+    from frameport.core.models import Recipe
+    from frameport.recommend.catalog import entry_from_library
+
+    def entry(status):
+        return {"package": "com.x", "title": "X", "analysis": {},
+                "recipe": asdict(Recipe("com.x", status=status, notes="Right eye distorts."))}
+    assert entry_from_library(entry("issues")).status == "issues"
+    assert entry_from_library(entry("unknown")).status == "works"  # saved as known-good = it works
+    assert entry_from_library(entry("issues"), status="works").status == "works"  # an explicit choice wins

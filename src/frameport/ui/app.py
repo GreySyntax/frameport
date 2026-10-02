@@ -856,6 +856,8 @@ class FramePortApp:
             target = self._target_for(to)
             pipeline.install_game(pkg, target, rep, apk_only=False)
             self._record(pkg, remove=True)  # installed; the launch test below is a separate question
+            if to == "frame":  # the install sent the current artwork to the Frame's Steam library
+                library.update_game(pkg, lambda e: e.pop("steam_art_stale", None))
             if to == "pc":  # a PC launch test would start the game on the user's desktop — skip it
                 rep.stage("Installed")
                 return (tr("{get} is installed on this PC — launch it from your Steam library or the Play button "
@@ -949,6 +951,7 @@ class FramePortApp:
         """Send the game's current artwork to its Steam entry on the Frame (Steam restarts once)."""
         def run(job: Job):
             self._target_for("frame").update_steam_art(pkg, job.reporter)
+            library.update_game(pkg, lambda e: e.pop("steam_art_stale", None))
             return tr("{title}: Steam artwork updated on the Frame").format(title=self._title(pkg))
         return self.submit(tr("Update Steam art: {title}").format(title=self._title(pkg)), run, pkg, "art")
 
@@ -1052,7 +1055,9 @@ class FramePortApp:
         g = library.game(pkg) or {}
         last = g.get("last_test") or {}
         status = ft.RadioGroup(ft.Row([ft.Radio(value="works", label=tr("Works")),
-                                       ft.Radio(value="issues", label=tr("Works with issues"))]), value="works")
+                                       ft.Radio(value="issues", label=tr("Works with issues"))]),
+                                value="issues" if (library.game(pkg) or {}).get("recipe", {}).get("status") == "issues"
+                                else "works")
         notes = ft.TextField(label=tr("Notes (what you checked, known issues)"), multiline=True, min_lines=2,
                              max_lines=6, width=T.px(560), border_color=T.BORDER)
         played = ft.Checkbox(label=tr("I played it in the headset with this recipe"), value=False)

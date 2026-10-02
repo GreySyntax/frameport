@@ -129,7 +129,7 @@ def save_user_entry(entry: CatalogEntry) -> Path:
     return path
 
 
-def entry_from_library(g: dict, status: str = "works", notes: str | None = None,
+def entry_from_library(g: dict, status: str | None = None, notes: str | None = None,
                        verified: dict | None = None) -> CatalogEntry:
     """A catalog recipe from a library entry (what "Save as known-good" and "Share working config" publish)."""
     import time
@@ -141,6 +141,8 @@ def entry_from_library(g: dict, status: str = "works", notes: str | None = None,
     package = g["package"]
     r = library.recipe_from_dict(g["recipe"])
     a = g.get("analysis") or {}
+    if status is None:  # the game's own status ("works with issues" stays that; untested = works, it's being saved)
+        status = r.status if r.status in ("works", "issues") else "works"
     common = dict(package=package, title=g.get("title") or package, status=status,
                   notes=r.notes if notes is None else notes,
                   tested_version=a.get("version") or "", engine=a.get("engine") or "", xr=a.get("xr") or "",

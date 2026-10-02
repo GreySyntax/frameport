@@ -193,6 +193,11 @@ class GameView:
             out.append(C.callout(tr("Uses the Oculus Platform SDK: it checks your Oculus license. Normally that "
                                     "needs the Oculus app on this PC with a license you own, so it may quit right "
                                     "after starting on the headset. You can still try it."), "warn"))
+        if g.get("steam_art_stale") and C.install_state(g, self.app.frame_info) in ("installed", "outdated"):
+            out.append(C.callout(ft.Row([
+                C.body(tr("The Frame's Steam library still shows the old artwork."), T.TEXT, expand=True),
+                C.secondary(tr("Update Steam art on Frame"), ft.Icons.IMAGE_OUTLINED,
+                            lambda e: self.app.update_steam_art(pkg))]), "info", ft.Icons.IMAGE_OUTLINED))
         if recipe.status == "unsupported":
             out.append(C.callout(recipe.notes or tr("This game can't run on the Steam Frame."), "error"))
         elif recipe.notes and not (self.rift and extra.get("platform_sdk")):

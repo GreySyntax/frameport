@@ -725,6 +725,7 @@
  "The Frame isn't connected": "",
  "The Frame went offline: {exc}": "",
  "The Frame's desktop password, only needed the first time so FramePort can add its own key. After that it connects with the key.": "",
+ "The Frame's Steam library still shows the old artwork.": "",
  "the game didn't pass its checks (see the list above)": "",
  "The launch settings changed since it was installed: update the Steam shortcut": "",
  "The PC VR counterpart of OVRPort's 'Patch Oculus detection for Unreal'. Unreal's Oculus plugin only starts when the Oculus service announces a headset (the Windows event 'OculusHMDConnected'); without it the game runs as a flat window. On the Frame the launcher runs the game through FramePort's small helper (fp_oculushmd.exe) that provides that event while the game runs, instead of relying only on Revive's hook of the check. Ignored on this PC (the Oculus app or Revive handle it there).": "",

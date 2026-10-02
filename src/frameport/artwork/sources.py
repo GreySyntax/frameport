@@ -241,6 +241,7 @@ def apply_choice(package: str, choice: dict) -> bool:
         for f in stage.iterdir():
             if f.is_file() and f.stem in ART_STEMS:
                 f.replace(d / f.name)
+        (d / fetch.PICKED).write_text(choice.get("source", ""), encoding="utf-8")  # keep it through installs
         return True
     finally:
         shutil.rmtree(stage, ignore_errors=True)

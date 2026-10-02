@@ -27,5 +27,5 @@ def test_pick_replaces_art_but_keeps_screenshots_and_title(art, monkeypatch):
     monkeypatch.setattr(sources, "apply_oculusdb", lambda pkg, app: (sources._save(pkg, "square", JPEG), True)[1])
     assert sources.apply_choice("com.x", {"source": "Oculus Rift", "app": {"id": "1"}}) is True
     names = {p.name for p in art.iterdir() if p.is_file()}
-    assert names == {"square.jpg", "shot_0.jpg", "t_shot_0_480_bbbb.jpg", "title.txt"}
+    assert names == {"square.jpg", "shot_0.jpg", "t_shot_0_480_bbbb.jpg", "title.txt", ".picked"}  # .picked: the pick
     assert not any(p.name.startswith(".pick") for p in art.parent.iterdir())

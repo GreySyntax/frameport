@@ -21,6 +21,7 @@ KINDS = {
     "APP_IMG_ICON": "icon",
 }
 EXTRA_KINDS = ("square",)  # OculusDB's square cover (Rift games)
+PICKED = ".picked"  # marker: the art in this folder was chosen by the user (Find artwork); automatic fetches skip it
 
 
 def artwork_dir(package: str) -> Path:
@@ -36,12 +37,18 @@ def _ext(data: bytes) -> str:
 def fetch(package: str, apk: Path | None = None, refresh: bool = False,
           lookup: str | None = None) -> tuple[Path, str | None]:
     """Returns (folder with <kind>.<ext> files, store display name or None). `lookup` is the package whose store art
-    to use (a Rift game borrows its Quest version's art); Rift ids without one have no store art."""
+    to use (a Rift game borrows its Quest version's art); Rift ids without one have no store art.
+    Without `refresh` it only fills in missing kinds and never touches art the user picked (PICKED marker): a pick
+    often lacks a kind (Steam has no icon, OculusDB only a square cover), and re-fetching the store art for that
+    replaced the pick at the next install."""
     out = artwork_dir(package)
+    if refresh:
+        (out / PICKED).unlink(missing_ok=True)
     have = {p.stem for p in out.iterdir()}
     title = None
     lookup = lookup or (None if package.startswith("rift.") else package)
-    if lookup and (refresh or not {"portrait", "landscape", "hero", "icon"} <= have):
+    picked = (out / PICKED).exists()
+    if lookup and not picked and (refresh or not {"portrait", "landscape", "hero", "icon"} <= have):
         try:
             data = cache.http_get(API.format(package=lookup), timeout=30).json()
         except Exception:
@@ -52,6 +59,8 @@ def fetch(package: str, apk: Path | None = None, refresh: bool = False,
                 kind = KINDS.get(img.get("image_type"))
                 if not kind:
                     continue
+                if not refresh and kind in have:
+                    continue  # keep what's there; only fill gaps
                 raw = base64.b64decode(img["uri"])
                 for old in out.glob(f"{kind}.*"):
                     old.unlink()

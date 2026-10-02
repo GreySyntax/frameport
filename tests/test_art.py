@@ -279,3 +279,34 @@ def test_no_store_details_for_android_apps_without_vr(monkeypatch):
     monkeypatch.setattr(details, "steam_app", lambda title: (_ for _ in ()).throw(AssertionError("looked up")))
     entry = {"package": "org.example.flat", "title": "2048", "analysis": {"extra": {"vr_kind": "none"}}}
     assert details.fetch_details(entry)["sources"] == []
+
+
+def test_picked_art_survives_installs(monkeypatch):
+    """A pick that lacks a kind (Steam: no icon) used to be overwritten by the store art at the next install."""
+    import base64
+    import io
+    from types import SimpleNamespace
+
+    from PIL import Image
+
+    from frameport.artwork import fetch
+
+    def png(color):
+        b = io.BytesIO()
+        Image.new("RGB", (8, 8), color).save(b, "PNG")
+        return b.getvalue()
+
+    store = {"status": "ok", "displayName": "G", "images": [
+        {"image_type": t, "uri": base64.b64encode(png("red")).decode()}
+        for t in ("APP_IMG_COVER_PORTRAIT", "APP_IMG_COVER_LANDSCAPE", "APP_IMG_HERO", "APP_IMG_ICON")]}
+    monkeypatch.setattr(fetch.cache, "http_get", lambda url, timeout=30: SimpleNamespace(json=lambda: store))
+    d = fetch.artwork_dir("com.picked")
+    (d / "portrait.png").write_bytes(png("blue"))  # the user's pick (no icon)
+    (d / fetch.PICKED).write_text("Steam")
+    fetch.fetch("com.picked")  # what an install does
+    assert (d / "portrait.png").read_bytes() == png("blue") and not (d / "icon.png").exists()
+    (d / fetch.PICKED).unlink()  # without a pick: only missing kinds are filled, nothing is replaced
+    fetch.fetch("com.picked")
+    assert (d / "portrait.png").read_bytes() == png("blue") and (d / "icon.png").exists()
+    fetch.fetch("com.picked", refresh=True)  # "Find automatically": the store art replaces everything
+    assert (d / "portrait.png").read_bytes() == png("red")

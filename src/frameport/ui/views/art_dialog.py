@@ -34,9 +34,12 @@ def show_art_dialog(app: FramePortApp, package: str) -> None:
                              "Try another one.").format(source=choice['source']), error=True)
                 return
             thumbs.prewarm(package)
-            library.upsert_game(package, art_source=choice["source"].lower())
+            installed = C.install_state(library.game(package), app.frame_info) in ("installed", "outdated")
+            # until it's sent, the game page reminds that the Frame's Steam library shows the old art
+            library.upsert_game(package, art_source=choice["source"].lower(), **({"steam_art_stale": True}
+                                                                                 if installed else {}))
             app.refresh_view()
-            if C.install_state(library.game(package), app.frame_info) in ("installed", "outdated"):
+            if installed:
                 app.toast(tr("Artwork updated for {get}. The Frame's Steam library still shows the old art.")
                           .format(get=g.get('title')),
                           action=tr("Update on Frame"), on_action=lambda e: app.update_steam_art(package))
@@ -68,10 +71,12 @@ def show_art_dialog(app: FramePortApp, package: str) -> None:
         def work():
             found = pipeline.fetch_art(package)
             thumbs.prewarm(package)  # regenerate the thumbnails the cards/hero use, or the view shows the old art
-            app.refresh_view()
             src = found.get("source")
-            if src and src != "none" and C.install_state(library.game(package), app.frame_info) in ("installed",
-                                                                                                    "outdated"):
+            installed = C.install_state(library.game(package), app.frame_info) in ("installed", "outdated")
+            if src and src != "none" and installed:
+                library.upsert_game(package, steam_art_stale=True)
+            app.refresh_view()
+            if src and src != "none" and installed:
                 app.toast(tr("Artwork updated ({src}). The Frame's Steam library still shows the old art.")
                           .format(src=src),
                           action=tr("Update on Frame"), on_action=lambda e: app.update_steam_art(package))

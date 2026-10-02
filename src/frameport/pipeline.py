@@ -214,6 +214,7 @@ def _rift_art(entry: dict, reporter: Reporter | None = None) -> dict:
 def fetch_art(package: str, reporter: Reporter | None = None) -> dict:
     """(Re)fetch artwork for any game in the library."""
     entry = library.game(package)
+    (artwork.artwork_dir(package) / artwork.PICKED).unlink(missing_ok=True)  # "find automatically" replaces a pick
     if entry.get("kind") == "rift":
         return _rift_art(entry, reporter)
     artwork.fetch(package, Path(entry["apk"]) if entry.get("apk") else None, refresh=True)
