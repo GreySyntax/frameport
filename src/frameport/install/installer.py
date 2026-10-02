@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import contextlib
-
 import posixpath
 import time
 from dataclasses import dataclass
@@ -144,10 +143,9 @@ class PcvrPlan:
 
 def install_pcvr(frame: Frame, plan: PcvrPlan, reporter: Reporter) -> dict:
     """Pack a Windows PC VR game + Revive onto the Frame, run by Proton through a generated launch.sh."""
+    from ..core.paths import artifacts_dir
     from ..patches.pcvr import game_args, launch_env
     from ..tools import revive as revive_tool
-
-    from ..core.paths import artifacts_dir
 
     tool = plan.recipe.params("pcvr.proton_tool").get("tool") or None
     reporter.stage("Prepare Frame")

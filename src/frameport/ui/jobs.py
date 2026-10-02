@@ -7,8 +7,8 @@ import itertools
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from ..core import applog
 from ..core.events import Cancelled, Event, Reporter
@@ -19,7 +19,7 @@ _ids = itertools.count(1)
 @dataclass
 class Job:
     title: str
-    run: Callable[["Job"], object]  # does the work with job.reporter; may return a result
+    run: Callable[[Job], object]  # does the work with job.reporter; may return a result
     package: str | None = None
     kind: str = "task"  # install | test | build | scan | tool | task
     id: int = field(default_factory=lambda: next(_ids))

@@ -68,7 +68,7 @@ def crumbs(root: str, path: str, root_label: str) -> list[tuple[str, str]]:
 
 
 class FilesView:
-    def __init__(self, app: "FramePortApp"):
+    def __init__(self, app: FramePortApp):
         self.app = app
         self.loc: dict | None = None      # {"id", "label", "path", "android", "shared", "package"}
         self.path = ""
@@ -166,11 +166,11 @@ class FilesView:
                     ft.Column([C.body(loc["label"], T.TEXT if selected else T.TEXT_2, weight=ft.FontWeight.W_500),
                                *([C.meta(sub)] if sub else [])], spacing=0, expand=True)], spacing=T.S2),
             padding=ft.Padding(T.S2, T.px(6), T.S2, T.px(6)), border_radius=T.RADIUS_SM, ink=True,
-            bgcolor=T.ACCENT_SOFT if selected else None, on_click=lambda e, l=loc: self.open_location(l))
+            bgcolor=T.ACCENT_SOFT if selected else None, on_click=lambda e, loc_=loc: self.open_location(loc_))
 
     def _render_locations(self) -> None:
-        rows = [self._location_row(l, SHARED_ICONS.get(l["id"], ft.Icons.FOLDER_OUTLINED), l["android"])
-                for l in self.shared]
+        rows = [self._location_row(loc_, SHARED_ICONS.get(loc_["id"], ft.Icons.FOLDER_OUTLINED), loc_["android"])
+                for loc_ in self.shared]
         games = self._installed_games()
         if games:
             rows.append(ft.Container(C.meta("GAME STORAGE"), padding=ft.Padding(T.S2, T.S3, 0, T.px(2))))

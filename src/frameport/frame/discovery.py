@@ -119,7 +119,7 @@ def _scan(nets: list[ipaddress.IPv4Network], skip: set[str]) -> list[str]:
     own = local_addresses()
     hosts = [str(h) for n in nets for h in n.hosts() if str(h) not in skip and str(h) not in own]
     with ThreadPoolExecutor(128) as pool:
-        return [h for h, ok in zip(hosts, pool.map(lambda h: ssh_open(h, timeout=0.4), hosts)) if ok and h not in own]
+        return [h for h, ok in zip(hosts, pool.map(lambda h: ssh_open(h, timeout=0.4), hosts), strict=True) if ok and h not in own]
 
 
 def browse(seconds: float = 4.0, scan: bool = True) -> list[Found]:
@@ -136,7 +136,7 @@ def browse(seconds: float = 4.0, scan: bool = True) -> list[Found]:
     with ThreadPoolExecutor(32) as pool:
         for f in devices.values():
             cands = list(dict.fromkeys(f.addresses))
-            ok = [a for a, up in zip(cands, pool.map(ssh_open, cands)) if up]
+            ok = [a for a, up in zip(cands, pool.map(ssh_open, cands), strict=True) if up]
             ips = []
             for a in ok:
                 try:

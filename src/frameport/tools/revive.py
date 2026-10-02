@@ -167,7 +167,7 @@ def release_for(path: Path) -> str | None:
     import datetime as dt
 
     try:
-        built = dt.datetime.fromtimestamp((path / "LibReviveXR64.dll").stat().st_mtime, dt.timezone.utc)
+        built = dt.datetime.fromtimestamp((path / "LibReviveXR64.dll").stat().st_mtime, dt.UTC)
     except OSError:
         return None
     rels = cache.cached_json("revive-releases.json", REVIVE_RELEASE.rsplit("/", 1)[0] + "?per_page=50",

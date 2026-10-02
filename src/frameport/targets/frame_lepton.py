@@ -20,7 +20,7 @@ class FrameLeptonTarget(Target):
         self.frame = Frame(target, password)
         self.label = target.label
 
-    def connect(self) -> "FrameLeptonTarget":
+    def connect(self) -> FrameLeptonTarget:
         if self.frame.client is None:
             self.frame.connect()
         return self

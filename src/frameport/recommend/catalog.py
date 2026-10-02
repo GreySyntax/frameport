@@ -51,13 +51,13 @@ class CatalogEntry:
     origin: str = "bundled"
 
     @classmethod
-    def from_dict(cls, d: dict, origin: str) -> "CatalogEntry":
+    def from_dict(cls, d: dict, origin: str) -> CatalogEntry:
         known = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
         return cls(**known, origin=origin)
 
     def to_dict(self) -> dict:
         out = {}
-        for k, f in self.__dataclass_fields__.items():
+        for k in self.__dataclass_fields__:
             v = getattr(self, k)
             if k == "origin" or v in (None, "", [], {}, False) or (k == "kind" and v == "quest"):
                 continue

@@ -106,7 +106,7 @@ class RepackLauncher(_PcvrPatch):
         if not _rift(analysis):
             return None
         if _mode(analysis) == "repack":
-            dlls = ",".join((analysis.extra.get("loader_dlls") or []))
+            dlls = ",".join(analysis.extra.get("loader_dlls") or [])
             return Suggestion(True, f"The game folder has its own Revive and loader ({dlls}): run the game directly.",
                               {"dlls": dlls})
         return None

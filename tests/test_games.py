@@ -1,7 +1,7 @@
 """Checks against real game dumps (opt-in): FRAMEPORT_GAMES=<folder with dumps> pytest -m games"""
 import pytest
-
 from conftest import games_dir
+
 from frameport.analysis.detect import analyze
 from frameport.recommend import catalog
 from frameport.sources import quest_dump

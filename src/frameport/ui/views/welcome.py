@@ -25,7 +25,7 @@ def needed() -> bool:
 
 
 class WelcomeView:
-    def __init__(self, app: "FramePortApp"):
+    def __init__(self, app: FramePortApp):
         self.app = app
 
     def step(self, n: int, head: str, text: str, state: str, *content: ft.Control) -> ft.Control:

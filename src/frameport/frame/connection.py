@@ -99,7 +99,7 @@ class Frame:
     home: str = ""
 
     # ------------------------------------------------------------------ connect
-    def connect(self, timeout: float = 10) -> "Frame":
+    def connect(self, timeout: float = 10) -> Frame:
         client = paramiko.SSHClient()
         known = ssh_dir() / "known_hosts"
         known.touch(exist_ok=True)
@@ -136,7 +136,7 @@ class Frame:
         out = self.run("ip -4 -o addr show up 2>/dev/null")[1]
         return re.findall(r"^\d+:\s+(\S+)\s+inet\s+([\d.]+)/", out, re.M)
 
-    def fast_link(self, timeout: float = 1.5) -> tuple["Frame", str]:
+    def fast_link(self, timeout: float = 1.5) -> tuple[Frame, str]:
         """A second connection over the fastest direct link, for bulk uploads: the USB cable (usb0) or the Frame's own
         hotspot (wlanap; the PC joins it with a Wi-Fi adapter, e.g. Valve's USB dongle) — several times faster than
         both going through the home router (measured 83-97 vs 15-18 MB/s). Used only if this PC can reach it and it
@@ -207,7 +207,7 @@ class Frame:
     def agent(self, command: str, timeout: float | None = 600, **args):
         remote = self.ensure_agent()
         code, out, err = self.run(f"python3 {sh_quote(remote)} {command}", stdin=json.dumps(args), timeout=timeout)
-        line = next((l for l in reversed(out.splitlines()) if l.startswith("{")), "")
+        line = next((ln for ln in reversed(out.splitlines()) if ln.startswith("{")), "")
         try:
             reply = json.loads(line)
         except ValueError:

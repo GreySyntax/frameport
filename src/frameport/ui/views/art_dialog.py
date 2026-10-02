@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ..app import FramePortApp
 
 
-def show_art_dialog(app: "FramePortApp", package: str) -> None:
+def show_art_dialog(app: FramePortApp, package: str) -> None:
     g = library.game(package)
     term = ft.TextField(value=g.get("title") or package, dense=True, expand=True, border_radius=T.RADIUS_SM,
                         bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT, focused_border_color=T.ACCENT,

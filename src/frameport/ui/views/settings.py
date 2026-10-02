@@ -20,7 +20,7 @@ TOOL_WHY = {"java": "Runs overport and apksigner", "overport": "Converts Quest g
 
 
 class SettingsView:
-    def __init__(self, app: "FramePortApp"):
+    def __init__(self, app: FramePortApp):
         self.app = app
         self.tools = ft.Column(spacing=0)
         self.pc = ft.Column(spacing=0)

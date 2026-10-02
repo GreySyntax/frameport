@@ -29,7 +29,7 @@ class PairingServer:
     def one_liner(self) -> str:
         return f"curl -fsSL {self.url}/bootstrap.sh?code={self.code} | bash"
 
-    def start(self) -> "PairingServer":
+    def start(self) -> PairingServer:
         server = self
 
         class Handler(http.server.BaseHTTPRequestHandler):

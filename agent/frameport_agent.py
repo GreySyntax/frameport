@@ -114,7 +114,7 @@ def find_app_id(appid):
         state = re.search(r'"StateFlags"\s+"(\d+)"', text)
         d = os.path.join(lib, "common", installdir[1]) if installdir else None
         num = {k: int(m[1]) for k in ("BytesDownloaded", "BytesToDownload", "SizeOnDisk")
-               for m in [re.search(r'"%s"\s+"(\d+)"' % k, text)] if m}
+               for m in [re.search(rf'"{k}"\s+"(\d+)"', text)] if m}
         return {"appid": str(appid), "name": name[1] if name else "", "dir": d, "state": int(state[1]) if state else 0,
                 "complete": bool(state and int(state[1]) & 4 and d and os.path.isdir(d)),
                 "downloaded": num.get("BytesDownloaded", 0), "to_download": num.get("BytesToDownload", 0)}
@@ -232,7 +232,7 @@ def tool_manifest(tool_dir):
         return {}
     out = {}
     for k in ("commandline", "require_tool_appid", "version"):
-        m = re.search(r'"%s"\s+"((?:[^"\\]|\\.)*)"' % k, text)
+        m = re.search(rf'"{k}"\s+"((?:[^"\\]|\\.)*)"', text)
         if m:
             out[k] = m[1].replace('\\"', '"')
     if "require_tool_appid" in out:
@@ -466,7 +466,7 @@ def cmd_xr_layer_test(args):
         try:
             p = run([sys.executable, os.path.abspath(__file__), "_xr_probe", json.dumps({"loader": loader})],
                     env=env, timeout=60)
-            line = next((l for l in reversed(p.stdout.splitlines()) if l.startswith("{")), None)
+            line = next((ln for ln in reversed(p.stdout.splitlines()) if ln.startswith("{")), None)
             results[name] = json.loads(line) if line else {"error": (p.stderr or p.stdout)[-800:]}
         except subprocess.TimeoutExpired:
             results[name] = {"error": "timed out"}
@@ -1333,7 +1333,7 @@ def parse_obj(path):
             for c in parts[1:]:
                 idx = (c.split("/") + ["", ""])[:3]
                 ref = []
-                for i, n in zip(idx, (len(pos), len(uv), len(nrm))):
+                for i, n in zip(idx, (len(pos), len(uv), len(nrm)), strict=True):
                     ref.append(None if not i else (int(i) - 1 if int(i) > 0 else n + int(i)))
                 corners.append(tuple(ref))
             for i in range(1, len(corners) - 1):  # fan triangulation
@@ -1665,8 +1665,8 @@ def set_libovr_redirect(base, exe_rel, enabled, bundled=False):
     exe_dir = os.path.dirname(os.path.join(game, exe_rel))
     # the runtime: FramePort's Revive (revive/LibReviveXR*), or with bundled=True the repack's own LibRevive*.dll
     # next to the exe (a repack set up for SteamVR, whose Windows loader hook doesn't take effect under Proton)
-    runtimes = {bits: (os.path.join(exe_dir, "LibRevive%s.dll" % bits) if bundled else
-                       os.path.join(base, "revive", "LibReviveXR%s.dll" % bits)) for bits in ("64", "32")}
+    runtimes = {bits: (os.path.join(exe_dir, f"LibRevive{bits}.dll") if bundled else
+                       os.path.join(base, "revive", f"LibReviveXR{bits}.dll")) for bits in ("64", "32")}
     # where the Oculus SDK looks for LibOVRRT: the game exe's dir (monolithic engines carry the shim in the exe) AND
     # next to every OVRPlugin.dll (Unreal's shim searches its own module dir).
     dirs = {os.path.dirname(os.path.join(game, exe_rel))}
@@ -1676,7 +1676,7 @@ def set_libovr_redirect(base, exe_rel, enabled, bundled=False):
                 dirs.add(root)
     for d in dirs:
         for bits, target in runtimes.items():
-            link = os.path.join(d, "LibOVRRT%s_1.dll" % bits)
+            link = os.path.join(d, f"LibOVRRT{bits}_1.dll")
             ours = os.path.islink(link) and os.path.basename(os.path.realpath(link)).lower().startswith("librevive")
             if ours and os.path.realpath(link) != os.path.realpath(target):
                 os.remove(link)  # switched between FramePort's and the bundled Revive
@@ -1865,7 +1865,7 @@ def game_logs(base, since=0.0):
         raw = open(ctx, "rb").read().decode("utf-8", "replace")
         fields = []
         for tag in ("ErrorMessage", "CrashType", "EngineVersion", "CallStack", "SourceContext"):
-            m = re.search(r"<%s>(.*?)</%s>" % (tag, tag), raw, re.S)
+            m = re.search(rf"<{tag}>(.*?)</{tag}>", raw, re.S)
             if m and m.group(1).strip():
                 fields.append(f"{tag}: {m.group(1).strip()[:3000]}")
         out.append(f"===== crash {os.path.relpath(os.path.dirname(ctx), base)} (UE4CC)\n" + "\n".join(fields))

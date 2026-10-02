@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class FrameView:
-    def __init__(self, app: "FramePortApp"):
+    def __init__(self, app: FramePortApp):
         self.app = app
 
     # ---------------------------------------------------------------- connected

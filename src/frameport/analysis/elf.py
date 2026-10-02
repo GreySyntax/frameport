@@ -219,7 +219,7 @@ def add_needed(data: bytes, library: str) -> bytes:
         table[note_i] = new_load
     # PT_LOAD entries must stay sorted by vaddr (bionic); the new one has the highest vaddr.
     load_slots = [i for i, p in enumerate(table) if p["type"] == PT_LOAD]
-    for i, p in zip(load_slots, sorted((table[i] for i in load_slots), key=lambda p: p["vaddr"])):
+    for i, p in zip(load_slots, sorted((table[i] for i in load_slots), key=lambda p: p["vaddr"]), strict=True):
         table[i] = p
 
     buf += b"\0" * (file_end - len(buf))

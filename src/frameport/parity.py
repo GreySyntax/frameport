@@ -150,7 +150,7 @@ def classify(name: str, new: bytes, old: bytes) -> tuple[str, str]:
             return "expected", why
     if base == "libframe_settings.so":
         def kv(b):
-            return dict(l.split("=", 1) for l in b.decode().split("\n") if "=" in l)
+            return dict(kv.split("=", 1) for kv in b.decode().split("\n") if "=" in kv)
         a, b = kv(new), kv(old)
         if a == b:
             return "equivalent", "same settings, different order"

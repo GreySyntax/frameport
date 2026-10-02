@@ -1235,7 +1235,7 @@ class FramePortApp:
                 rep.stage(f"Installing {s.name}")
                 installer = {"java": toolchain.install_java, "overport": toolchain.install_overport,
                              "apksigner": toolchain.install_apksigner}[s.name]
-                installer(lambda f, i=i: rep.progress((i + f) / len(todo), s.name))
+                installer(lambda f, i=i, name=s.name: rep.progress((i + f) / len(todo), name))
                 rep.check(s.name, True, "ready")
             from ..patches import overport as op
             from ..tools import overport as ov
@@ -1345,7 +1345,6 @@ def assets_dir() -> str:
 def main(argv=None):
     applog.setup("gui")
     from ..core import library
-
     from .updater import apply_pending_at_start
 
     if apply_pending_at_start():  # "Install updates automatically": the new version starts instead of this one

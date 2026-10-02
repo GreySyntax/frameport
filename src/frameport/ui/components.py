@@ -1,7 +1,7 @@
 """Reusable GUI building blocks (all styling comes from ui.theme)."""
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import flet as ft
 
@@ -58,8 +58,8 @@ def pc_outdated(g: dict, dep: dict) -> bool:
     """A PC install whose launch settings (pcvr patches + their parameters) differ from the game's recipe now."""
     installed = set((dep.get("recipe") or {}).get("patches") or [])
     want = set((g.get("recipe") or {}).get("patches") or {})
-    from ..patches.pcvr import game_args
     from ..core.library import recipe_from_dict
+    from ..patches.pcvr import game_args
 
     try:
         args = game_args(recipe_from_dict(g["recipe"]))

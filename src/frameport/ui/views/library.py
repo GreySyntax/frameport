@@ -150,7 +150,7 @@ def quick_icon(label: str) -> str:
 class LibraryView:
     """Created once per app; `mount()` returns the same control tree, `reload()` refreshes it in the background."""
 
-    def __init__(self, app: "FramePortApp"):
+    def __init__(self, app: FramePortApp):
         self.app = app
         self.f = app.lib_filters
         self.cards: dict[str, tuple[tuple, ft.Control]] = {}  # package -> (state key, card)

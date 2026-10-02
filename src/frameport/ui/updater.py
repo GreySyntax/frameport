@@ -22,7 +22,7 @@ FIRST_CHECK_DELAY = 10  # seconds after start: don't compete with the start-up w
 
 
 class Updater:
-    def __init__(self, app: "FramePortApp"):
+    def __init__(self, app: FramePortApp):
         self.app = app
         self.found: updates.Update | None = None
         self.restart = None          # callable: what to do once the job queue is idle (install + quit)
@@ -202,7 +202,7 @@ def _notes_style() -> ft.MarkdownStyleSheet:
         h3_text_style=text(size=15, weight=ft.FontWeight.W_600), blockquote_text_style=text(T.TEXT_2))
 
 
-def library_bar(app: "FramePortApp") -> ft.Control | None:
+def library_bar(app: FramePortApp) -> ft.Control | None:
     """The Library's "update available" bar (None when there's nothing to show)."""
     up = app.updater.found if getattr(app, "updater", None) else None
     if not up:

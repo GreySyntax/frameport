@@ -6,8 +6,8 @@ file stays byte-identical, which keeps diffs against known-good builds meaningfu
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Iterator
 
 RES_XML = 0x0003
 RES_STRING_POOL = 0x0001

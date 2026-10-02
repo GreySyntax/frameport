@@ -188,12 +188,12 @@ def package_listing(g: dict) -> dict[str, object]:
 
 
 def _elf_summary(z: zipfile.ZipFile, info: zipfile.ZipInfo) -> dict:
+    import shutil
+    import tempfile
+
     from elftools.elf.dynamic import DynamicSection
     from elftools.elf.elffile import ELFFile
     from elftools.elf.sections import SymbolTableSection
-
-    import shutil
-    import tempfile
 
     try:
         with contextlib.ExitStack() as stack:

@@ -1,7 +1,6 @@
 """PC VR target (Revive + local Windows Steam) against a fake Steam folder; no Windows needed."""
 import importlib.util
 from pathlib import Path
-
 from types import SimpleNamespace
 
 from frameport.core import winhost

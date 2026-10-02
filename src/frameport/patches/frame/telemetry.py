@@ -59,12 +59,12 @@ class MetaXrTelemetry(Patch):
     default_on = True
 
     def detect(self, a):
-        if any(l.startswith("libmetaxraudio") for l in a.libs):
+        if any(lib.startswith("libmetaxraudio") for lib in a.libs):
             return Suggestion(True, "Meta XR Audio present; patched automatically if it has the telemetry lookup.")
         return None
 
     def applies(self, a):
-        return a.engine == "Unreal" and any(l.lower().startswith("libmetaxraudio") for l in a.libs)
+        return a.engine == "Unreal" and any(lib.lower().startswith("libmetaxraudio") for lib in a.libs)
 
     def apply(self, ctx: ApkContext) -> bool:
         changed = False

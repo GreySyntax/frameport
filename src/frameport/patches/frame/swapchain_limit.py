@@ -47,7 +47,7 @@ class SwapchainLimit(Patch):
     default_on = True
 
     def detect(self, a):
-        video = sorted(l for l in a.libs if l.lower().startswith(VIDEO_LIBS))
+        video = sorted(lib for lib in a.libs if lib.lower().startswith(VIDEO_LIBS))
         if video:
             return Suggestion(True, f"Video player ({', '.join(video[:2])}): creates swapchains larger than 4096 px "
                                     "(8K video, theatre textures), which overport's dispatcher aborts on.")

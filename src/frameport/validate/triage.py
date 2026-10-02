@@ -57,24 +57,24 @@ def database() -> dict:
 
 def game_lines(log: str, package: str | None = None) -> list[str]:
     """Strip colour codes; when possible keep only lines of the game's process (plus Lepton's own lines)."""
-    lines = [ANSI.sub("", l) for l in log.splitlines()]
+    lines = [ANSI.sub("", ln) for ln in log.splitlines()]
     if not package:
         return lines
     pids = set()
-    for l in lines:
-        m = re.search(r"Start proc (\d+):" + re.escape(package), l)
+    for ln in lines:
+        m = re.search(r"Start proc (\d+):" + re.escape(package), ln)
         if m:
             pids.add(m[1])
     if not pids:
         return lines
     out = []
-    for l in lines:
-        f = l.split()
+    for ln in lines:
+        f = ln.split()
         # logcat threadtime: date time pid tid level tag: msg
         if len(f) > 3 and (f[2] in pids or not f[2].isdigit()):
-            out.append(l)
-        elif "lepton" in l.lower() or "APP_ACTIVITY" in l:
-            out.append(l)
+            out.append(ln)
+        elif "lepton" in ln.lower() or "APP_ACTIVITY" in ln:
+            out.append(ln)
     return out
 
 
@@ -82,8 +82,8 @@ def triage(log: str, state: str = "UNKNOWN", package: str | None = None, crash: 
     """`crash` = the container's crash logcat (tombstones come from crash_dump's pid, so it isn't pid-filtered)."""
     db = database()
     kind = "pcvr" if package and package.startswith("rift.") else "quest"  # Proton/Revive logs vs Lepton logcat
-    lines = game_lines(log, package) if kind == "quest" else [ANSI.sub("", l) for l in log.splitlines()]
-    lines += [ANSI.sub("", l) for l in crash.splitlines()]
+    lines = game_lines(log, package) if kind == "quest" else [ANSI.sub("", ln) for ln in log.splitlines()]
+    lines += [ANSI.sub("", ln) for ln in crash.splitlines()]
     text = "\n".join(lines)
     res = TriageResult(state, None)
     for m in db["milestones"]:
@@ -99,7 +99,7 @@ def triage(log: str, state: str = "UNKNOWN", package: str | None = None, crash: 
         if hit and sig.get("unless") and re.search(sig["unless"], text):
             hit = None  # e.g. a rejected swapchain the adapter retried successfully
         if hit:
-            line = next((l for l in lines if re.search(sig["pattern"], l)), hit.group(0))
+            line = next((ln for ln in lines if re.search(sig["pattern"], ln)), hit.group(0))
             res.findings.append(Finding(sig["id"], sig["severity"], sig["diagnosis"], list(sig.get("suggest") or []),
                                         line.strip()[:300], bool(sig.get("use_alt"))))
     # a root-cause finding hides the generic crash findings it explains

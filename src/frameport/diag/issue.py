@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
+from .. import REPO_URL as REPO
 from . import redact
 
-from .. import REPO_URL as REPO
 MAX_URL = 7500
 
 

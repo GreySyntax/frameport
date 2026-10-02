@@ -29,7 +29,7 @@ def arm64(a: Analysis) -> bool:
 
 
 def meta_audio_libs(a: Analysis) -> list[str]:
-    return [l for l in a.libs if l.lower().startswith(("libmetaxraudio", "libovraudio", "libaksoundengine", "libovravatar"))]
+    return [lib for lib in a.libs if lib.lower().startswith(("libmetaxraudio", "libovraudio", "libaksoundengine", "libovravatar"))]
 
 
 def uses_scene(a: Analysis) -> bool:

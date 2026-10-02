@@ -1,7 +1,7 @@
 """Heuristics for games without a catalog recipe (catalog switched off)."""
-from frameport.recommend import engine
-
 from test_patches import _analysis
+
+from frameport.recommend import engine
 
 
 def suggest(**kw):

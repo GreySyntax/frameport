@@ -24,7 +24,7 @@ class Node:
     path: str = ""
     size: int = 0
     files: int = 0  # files below this folder (1 for a file)
-    children: dict[str, "Node"] = field(default_factory=dict)
+    children: dict[str, Node] = field(default_factory=dict)
     is_dir: bool = True
 
 
@@ -79,7 +79,7 @@ def human(n: int) -> str:
     return f"{n} B"
 
 
-def show_files_dialog(app: "FramePortApp", package: str, title: str) -> None:
+def show_files_dialog(app: FramePortApp, package: str, title: str) -> None:
     status = C.meta("Reading the file list from the Frame…")
     body = ft.Column([ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT), status],
                              spacing=T.S2)], spacing=T.S3, expand=True)

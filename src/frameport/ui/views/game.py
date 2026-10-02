@@ -32,7 +32,7 @@ def _ago(t: float | None) -> str:
 
 
 class GameView:
-    def __init__(self, app: "FramePortApp", package: str, advanced: bool = False, show_all: bool = False):
+    def __init__(self, app: FramePortApp, package: str, advanced: bool = False, show_all: bool = False):
         self.app, self.package, self.advanced, self.show_all = app, package, advanced, show_all
         from .library import twins
 

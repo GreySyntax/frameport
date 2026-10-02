@@ -68,7 +68,7 @@ def _migrate(data: dict) -> bool:
         # VR; OpenXR/SteamVR-native and catalog games keep their own settings). The dump is never modified (as_is).
         from ..recommend import engine
 
-        for pkg, g in (data.get("games") or {}).items():
+        for g in (data.get("games") or {}).values():
             a = g.get("analysis") or {}
             if not (isinstance(g.get("recipe"), dict) and (a.get("extra") or {}).get("kind") == "rift"):
                 continue
@@ -85,7 +85,7 @@ def _migrate(data: dict) -> bool:
         from ..analysis import rift
         from ..recommend import engine
 
-        for pkg, g in (data.get("games") or {}).items():
+        for g in (data.get("games") or {}).values():
             a = g.get("analysis") or {}
             if not (isinstance(g.get("recipe"), dict) and (a.get("extra") or {}).get("kind") == "rift"):
                 continue
@@ -121,7 +121,7 @@ def _migrate(data: dict) -> bool:
         from ..analysis import rift
         from ..recommend import engine
 
-        for pkg, g in (data.get("games") or {}).items():
+        for g in (data.get("games") or {}).values():
             a = g.get("analysis") or {}
             if not (isinstance(g.get("recipe"), dict) and (a.get("extra") or {}).get("kind") == "rift"):
                 continue

@@ -11,9 +11,8 @@ from pathlib import Path
 
 import requests
 
-from .paths import user_data_dir
-
 from .. import REPO_URL, __version__
+from .paths import user_data_dir
 
 USER_AGENT = f"FramePort/{__version__} (+{REPO_URL})"
 _session = requests.Session()

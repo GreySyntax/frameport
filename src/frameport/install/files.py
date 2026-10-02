@@ -206,9 +206,9 @@ def download(frame: Frame, root: str, paths: list[str], local_dir: Path, reporte
             dest = Path(local_dir) / Path(*rel.split("/"))
             dest.parent.mkdir(parents=True, exist_ok=True)
 
-            def progress(sent, _total, base=done):
+            def progress(sent, _total, base=done, rel=rel):
                 reporter.check_cancel()
-                reporter.progress((base + sent) / max(total, 1), f"{rel}")
+                reporter.progress((base + sent) / max(total, 1), rel)
             xfer.sftp.get(remote, str(dest), callback=progress)
             done += size
     return {"files": len(files), "bytes": total, "folder": str(local_dir)}

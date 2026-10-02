@@ -48,7 +48,7 @@ class NoDebuggable(Patch):
         if v and v < (4, 22):
             return Suggestion(True, f"Unreal Engine {v[0]}.{v[1]}: older UE4 makes JNI calls CheckJNI rejects "
                                     "(e.g. Time Stall aborted on GetStringUTFChars(NULL)).")
-        if any(l.startswith("libmetaxraudio") for l in a.libs):
+        if any(lib.startswith("libmetaxraudio") for lib in a.libs):
             return Suggestion(True, "Unreal build of Meta XR Audio: its telemetry lookup leaves a pending JNI exception "
                                     "that CheckJNI turns into an abort (e.g. NOPE Challenge).")
         return Suggestion(False, "Enable if the game aborts with 'JNI DETECTED ERROR' (CheckJNI).")

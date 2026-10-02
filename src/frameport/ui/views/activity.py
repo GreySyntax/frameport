@@ -35,7 +35,7 @@ def _progress_text(job: Job) -> str:
     return " · ".join(x for x in (job.speed, job.message) if x)
 
 class ActivityPanel:
-    def __init__(self, app: "FramePortApp"):
+    def __init__(self, app: FramePortApp):
         self.app = app
         self.expanded: set[int] = set()
         self.logs: set[int] = set()

@@ -54,7 +54,7 @@ def check_apk(apk: Path, package: str | None = None, expect_adapter: bool = True
         add("Manifest parses", False, str(exc))
     if abi:
         unresolved = set()
-        for name, data in libs.items():
+        for data in libs.values():
             if elf.is_elf(data):
                 unresolved |= {n for n in elf.needed(data) if n not in libs and n not in SYSTEM_LIBS}
         add("Library dependencies resolvable", None if unresolved else True,

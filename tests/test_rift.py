@@ -1,4 +1,5 @@
 """Oculus Rift (PC VR) support: PE detection, scanning, recipes, Revive unpacking, triage."""
+import json
 import struct
 import zlib
 from pathlib import Path
@@ -273,7 +274,7 @@ def test_system_revive_preferred(tmp_path, monkeypatch):
     from frameport.tools import revive, toolchain
 
     managed = fake_revive(tmp_path / "managed")
-    revive._state_file().write_text('{"version": "3.2.0", "path": "%s"}' % managed.as_posix())
+    revive._state_file().write_text(json.dumps({"version": "3.2.0", "path": managed.as_posix()}))
     system = fake_revive(tmp_path / "Program Files" / "Revive")
     monkeypatch.delenv("FRAMEPORT_REVIVE_DIR", raising=False)
     monkeypatch.setattr(winhost, "available", lambda: True)
@@ -474,7 +475,7 @@ def test_upload_files_big_small_and_cancel(tmp_path):
             self.puts.append(remote)
 
         def put_tar(self, files, root, progress=None):
-            for local, rel in files:
+            for _local, rel in files:
                 progress(0, rel)
             self.tars.append([rel for _, rel in files])
     big = tmp_path / "big.bin"

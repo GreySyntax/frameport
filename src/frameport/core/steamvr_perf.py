@@ -190,7 +190,7 @@ def vrsettings(root: Path, ops: list[tuple[str, str, str, str, str | None]]) -> 
     for op, section, key, kind, value in ops:
         args += [op, section, key, kind] + ([value] if op == "set" else [])
     p = subprocess.run(args, capture_output=True, text=True, timeout=60, **winhost._no_window())
-    return [l.strip() for l in (p.stdout or "").splitlines() if l.strip()]
+    return [ln.strip() for ln in (p.stdout or "").splitlines() if ln.strip()]
 
 
 def apply(root: Path, app_key: str, refresh: float | None, smoothing: int | None) -> list[str]:

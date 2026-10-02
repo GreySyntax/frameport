@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "flet-web>=1.0", "flet-cli>=1.0", "playwright>=1.40"]
+dev = ["pytest>=8", "pytest-timeout>=2.3", "ruff>=0.6", "flet-web>=1.0", "flet-cli>=1.0", "playwright>=1.40"]
 
 [project.scripts]
 frameport = "frameport.cli:app"
@@ -46,6 +46,7 @@ packages = ["src/frameport"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+timeout = 120
 markers = [
     "device: needs a reachable Steam Frame (FRAMEPORT_FRAME=user@host)",
     "games: needs the local game dumps (FRAMEPORT_GAMES=<downloads dir>)",
@@ -60,3 +61,19 @@ company = "FramePort"
 [tool.flet.app]
 path = "src"
 module = "main"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["native", "src/frameport/_data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E731",  # lambdas assigned to names: used for small Flet callbacks
+    "B008",  # function calls in defaults: Typer options
+    "UP007", "UP045",  # Optional[...] in Typer signatures (Typer reads the annotations)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["frameport"]

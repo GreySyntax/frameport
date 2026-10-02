@@ -1,7 +1,8 @@
 """'Which program starts <game>?' — pick the executable of a Rift game when FramePort isn't sure (or to change it)."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import flet as ft
 
@@ -18,7 +19,7 @@ def _size(n: int) -> str:
     return f"{n / 2**20:.0f} MB" if n < 2**30 else f"{n / 2**30:.1f} GB"
 
 
-def show_exe_dialog(app: "FramePortApp", package: str, remaining: int = 0,
+def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,
                     on_done: Callable[[], None] | None = None) -> None:
     g = library.game(package)
     extra = (g.get("analysis") or {}).get("extra") or {}

@@ -449,7 +449,7 @@ def useful_suggestions(package: str, suggestions: list[str]) -> list[str]:
     from .patches.base import REGISTRY
 
     entry = library.game(package) or {}
-    on = set(((entry.get("recipe") or {}).get("patches") or {}))
+    on = set((entry.get("recipe") or {}).get("patches") or {})
     out = []
     for pid in suggestions:
         p = REGISTRY.get(pid)
