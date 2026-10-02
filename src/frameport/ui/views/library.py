@@ -131,6 +131,20 @@ def save_filters(f: dict) -> None:
 
 # ------------------------------------------------------------------------------------------ view
 BATCH = 8
+def card_shadow(hover: bool = False) -> ft.BoxShadow:
+    """Library cards float on the dark background; hovering lifts them further."""
+    if hover:
+        return ft.BoxShadow(blur_radius=36, spread_radius=2, color=T.soft("#000000", 0.75), offset=ft.Offset(0, 14))
+    return ft.BoxShadow(blur_radius=22, spread_radius=1, color=T.soft("#000000", 0.55), offset=ft.Offset(0, 8))
+
+
+def quick_icon(label: str) -> str:
+    """The card's round quick button shows one symbol per action; the full label is its tooltip."""
+    for prefix, icon in (("Play", ft.Icons.PLAY_ARROW_ROUNDED), ("Update", ft.Icons.UPGRADE_ROUNDED),
+                         ("Reinstall", ft.Icons.REFRESH_ROUNDED)):
+        if label.startswith(prefix):
+            return icon
+    return ft.Icons.DOWNLOAD_ROUNDED
 
 
 class LibraryView:
@@ -490,14 +504,18 @@ class LibraryView:
                              bgcolor=T.soft("#000000", 0.6), border_radius=T.px(8), left=T.px(6), top=T.px(40),
                              visible=self.select_mode)
         self.checks[pkg] = check
-        quick_label, quick_icon = app.quick_action(g)
-        quick = ft.Container(
-            ft.FilledButton(quick_label, icon=quick_icon, on_click=lambda e: app.primary_action(pkg),
-                            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=T.px(20)), bgcolor=T.ACCENT,
-                                                 color=T.ON_ACCENT, padding=ft.Padding(T.px(14), T.px(8), T.px(14), T.px(8)),
-                                                 text_style=ft.TextStyle(size=T.px(12), weight=ft.FontWeight.W_600))),
-            left=0, right=0, bottom=T.px(64), alignment=ft.Alignment.CENTER, opacity=0,
-            animate_opacity=ft.Animation(160, ft.AnimationCurve.EASE_OUT)) if quick_label else None
+        quick_label, _ = app.quick_action(g)
+        circle = ft.Container(
+            ft.Icon(quick_icon(quick_label), size=T.px(56), color=T.ON_ACCENT),
+            width=T.px(96), height=T.px(96), border_radius=T.px(48), bgcolor=T.ACCENT, alignment=ft.Alignment.CENTER,
+            shadow=ft.BoxShadow(blur_radius=28, spread_radius=2, color=T.soft("#000000", 0.6), offset=ft.Offset(0, 6)),
+            tooltip=ft.Tooltip(message=quick_label, wait_duration=800), ink=True,
+            on_click=lambda e: app.primary_action(pkg),
+            scale=0.85, animate_scale=ft.Animation(160, ft.AnimationCurve.EASE_OUT)) if quick_label else None
+        # one big round Play / Install button in the middle of the cover, shown on hover
+        quick = ft.Container(circle, left=0, right=0, top=0, bottom=T.px(56), alignment=ft.Alignment.CENTER,
+                             opacity=0, animate_opacity=ft.Animation(160, ft.AnimationCurve.EASE_OUT)) \
+            if circle else None
         dim = state == "missing" and not on_pc
         tile = ft.Container(
             ft.Stack([
@@ -518,7 +536,7 @@ class LibraryView:
             ], expand=True),
             border_radius=T.RADIUS, bgcolor=T.SURFACE, border=ft.Border.all(1, T.BORDER), expand=True,
             scale=1.0, animate_scale=ft.Animation(140, ft.AnimationCurve.EASE_OUT),
-            shadow=ft.BoxShadow(blur_radius=18, color=T.soft("#000000", 0.35), offset=ft.Offset(0, 6)),
+            shadow=card_shadow(),
             tooltip=ft.Tooltip(message="Click to open · right-click for quick actions", wait_duration=1500),
             on_click=lambda e: self.toggle_selected(pkg) if self.select_mode else app.open_game(pkg))
 
@@ -526,8 +544,10 @@ class LibraryView:
             on = e.data in (True, "true")
             tile.scale = 1.03 if on else 1.0
             tile.border = ft.Border.all(1, T.ACCENT if on else T.BORDER)
+            tile.shadow = card_shadow(on)
             if quick:
                 quick.opacity = 1 if on and not self.select_mode else 0
+                circle.scale = 1.0 if on else 0.85
             tile.update()
         tile.on_hover = hover
         return ft.GestureDetector(content=tile, expand=True,

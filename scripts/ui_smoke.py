@@ -54,6 +54,9 @@ class FakeTarget:
         pass
 
 
+STEP_SECONDS = 4  # per screen (the screenshot is taken ~3 s in)
+
+
 def driver(app: FramePortApp, steps: list[tuple[str, callable]], ready: threading.Event, done_step: list):
     for name, action in steps:
         try:
@@ -62,7 +65,7 @@ def driver(app: FramePortApp, steps: list[tuple[str, callable]], ready: threadin
             ERRORS.append(f"{name}: {traceback.format_exc()}")
         done_step.append(name)
         ready.set()
-        time.sleep(4)
+        time.sleep(STEP_SECONDS)
 
 
 def main() -> int:
@@ -75,8 +78,12 @@ def main() -> int:
     ap.add_argument("--viewport", default="1280x820", help="browser size, e.g. 2560x1440")
     ap.add_argument("--update", action="store_true", help="pretend a new FramePort release exists (update UI)")
     ap.add_argument("--fake-frame", action="store_true", help="pretend a Steam Frame is connected (no device needed)")
+    ap.add_argument("--hover", default=None, help="x,y: move the mouse there before the Library screenshot")
     ap.add_argument("--docs", action="store_true", help="only the screens used in the docs (Library, --game, Frame)")
     args = ap.parse_args()
+    global STEP_SECONDS
+    if args.hover:
+        STEP_SECONDS = 7
     from frameport.ui import theme
 
     theme.set_scale(args.scale)
@@ -130,6 +137,10 @@ def main() -> int:
             steps.append(("launch-test-job", job))
     ready, done = threading.Event(), []
 
+    if args.fake_frame:  # never reach a real Frame (start-up auto-connect, discovery, the 30 s poll)
+        FramePortApp.connect = lambda self, *a, **k: None
+        FramePortApp.refresh_frame = lambda self, *a, **k: None
+
     def app_main(page: ft.Page):
         try:
             app = FramePortApp(page)
@@ -155,8 +166,13 @@ def main() -> int:
                 while len(done) < len(steps) and time.time() < deadline:
                     if ready.wait(1):
                         ready.clear()
+                        name = done[-1]
                         time.sleep(3)  # let Flutter paint
-                        page.screenshot(path=str(args.out / f"{shot:02d}-{done[-1]}.png"))
+                        if args.hover and name == "library":
+                            hx, hy = (float(v) for v in args.hover.split(","))
+                            page.mouse.move(hx, hy)
+                            time.sleep(1.5)
+                        page.screenshot(path=str(args.out / f"{shot:02d}-{name}.png"))
                         shot += 1
                 browser.close()
         except Exception:  # noqa: BLE001
