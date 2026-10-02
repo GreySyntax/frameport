@@ -56,6 +56,29 @@ def _features(manifest: bytes) -> dict[str, bool]:
     return out
 
 
+def vr_kind(libs: set[str], manifest_strings: list[str]) -> str:
+    """What kind of Android app this is, for choosing how to port it:
+    quest       Meta Quest app (VrApi / OVRPlugin / Meta's OpenXR loader + Oculus manifest entries): overport
+    openxr      another headset's OpenXR app (Pico, Khronos loader): overport's loader + the Frame adapter
+    android_xr  Android XR (Jetpack XR / spatial) app: needs system services Lepton doesn't have
+    pico_sdk    Pico's pre-OpenXR SDK, wave: HTC Vive Wave SDK: no OpenXR path, can't run
+    none        an ordinary (2D) Android app or game: installed without the VR translation"""
+    text = " ".join(manifest_strings)
+    meta = (libs & {"libvrapi.so", "libOVRPlugin.so", "libovrplatformloader.so"}
+            or "com.oculus." in text or "oculus.software." in text or "horizonos." in text)
+    if meta:
+        return "quest"
+    if any(lib.startswith("libwvr") for lib in libs) or "com.htc.vr" in text:
+        return "wave"
+    if "libopenxr_loader.so" in libs or "org.khronos.openxr" in text:
+        return "openxr"
+    if libs & {"libPvr_UnitySDK.so", "libpxr_api.so", "libPxr_api.so", "libPvrSDK.so"} or "pvr.app.type" in text:
+        return "pico_sdk"
+    if "android.software.xr" in text or "androidx.xr" in text or "com.google.android.xr" in text:
+        return "android_xr"
+    return "none"
+
+
 # OpenXR composition-layer extensions the Frame runtime lacks (see docs/FRAME_RUNTIME.md).
 LAYER_EXTENSIONS = ("XR_KHR_composition_layer_cylinder", "XR_KHR_composition_layer_equirect",
                     "XR_KHR_composition_layer_equirect2", "XR_KHR_composition_layer_cube")
@@ -126,6 +149,7 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
             msaa_levels = 0
 
     cats = axml.categories(manifest)
+    manifest_strings = axml.Axml(manifest).strings()
     features = _features(manifest)
     used_perms, _ = axml.used_and_declared_permissions(manifest)
     return Analysis(
@@ -158,6 +182,9 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
             "unreal_version": unreal_version,
             "oculus_os_refs": sorted(oculus_os_refs),
             "xr_layer_exts": sorted(layer_exts),  # composition-layer extensions the game's own libraries request
+            "vr_kind": vr_kind(libset, manifest_strings),
+            # the base of a split APK set (Play "app bundle" installs): the code/libraries live in split APKs
+            "split_apk": bool({"isSplitRequired", "requiredSplitTypes"} & set(manifest_strings)),
         },
     )
 

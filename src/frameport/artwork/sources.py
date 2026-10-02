@@ -139,10 +139,18 @@ def has_art(package: str) -> bool:
 
 
 def fetch_rift(package: str, title: str, canonical: str | None = None, quest_package: str | None = None,
-               exe: Path | None = None) -> dict:
-    """Find and store artwork for a Rift game. Returns what was found: {source, quest_package, oculus_app_id,
-    canonical_name, steam_appid} (only the keys that apply)."""
+               exe: Path | None = None, oculus: bool = True) -> dict:
+    """Find and store artwork for a PC VR game. Returns what was found: {source, quest_package, oculus_app_id,
+    canonical_name, steam_appid} (only the keys that apply). oculus=False (no Oculus code: a SteamVR/OpenXR game):
+    Steam is asked first, the Oculus store only if Steam has nothing."""
     found: dict = {}
+    if not oculus:
+        try:
+            st = match_steam(title)
+        except Exception:  # noqa: BLE001 - offline
+            st = None
+        if st and apply_steam(package, st["id"]):
+            return {"steam_appid": st["id"], "source": "steam"}
     app = None
     try:
         app = match_rift(title, canonical)

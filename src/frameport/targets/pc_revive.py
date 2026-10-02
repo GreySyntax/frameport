@@ -20,7 +20,8 @@ from ..patches.pcvr import game_args
 from ..validate.triage import triage
 from .base import Target
 
-TAG = "Rift via Revive"
+TAG = "FramePort PC VR"  # marks the Steam shortcuts FramePort made (for updates and cleanup)
+OLD_TAGS = ("Rift via Revive",)  # earlier name of the same tag
 REVIVE_LOG = "Revive/ReviveInjector.txt"  # under %LOCALAPPDATA%
 
 
@@ -204,7 +205,7 @@ class PcReviveTarget(Target):
                     if not sources.has_art(pkg):
                         artwork.fetch(pkg, lookup=dep.get("art_lookup"))
                     art = steam_set(pkg)
-                    for stale in vdf_mod.prune_shortcuts(str(vdf), dep["title"], exe, TAG):
+                    for stale in vdf_mod.prune_shortcuts(str(vdf), dep["title"], exe, (TAG, *OLD_TAGS)):
                         from ..uninstall import grid_files
 
                         for old in grid_files(grid, stale):

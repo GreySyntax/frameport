@@ -152,7 +152,7 @@ def add_rift_game(folder: Path, reporter: Reporter | None = None, tree=None, exe
     a = rift.analyze(folder, exe=exe, tree=tree)
     if not a.extra.get("vr_found") and not force and not old:
         if reporter:
-            reporter.log(f"skipped {folder.name}: no Oculus/OpenXR runtime found in {a.extra['exe']}")
+            reporter.log(f"skipped {folder.name}: no VR support (OpenXR, SteamVR or Oculus) found in {a.extra['exe']}")
         return None
     package = old["package"] if old else a.package
     a.package = package
@@ -188,7 +188,8 @@ def _rift_art(entry: dict, reporter: Reporter | None = None) -> dict:
     extra = (entry.get("analysis") or {}).get("extra") or {}
     try:
         found = sources.fetch_rift(pkg, entry.get("title") or pkg, extra.get("canonical_name"),
-                                   entry.get("quest_package"), Path(entry["game_dir"]) / entry["exe"])
+                                   entry.get("quest_package"), Path(entry["game_dir"]) / entry["exe"],
+                                   oculus="LibOVR" in ((entry.get("analysis") or {}).get("xr") or ""))
     except Exception as exc:  # noqa: BLE001 - artwork is optional
         if reporter:
             reporter.log(f"{entry.get('title')}: no artwork ({exc})")

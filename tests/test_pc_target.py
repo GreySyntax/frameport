@@ -72,7 +72,7 @@ def test_install_and_shortcut(tmp_path, monkeypatch):
     exe_win = "W:" + str(game / "Space Game.exe").replace("/", "\\")
     assert sc["Exe"] == '"' + "W:" + str(rv).replace("/", "\\") + '\\ReviveInjector.exe"'
     assert sc["LaunchOptions"] == f'/openxr "{exe_win}"'
-    assert sc["tags"] == {"0": "Rift via Revive", "1": "Oculus Rift"} and sc["appid"] == res["appid"]
+    assert sc["tags"] == {"0": "FramePort PC VR", "1": "PC VR"} and sc["appid"] == res["appid"]
     assert sc["StartDir"].endswith('Space Game\\"')
     # OpenVR backend drops /openxr
     r2 = Recipe("rift.space_game", {"pcvr.revive": {}, "pcvr.revive_openvr": {}})

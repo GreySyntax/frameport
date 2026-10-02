@@ -24,11 +24,30 @@ def _apksigner() -> str:
     return str(jar)
 
 
+def ensure_keystore(package: str) -> Path:
+    """The package's signing key. overport creates it on its first patch; apps built without overport (ordinary
+    Android apps) get one made here with the same layout (password "password", alias "key")."""
+    ks = overport_tool.keystore(package)
+    if ks.exists():
+        return ks
+    java = toolchain.java_path()
+    keytool = java.with_name("keytool.exe" if java and java.name.endswith(".exe") else "keytool") if java else None
+    if not keytool or not keytool.exists():
+        raise RuntimeError(f"no signing key for {package} and no keytool to create one (run `frameport tools install`)")
+    import subprocess
+
+    p = subprocess.run([str(keytool), "-genkeypair", "-keystore", str(ks), "-storetype", "JKS", "-storepass", KS_PASS,
+                        "-keypass", KS_PASS, "-alias", KS_ALIAS, "-keyalg", "RSA", "-keysize", "2048",
+                        "-validity", "10000", "-dname", f"CN={package}, O=FramePort"],
+                       capture_output=True, text=True, timeout=120)
+    if p.returncode or not ks.exists():
+        raise RuntimeError("couldn't create a signing key: " + (p.stdout + p.stderr)[-500:])
+    return ks
+
+
 def sign(unsigned: Path, final: Path, package: str) -> None:
     """Align (4 bytes; .so to 16 KiB pages) and sign v1+v2+v3. apksigner performs the alignment itself."""
-    ks = overport_tool.keystore(package)
-    if not ks.exists():
-        raise RuntimeError(f"no signing key for {package} at {ks} (overport creates it on first patch)")
+    ks = ensure_keystore(package)
     final.unlink(missing_ok=True)
     p = toolchain.run_java([
         "-jar", _apksigner(), "sign", "--ks", str(ks), "--ks-pass", f"pass:{KS_PASS}", "--ks-key-alias", KS_ALIAS,

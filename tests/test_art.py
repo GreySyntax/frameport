@@ -228,10 +228,14 @@ def test_steam_set_from_square_cover_and_screenshot():
 def test_steam_tags():
     from frameport.artwork.steam import steam_tags
 
-    rift = {"kind": "rift", "details": {"genres": ["Action", "Shooter"]}, "tags": ["Favorite"]}
+    rift = {"kind": "rift", "details": {"genres": ["Action", "Shooter"]}, "tags": ["Favorite"],
+            "analysis": {"extra": {"needs_revive": True}}}
     assert steam_tags(rift) == ["PC VR on Frame", "Oculus Rift", "Action", "Shooter", "Favorite"]
-    assert steam_tags(rift, "pc")[:2] == ["Rift via Revive", "Oculus Rift"]
+    assert steam_tags(rift, "pc")[:2] == ["FramePort PC VR", "Oculus Rift"]
+    assert steam_tags({"kind": "rift"})[:2] == ["PC VR on Frame", "PC VR"]  # an OpenXR/SteamVR game
     assert steam_tags({"package": "com.x"})[:2] == ["Quest on Frame", "Meta Quest"]
+    assert steam_tags({"package": "org.flat", "analysis": {"extra": {"vr_kind": "none"}}})[:2] == \
+        ["Android on Frame", "Android"]
 
 
 def test_plain_description_drops_store_markup():

@@ -53,6 +53,16 @@ class Analysis:
     def only_32bit(self) -> bool:
         return "arm64-v8a" not in self.abis and "armeabi-v7a" in self.abis
 
+    @property
+    def no_arm64(self) -> bool:
+        """Native code, but none the Frame can run (32-bit ARM or x86 only)."""
+        return bool(self.abis) and "arm64-v8a" not in self.abis
+
+    @property
+    def vr_kind(self) -> str:
+        """See analysis.detect.vr_kind (entries analysed before it existed were all Quest games)."""
+        return (self.extra or {}).get("vr_kind") or "quest"
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -70,6 +80,7 @@ class Recipe:
     notes: str = ""
     source: str = "heuristics"  # catalog | heuristics | user
     as_is: bool = False  # install the game unchanged (already patched): no overport / Frame fixes / Revive
+    overport: bool = True  # False: an ordinary Android app: no VR translation (overport) and no FrameBridge adapter
     reasons: dict[str, str] = field(default_factory=dict)  # patch id -> why it was suggested
 
     def enabled(self, patch_id: str) -> bool:

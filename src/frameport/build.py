@@ -64,14 +64,18 @@ def build(source: SourceGame, analysis: Analysis, recipe: Recipe, outdir: Path, 
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     outdir.mkdir(parents=True, exist_ok=True)
-    variants = [("primary", False)] + ([("alt", True)] if recipe.alt_patches else [])
+    variants = [("primary", False)] + ([("alt", True)] if recipe.alt_patches and recipe.overport else [])
     results = {}
     all_checks, applied = [], []
     try:
         for variant, alt in variants:
-            reporter.stage(f"overport ({variant})")
-            ids = overport_ids(recipe, alt)
-            patched = overport_tool.patch(source.apk, work, f"{pkg}.{variant}.overport.apk", ids, reporter)
+            if recipe.overport:
+                reporter.stage(f"overport ({variant})")
+                ids = overport_ids(recipe, alt)
+                patched = overport_tool.patch(source.apk, work, f"{pkg}.{variant}.overport.apk", ids, reporter)
+            else:  # an ordinary Android app: no VR translation, only the Frame fixes it needs (e.g. launcher)
+                patched = work / f"{pkg}.{variant}.original.apk"
+                shutil.copyfile(source.apk, patched)
             reporter.stage(f"Frame fixes ({variant})")
             unsigned = work / f"{pkg}.{variant}.unsigned.apk"
             applied, checks = apply_frame_fixes(patched, unsigned, analysis, recipe, reporter)
@@ -81,7 +85,7 @@ def build(source: SourceGame, analysis: Analysis, recipe: Recipe, outdir: Path, 
             sign.sign(unsigned, final, pkg)
             unsigned.unlink(missing_ok=True)
             reporter.stage(f"validate ({variant})")
-            checks += check_apk(final, pkg)
+            checks += check_apk(final, pkg, expect_adapter=recipe.overport)
             for c in checks:
                 reporter.check(c["name"], c["ok"], c["detail"])
             results[variant] = final

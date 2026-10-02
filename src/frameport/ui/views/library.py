@@ -25,7 +25,7 @@ STATUS_ORDER = {"works": 0, "issues": 1, "unknown": 2, "unsupported": 3}
 def auto_tags(game: dict) -> list[str]:
     """Tags FramePort derives from the analysis (not stored): platform, engine, XR API, mixed reality."""
     a = game.get("analysis") or {}
-    out = ["PC VR" if game.get("kind") == "rift" else "Quest"]
+    out = [C.platform(game)[0]]
     if a.get("engine") and a["engine"] not in ("Other", "?"):
         out.append(a["engine"])
     xr = a.get("xr") or ""
@@ -235,7 +235,7 @@ class LibraryView:
             if not games:
                 self.body.content = C.empty_state(
                     ft.Icons.LIBRARY_ADD_ROUNDED, "Add your games",
-                    "Point FramePort at a folder with Quest game dumps (APK + OBB) or Oculus Rift PC games (one folder "
+                    "Point FramePort at a folder with Android games (APK + OBB, e.g. Quest games) or PC VR games (one folder "
                     "per game, or a folder of them). It finds them, works out what each needs and fetches artwork.",
                     C.primary("Scan a folder", ft.Icons.FOLDER_OPEN_ROUNDED, self.app.pick_folder, big=True),
                     C.secondary("Add an APK file", ft.Icons.ANDROID_ROUNDED, self.app.pick_apk))
@@ -411,7 +411,7 @@ class LibraryView:
             where.insert(2, ("pc", "On this PC"))
         self.filters.content = ft.Row([
             self._seg("where", where),
-            self._seg("platform", [("all", "All"), ("quest", "Quest"), ("pcvr", "PC VR")]) if has_rift else
+            self._seg("platform", [("all", "All"), ("quest", "Android"), ("pcvr", "PC VR")]) if has_rift else
             ft.Container(),
             self._menu_chip("status", "Status", [("all", "Any"), ("works", "Works"), ("issues", "Works with issues"),
                                                  ("unknown", "Untested"), ("unsupported", "Can't run")]),
@@ -498,9 +498,10 @@ class LibraryView:
         if rift and g.get("exe_confirmed") is False:
             badges.append(C.pill("Check exe", T.WARN, ft.Icons.HELP_OUTLINE_ROUNDED, overlay=True,
                                  tooltip=C.tip(HELP["check_exe"])))
-        platform = C.pill("PC VR" if rift else "Quest", T.PC if rift else T.TEXT,
+        label, _, help_key = C.platform(g)
+        platform = C.pill(label, T.PC if rift else T.TEXT,
                           ft.Icons.COMPUTER_ROUNDED if rift else ft.Icons.VIEW_IN_AR_ROUNDED, overlay=True,
-                          tooltip=C.tip(HELP["platform_pcvr" if rift else "platform_quest"]))
+                          tooltip=C.tip(HELP[help_key]))
         check = ft.Container(ft.Checkbox(value=pkg in self.selected, active_color=T.ACCENT, check_color=T.ON_ACCENT,
                                          on_change=lambda e: self.toggle_selected(pkg)),
                              bgcolor=T.soft("#000000", 0.6), border_radius=T.px(8), left=T.px(6), top=T.px(40),

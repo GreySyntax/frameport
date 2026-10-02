@@ -726,14 +726,17 @@ def prune_shortcuts(vdf_path, title, keep_exe, tag):
     removed appids."""
     if not os.path.exists(vdf_path):
         return []
+    tags = (tag,) if isinstance(tag, str) else tuple(tag)  # one tag, or several (current + earlier names)
     root = vdf_decode(open(vdf_path, "rb").read())
     sc = root.get("shortcuts", {})
-    removed = [v.get("appid") for v in sc.values() if isinstance(v, dict) and v.get("appname") == title
-               and v.get("Exe") != keep_exe and tag in (v.get("tags") or {}).values()]
+
+    def stale(v):
+        return (isinstance(v, dict) and v.get("appname") == title and v.get("Exe") != keep_exe
+                and any(t in (v.get("tags") or {}).values() for t in tags))
+    removed = [v.get("appid") for v in sc.values() if stale(v)]
     if not removed:
         return []
-    keep = [v for v in sc.values() if not (isinstance(v, dict) and v.get("appname") == title
-            and v.get("Exe") != keep_exe and tag in (v.get("tags") or {}).values())]
+    keep = [v for v in sc.values() if not stale(v)]
     root["shortcuts"] = {str(i): v for i, v in enumerate(keep)}
     backup_vdf(vdf_path)
     with open(vdf_path + ".tmp", "wb") as f:

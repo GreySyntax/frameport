@@ -63,6 +63,11 @@ def suggest(analysis: Analysis, use_catalog: bool = True) -> Recipe:
         if analysis.only_32bit:
             recipe.status = "unsupported"
             recipe.notes = "32-bit only: the Steam Frame has no AArch32 support. Consider the PC (Rift) version via Revive."
+        elif analysis.no_arm64:
+            recipe.status = "unsupported"
+            recipe.notes = f"No 64-bit ARM code ({', '.join(analysis.abis)}): the Steam Frame can't run it."
+        if not rift:
+            _non_quest(analysis, recipe)
     if not rift and not entry and (analysis.extra or {}).get("frame_patched"):
         # already has FramePort's adapter (e.g. a PATCHED/ build): installing it unchanged is the safe default
         recipe.as_is = True
@@ -150,11 +155,45 @@ def warnings(recipe: Recipe) -> list[str]:
         for r in p.requires:
             if r not in recipe.patches:
                 out.append(f"{p.title} needs {base.get(r).title}.")
+    if recipe.as_is or not recipe.overport:
+        return out  # installed unchanged / an ordinary Android app: no VR translation expected
     if "patch_copy_libraries" not in recipe.patches:
         out.append("Without 'Copy overport libraries' nothing is translated to OpenXR.")
     if "frame.adapter" not in recipe.patches:
         out.append("Without the FrameBridge adapter most games fail on the Frame runtime.")
     return out
+
+
+def _non_quest(analysis: Analysis, recipe: Recipe) -> None:
+    """Android apps that aren't Meta Quest apps (analysis.detect.vr_kind)."""
+    kind = analysis.vr_kind
+    if (analysis.extra or {}).get("split_apk"):
+        recipe.notes = _add(recipe.notes, "Split APK: only the base APK was found; the game's code may live in the "
+                                          "other parts of the set, which FramePort can't install.")
+    if kind == "none":
+        # an ordinary (2D) Android app: no OpenXR to translate. Install it unchanged, or with only the launcher fix
+        recipe.overport = False
+        needed = {"frame.launcher"} if analysis.has_info_category else set()  # Lepton needs a LAUNCHER activity
+        recipe.patches = {pid: v for pid, v in recipe.patches.items() if pid in needed}
+        recipe.reasons = {pid: v for pid, v in recipe.reasons.items() if pid in recipe.patches}
+        recipe.alt_patches = []
+        recipe.as_is = not recipe.patches
+        recipe.notes = _add(recipe.notes, "Android app without VR: installed without FramePort's VR translation.")
+    elif kind in ("pico_sdk", "wave"):
+        recipe.status = "unsupported"
+        recipe.notes = _add(recipe.notes, f"Uses {'Pico' if kind == 'pico_sdk' else 'HTC Vive Wave'}'s own VR SDK "
+                                          "instead of OpenXR: there is no way to run it on the Steam Frame.")
+    elif kind == "android_xr":
+        recipe.status = "unsupported"
+        recipe.notes = _add(recipe.notes, "Android XR app: it needs Android XR system services that the Steam "
+                                          "Frame's Android runtime doesn't have.")
+    elif kind == "openxr":
+        recipe.notes = _add(recipe.notes, "OpenXR app for another headset: translated like Quest games; that "
+                                          "headset's own extensions and store/platform services aren't available.")
+
+
+def _add(notes: str, text: str) -> str:
+    return f"{notes} {text}".strip() if text not in (notes or "") else notes
 
 
 def visible_patches(analysis: Analysis, recipe: Recipe | None = None) -> tuple[list, list]:

@@ -642,3 +642,10 @@ def test_uninstall_removes_the_shortcut_with_steam_closed(monkeypatch, tmp_path)
     assert r["shortcut_removed"] and started and started[0][0] == "systemd-run"  # the detached worker, not a live edit
     payload = json.loads(started[0][-1])
     assert payload["remove"] == [{"exe": f'"{anchor}/launch.sh"', "appid": 7}]
+
+
+def test_prune_also_matches_the_earlier_tag_name(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    vdf = str(tmp_path / "shortcuts.vdf")
+    old = a.upsert_shortcut(vdf, '"C:\\Revive\\ReviveInjector.exe"', "Vader", "/d", tag="Rift via Revive")
+    assert a.prune_shortcuts(vdf, "Vader", '"C:\\game\\WKND.exe"', ("FramePort PC VR", "Rift via Revive")) == [old]

@@ -39,6 +39,21 @@ def settings_diff(game: dict, frame_info: dict | None) -> tuple[list[str], list[
     return (added, removed) if added or removed else None
 
 
+def platform(g: dict) -> tuple[str, str, str]:
+    """(short label, long label, help key) for a game's platform: what it was made for, not how it runs here."""
+    if g.get("kind") == "rift":
+        extra = ((g.get("analysis") or {}).get("extra") or {})
+        oculus = extra.get("needs_revive") or extra.get("libovr")
+        return "PC VR", "PC VR · Oculus" if oculus else "PC VR", "platform_pcvr"
+    kind = (((g.get("analysis") or {}).get("extra") or {}).get("vr_kind")) or "quest"
+    if kind == "quest":
+        return "Quest", "Meta Quest", "platform_quest"
+    if kind == "none":
+        return "Android", "Android app", "platform_android"
+    return "Android VR", {"openxr": "Android VR · OpenXR", "pico_sdk": "Pico", "wave": "HTC Vive (Wave)",
+                          "android_xr": "Android XR"}.get(kind, "Android VR"), "platform_android_vr"
+
+
 def install_state(game: dict, frame_info: dict | None) -> str | None:
     """None when no Frame is connected; else 'installed', 'outdated' (the local build, or the patch settings, differ
     from what the Frame runs) or 'missing'."""

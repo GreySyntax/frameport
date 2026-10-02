@@ -13,8 +13,12 @@ HELP: dict[str, str] = {
                  "game (or right-click → Change executable) to pick it.",
     "platform_quest": "A Meta Quest game (APK). It's rebuilt for the Frame and runs in Lepton, Valve's Android "
                       "container.",
-    "platform_pcvr": "An Oculus Rift PC VR game. It runs through Revive (Oculus → OpenXR), either on this PC or on the "
-                     "Frame with Proton.",
+    "platform_pcvr": "A Windows PC VR game (OpenXR, SteamVR or Oculus). It runs on this PC with SteamVR, or on the "
+                     "Frame with Proton. Oculus-only games also need Revive (Oculus → OpenXR).",
+    "platform_android": "An ordinary Android app or game (no VR). It's installed unchanged and runs in Lepton, Valve's "
+                        "Android container.",
+    "platform_android_vr": "A VR app made for another Android headset. OpenXR apps are translated like Quest games; "
+                           "apps built on a headset maker's own SDK (Pico, HTC Wave) can't run on the Frame.",
     "select": "Pick several games and install them in one go. FramePort asks every question first, then works through "
               "the queue in the background.",
     "tags": "Your own tags (filled) can be anything you like. Outlined tags are added automatically from the engine, "

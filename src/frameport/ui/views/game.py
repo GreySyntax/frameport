@@ -48,7 +48,7 @@ class GameView:
 
         a = g["analysis"]
         art = thumbs.url(pkg, ("hero", "landscape", "portrait", "square"), 1280, wait=False)
-        platform = "Oculus Rift · PC VR" if self.rift else "Meta Quest"
+        platform = C.platform(g)[1]
         facts = " · ".join(x for x in (platform, a.get("engine"), a.get("xr")) if x and x != "?")
         recipe = g.get("recipe") or {}
         chips = [C.status_chip(recipe.get("status", "unknown"))]

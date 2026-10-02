@@ -116,14 +116,22 @@ def steam_set(package: str) -> dict[str, Path]:
 
 
 def original_platform(entry: dict) -> str:
-    return "Oculus Rift" if entry.get("kind") == "rift" else "Meta Quest"
+    """What the game was made for (a Steam tag)."""
+    extra = (entry.get("analysis") or {}).get("extra") or {}
+    if entry.get("kind") == "rift":
+        return "Oculus Rift" if extra.get("needs_revive") else "PC VR"
+    kind = extra.get("vr_kind") or "quest"
+    return {"quest": "Meta Quest", "none": "Android"}.get(kind, "Android VR")
 
 
 def steam_tags(entry: dict, where: str = "frame") -> list[str]:
     """Tags for the Steam shortcut (Steam can group them into collections): how it runs, the game's original platform,
     genres and the user's own tags."""
-    runs = ("PC VR on Frame" if entry.get("kind") == "rift" else "Quest on Frame") if where == "frame" else \
-        "Rift via Revive"
+    from ..targets.pc_revive import TAG
+
+    kind = ((entry.get("analysis") or {}).get("extra") or {}).get("vr_kind") or "quest"
+    runs = TAG if where != "frame" else "PC VR on Frame" if entry.get("kind") == "rift" else \
+        "Quest on Frame" if kind == "quest" else "Android on Frame"
     base = [runs, original_platform(entry)]
     genres = ((entry.get("details") or {}).get("genres") or [])[:4]
     return list(dict.fromkeys(base + genres + list(entry.get("tags") or [])))

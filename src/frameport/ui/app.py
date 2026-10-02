@@ -957,12 +957,12 @@ class FramePortApp:
 
     # ================================================================== library
     async def pick_folder(self, e=None):
-        path = await ft.FilePicker().get_directory_path(dialog_title="Folder with Quest or Oculus Rift games")
+        path = await ft.FilePicker().get_directory_path(dialog_title="Folder with VR games (Android APKs or PC VR games)")
         if path:
             self.scan(path)
 
     async def pick_game_folder(self, e=None):
-        path = await ft.FilePicker().get_directory_path(dialog_title="One Oculus Rift game folder")
+        path = await ft.FilePicker().get_directory_path(dialog_title="One PC VR game folder")
         if path:
             self.scan(path, single=True)
 

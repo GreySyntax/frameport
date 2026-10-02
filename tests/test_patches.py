@@ -282,3 +282,35 @@ def test_every_bundled_catalog_file_loads():
     files = sorted((Path(__file__).resolve().parents[1] / "catalog/games").glob("*.yaml"))
     loaded = {e.package for e in catalog.load(refresh=True).values() if e.origin == "bundled"}
     assert {f.stem for f in files} <= loaded
+
+
+def test_vr_kind_classifies_android_apps():
+    from frameport.analysis.detect import vr_kind
+
+    assert vr_kind({"libOVRPlugin.so", "libunity.so"}, []) == "quest"
+    assert vr_kind({"libopenxr_loader.so"}, ["com.oculus.supportedDevices"]) == "quest"  # Meta's OpenXR build
+    assert vr_kind({"libopenxr_loader.so", "libunity.so"}, ["pvr.app.type"]) == "openxr"  # Pico OpenXR build
+    assert vr_kind({"libPvr_UnitySDK.so"}, []) == "pico_sdk"
+    assert vr_kind({"libwvr_api.so"}, []) == "wave"
+    assert vr_kind(set(), ["android.software.xr.immersive"]) == "android_xr"
+    assert vr_kind({"libgame.so"}, ["android.intent.category.LAUNCHER"]) == "none"
+
+
+def test_android_app_without_vr_gets_no_vr_translation():
+    from frameport.recommend import engine
+
+    flat = _analysis(package="org.example.flat", engine="Other", xr="?", libs=["libgame.so"], is_overport_output=False,
+                     has_info_category=False,
+                     extra={"size": 1, "vr_kind": "none"})
+    r = engine.suggest(flat)
+    assert r.as_is and not r.overport and not r.patches and not engine.warnings(r)
+    needs_launcher = _analysis(package="org.example.info", engine="Other", xr="?", libs=[], has_info_category=True,
+                               is_overport_output=False, extra={"size": 1, "vr_kind": "none"})
+    r = engine.suggest(needs_launcher)
+    assert not r.as_is and not r.overport and list(r.patches) == ["frame.launcher"]
+    pico = _analysis(package="com.pico.game", libs=["libPvr_UnitySDK.so"], extra={"size": 1, "vr_kind": "pico_sdk"})
+    assert engine.suggest(pico).status == "unsupported"
+    x86 = _analysis(package="org.example.x86", abis=["x86_64"], extra={"size": 1, "vr_kind": "none"})
+    assert engine.suggest(x86).status == "unsupported"
+    quest = _analysis(libs=["libOVRPlugin.so"], extra={"size": 1})  # old library entries: no vr_kind = Quest
+    assert engine.suggest(quest).overport and "patch_copy_libraries" in engine.suggest(quest).patches
