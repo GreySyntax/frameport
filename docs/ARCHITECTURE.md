@@ -58,6 +58,27 @@ apart. "Build" = `pipeline.prepare_rift` (checks + Revive). Revive is a portable
 - **Native binaries** (`artifacts/`): edit `native/…`, run `native/build.sh`, commit the new artifacts + SHA256SUMS,
   run `frameport parity` to see which games change.
 
+## Self-update (`updates.py`, `ui/updater.py`, `cli.py update`)
+```
+check()  GitHub releases/latest (cached 6 h, drafts/prereleases skipped, "skipped" version remembered)
+   │     → Update(version, notes = release body incl. "What's new" from the annotated tag, asset for this OS, sums, wheel)
+   ▼
+install_kind()  bundle (running exe inside FramePort.exe's folder / FramePort.app / FramePort/FramePort)
+   │            source (git checkout) → git pull --ff-only + uv sync     wheel (uv tool / pipx / pip) → reinstall wheel
+   ▼ bundle
+prepare()  <data>/updates/<ver>/: download → SHA256SUMS.txt check → extract to staged/ (ditto on macOS) → layout check
+   │       → Windows: same Authenticode signer as the running exe → ready.json
+   ▼
+apply()   writes <data>/updates/apply.{ps1,sh}, starts it detached; FramePort quits. The script waits for the pid,
+          Windows: backs up the files it replaces (updates/<ver>/previous) and copies over the folder (the zip has
+          no folder of its own); macOS/Linux: mv target → .old, staged → target, rollback on failure, clears the
+          quarantine; then relaunches. Log: <data>/logs/update.log.
+```
+GUI: background check 10 s after start + every 6 h → sidebar card + Library bar → dialog with notes → job
+`app-update` (waits for other jobs) → restart. "Install updates automatically": prepare in the background, apply in
+`main()` before the window opens. CLI: once-a-day hint from the cached result (a daemon thread refreshes it), `frameport
+update [--check] [--yes]`. CI runs `scripts/update_smoke.py` on every OS with the archive it just built.
+
 ## Dynamic data (fetched live, cached, bundled fallback)
 overport release + patch list + patch titles (GitHub), Temurin JRE (Adoptium API), apksigner (Google repository index),
 store artwork/titles (overport image API), catalog (optional remote), Lepton location/appid (Frame appmanifests),

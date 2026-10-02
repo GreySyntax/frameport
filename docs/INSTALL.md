@@ -9,6 +9,11 @@ missing** once: FramePort downloads its own Java runtime, the overport CLI and a
 | Windows 10/11 (x64) | `FramePort-windows-x64.zip` | `FramePort.exe` |
 | macOS (Apple Silicon) | `FramePort-macos-arm64.zip` | `FramePort.app` |
 | Linux (x64) | `FramePort-linux-x64.tar.gz` | `FramePort/FramePort` (needs GTK 3) |
+| Command line only (any OS with Python 3.11+) | `frameport-<version>-py3-none-any.whl` | `frameport --help` |
+
+The command-line version installs with [uv](https://docs.astral.sh/uv/) (or pipx / pip) straight from a release, e.g.
+`uv tool install https://github.com/spoopyghosty0/frameport/releases/download/v0.3.0/frameport-0.3.0-py3-none-any.whl`
+(copy the wheel's link from the release page). `frameport --version` shows the installed version.
 
 ## First launch
 
@@ -24,6 +29,26 @@ not a paid one, so your OS warns the first time:
 - **macOS:** right-click `FramePort.app` → **Open** → **Open** (only needed once), or run
   `xattr -dr com.apple.quarantine FramePort.app`.
 - **Linux:** `tar xzf FramePort-linux-x64.tar.gz && ./FramePort/FramePort`.
+
+## Updating
+FramePort checks GitHub for a new release when it starts and every 6 hours (only the release information, nothing about
+you is sent). When there is one, a **Update available** card appears in the sidebar and a bar at the top of the Library:
+click **Update now** (or the card → **Update and restart**). FramePort downloads the new version, checks it against the
+release's `SHA256SUMS.txt` (on Windows also that it carries the same signature as the running copy), closes, replaces
+its program folder / `FramePort.app` and opens again as the new version. Your games, settings, signing keys and Frame
+connection live in FramePort's data folder and are kept. If installs or uploads are running, the update waits until
+they finish. **Later** hides that version (Settings → Updates → **Check for updates** still finds it).
+
+Settings → **Updates**: switch off the automatic check, or turn on **Install updates automatically** (downloads new
+versions in the background and installs them the next time FramePort starts — no clicks at all). If FramePort's folder
+isn't writable (e.g. under Program Files), Update now opens the release page instead; download and extract it as
+above. The update's log is `logs/update.log` in FramePort's data folder; the replaced files of a Windows update are kept
+in `updates/<version>/previous` until the next update.
+
+Command line: commands mention a new version at most once a day (on stderr). `frameport update` shows what's new and
+updates (a bundle the same way as the app; a `uv tool`/pipx/pip install by reinstalling the release's wheel; a source
+checkout with `git pull` + `uv sync`). `frameport update --check` only checks (exit code 10 = an update exists),
+`--yes` skips the question. `FRAMEPORT_NO_UPDATE_CHECK=1` turns all checks off.
 
 ## Oculus Rift (PC VR) games
 Scan a folder of Rift games (one folder per game; the game may sit a few levels down, next to installers and archives)

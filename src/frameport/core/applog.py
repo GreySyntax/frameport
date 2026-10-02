@@ -53,12 +53,9 @@ def setup(component: str = "app") -> None:
 
 
 def _version() -> str:
-    try:
-        from importlib.metadata import version
+    from .. import __version__
 
-        return version("frameport")
-    except Exception:  # noqa: BLE001
-        return "dev"
+    return __version__
 
 
 def save_job_log(kind: str, package: str | None, state: str, text: str) -> Path | None:

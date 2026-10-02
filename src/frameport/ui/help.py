@@ -77,6 +77,10 @@ HELP: dict[str, str] = {
                    "restart of the Frame.",
     "ui_scale": "Size of text and layout. Automatic follows Windows' display scaling halfway (150 % in Windows → 125 %) "
                 "when FramePort runs under WSL, where the window doesn't get it from Windows itself.",
+    "app_updates": "FramePort checks GitHub for a new release every few hours and shows it in the sidebar and the "
+                   "Library. \"Update now\" downloads it, checks its checksum (and on Windows its signature), closes "
+                   "FramePort and opens the new version; your games, settings and Frame connection are kept. With "
+                   "automatic install, the download happens in the background and the new version starts next time.",
     "update_all": "Updates every game marked \"Update ready\" (a newer build, or patch settings changed since it was "
                   "installed), one after another.",
     "rescan": "Scans the folders you added games from again and adds games that appeared since. Games already in the "

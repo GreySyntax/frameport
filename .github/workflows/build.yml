@@ -91,6 +91,9 @@ jobs:
       - name: Package (Linux)
         if: runner.os == 'Linux'
         run: tar czf ${{ matrix.archive }} -C dist --transform 's,^linux,FramePort,' linux
+      # self-update with this archive: unpack, verify the layout (+ the signer on Windows), run the real swap script
+      - name: Update smoke test
+        run: uv run python scripts/update_smoke.py ${{ matrix.archive }}
       - name: Attest build provenance
         if: github.event_name != 'pull_request'
         uses: actions/attest-build-provenance@v4
@@ -109,10 +112,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
       - uses: actions/download-artifact@v8
         with:
           path: out
           merge-multiple: true
+      - name: Wheel (CLI install via uv tool / pipx / pip, and its self-update)
+        run: uv build --wheel -o out && ls out
       - name: Checksums
         run: cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
       - name: Publish release
@@ -121,7 +127,15 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           notes=$(mktemp)
+          # "What's new" = the annotated tag's message (FramePort's update dialog shows it); checkout may leave the
+          # tag lightweight, so fetch the tag object itself
+          git fetch --force origin "refs/tags/${tag}:refs/tags/${tag}"
+          whatsnew=$(git tag -l --format='%(contents:body)' "$tag")
+          [ -n "$whatsnew" ] || whatsnew=$(git tag -l --format='%(contents:subject)' "$tag")
           { echo "FramePort ${tag}: Windows (x64), macOS (Apple Silicon) and Linux (x64)."; echo;
-            sed -n '/^## First launch/,$p' docs/INSTALL.md; } > "$notes"
+            if [ -n "$whatsnew" ] && [ "$(git cat-file -t "$tag")" = tag ]; then
+              echo "## What's new"; echo; echo "$whatsnew"; echo; fi
+            echo "Already have FramePort? It offers this update itself (Library → **Update now**, or \`frameport update\`)."
+            echo; sed -n '/^## First launch/,$p' docs/INSTALL.md; } > "$notes"
           gh release delete "$tag" --yes 2>/dev/null || true
           gh release create "$tag" out/* packaging/FramePort-selfsigned.cer --title "FramePort ${tag}" --notes-file "$notes"

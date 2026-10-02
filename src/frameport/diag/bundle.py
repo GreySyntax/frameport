@@ -67,12 +67,9 @@ def _read_tail(path: Path, limit: int = MAX_LOG) -> str:
 
 
 def _version() -> str:
-    try:
-        from importlib.metadata import version
+    from .. import __version__
 
-        return version("frameport")
-    except Exception:  # noqa: BLE001
-        return "dev"
+    return __version__
 
 
 class _Writer:

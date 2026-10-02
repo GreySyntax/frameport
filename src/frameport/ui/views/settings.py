@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import flet as ft
 
-from ... import REPO_URL
+from ... import REPO_URL, __version__
 from ...core.paths import user_data_dir
 from ...recommend import catalog
 from .. import components as C
@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 TOOL_TITLES = {"java": "Java runtime", "overport": "overport", "apksigner": "apksigner", "revive": "Revive"}
 TOOL_WHY = {"java": "Runs overport and apksigner", "overport": "Converts Quest games to OpenXR",
             "apksigner": "Signs rebuilt games", "revive": "Runs Oculus Rift games on OpenXR"}
+
+def switch_label() -> ft.TextStyle:
+    return ft.TextStyle(color=T.TEXT, size=T.px(14))  # Material's default is dark text
 
 
 class SettingsView:
@@ -75,7 +78,43 @@ class SettingsView:
             library.set_setting("install.launch_test", bool(e.control.value))
         return ft.Switch(label="Launch test after installing on the Frame (starts the game once without the headset "
                                "and checks its log)", value=bool(library.setting("install.launch_test", True)),
-                         on_change=changed)
+                         label_text_style=switch_label(), on_change=changed)
+
+    def updates_card(self) -> ft.Control:
+        """Settings → Updates: FramePort's own updates (ui/updater.py, frameport/updates.py)."""
+        import time
+
+        from ... import updates
+        from ...core import library
+
+        app = self.app
+        last = library.setting("update.last_check")
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(last)) if last else "never"
+        found = app.updater.found
+        status = (C.callout(ft.Row([C.body(f"FramePort {found.version} is available.", T.TEXT, expand=True),
+                                    C.primary("Update now", ft.Icons.SYSTEM_UPDATE_ROUNDED,
+                                              lambda e: app.updater.install())], spacing=T.S3), "info")
+                  if found else C.meta(f"You have the latest version as of the last check ({when})."))
+
+        def auto_check(e):
+            library.set_setting("update.auto_check", bool(e.control.value))
+
+        def auto_install(e):
+            library.set_setting("update.auto_install", bool(e.control.value))
+        kind = {"bundle": "the downloaded app", "source": "a source checkout (git pull + uv sync)",
+                "wheel": "an installed Python package (reinstalled from the release)"}[updates.install_kind()]
+        return ft.Column([
+            ft.Row([C.kv("Installed", f"FramePort {__version__} · {kind}"),
+                    ft.Container(expand=True),
+                    C.secondary("Check for updates", ft.Icons.REFRESH_ROUNDED, lambda e: app.updater.check_now())],
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            status,
+            ft.Switch(label="Check for new versions automatically", value=bool(library.setting("update.auto_check", True)),
+                      label_text_style=switch_label(), on_change=auto_check),
+            ft.Switch(label="Install updates automatically (downloads in the background, installs when FramePort "
+                            "next starts)", value=bool(library.setting("update.auto_install", False)),
+                      label_text_style=switch_label(), on_change=auto_install),
+        ], spacing=T.S3)
 
     def appearance(self) -> ft.Control:
         from ...core import library
@@ -120,18 +159,14 @@ class SettingsView:
         self.pc.controls = [ft.Row([ft.ProgressRing(width=T.px(16), height=T.px(16), stroke_width=T.px(2), color=T.ACCENT),
                                     C.meta("Checking this PC…")], spacing=T.S2)]
         app.run_bg(self.fill_pc)
-        try:
-            from importlib.metadata import version
-
-            ver = version("frameport")
-        except Exception:  # noqa: BLE001
-            ver = "dev"
+        from ... import __version__ as ver
         data = str(user_data_dir())
         return ft.Column([
-            app.top_bar("Settings", "Tools, this PC and where FramePort keeps its data"),
+            app.top_bar("Settings", "Updates, tools, this PC and where FramePort keeps its data"),
+            C.section("Updates", C.card(self.updates_card(), padding=T.S4), help="app_updates"),
             C.section("Tools", C.card(self.tools, padding=ft.Padding(T.S4, T.S2, T.S4, T.S2)),
                       subtitle="FramePort manages its own copies; nothing is installed system-wide",
-                      action=ft.Row([C.ghost("Check for updates", ft.Icons.UPDATE_ROUNDED,
+                      action=ft.Row([C.ghost("Update tools", ft.Icons.UPDATE_ROUNDED,
                                              lambda e: app.update_tools(update=True)),
                                      C.secondary("Install missing", ft.Icons.DOWNLOAD_ROUNDED,
                                                  lambda e: app.update_tools())], spacing=T.S2)),

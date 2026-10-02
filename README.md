@@ -18,7 +18,9 @@ apksigner). Nothing is installed system-wide, and no Android SDK/NDK is needed.
 ## Install
 - **App bundles**: download from [Releases](https://github.com/spoopyghosty0/frameport/releases) (Windows x64, macOS
   Apple Silicon, Linux x64); see `docs/INSTALL.md` for the first-launch warning (self-signed / ad-hoc signed) and
-  how to verify a download. Built by CI (`.github/workflows/build.yml`, `flet build`).
+  how to verify a download. Built by CI (`.github/workflows/build.yml`, `flet build`). FramePort **updates itself**:
+  when a new release is out, click **Update now** in the Library (or run `frameport update`).
+- **Command line only**: `uv tool install <the release's frameport-*.whl link>` (or pipx / pip), then `frameport --help`.
 - **From source**: `uv sync && uv run frameport-gui` (CLI: `uv run frameport --help`).
 
 ## Status of tested games

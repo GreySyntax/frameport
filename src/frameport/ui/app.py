@@ -47,6 +47,9 @@ class FramePortApp:
         self.exe_queue: list[str] = []  # games whose executable the user should confirm (after a scan)
         self._failures: list[Job] = []  # failed installs/tests, shown together when the queue is done
         self.jobs = JobManager(self._on_job)
+        from .updater import Updater
+
+        self.updater = Updater(self)  # new FramePort releases (sidebar card, Library bar, one-click update)
 
         page.title = "FramePort"
         T.apply(page)
@@ -71,6 +74,7 @@ class FramePortApp:
                 padding=ft.Padding(T.S2, T.S2, 0, T.S5)),
             self.nav_col,
             ft.Container(expand=True),
+            self.updater.card,
             self.activity_card,
             self.conn_card,
         ], spacing=T.S2), width=T.px(236), bgcolor=T.SIDEBAR, padding=T.S4,
@@ -82,6 +86,7 @@ class FramePortApp:
         self.go("welcome" if needed() else "library")
         threading.Thread(target=self._startup, daemon=True).start()
         threading.Thread(target=self._poll, daemon=True).start()
+        self.updater.start()
 
     # ================================================================== shell
     def top_bar(self, heading: str, subtitle: str = "", actions: list[ft.Control] | None = None) -> ft.Control:
@@ -278,6 +283,9 @@ class FramePortApp:
         self.activity.refresh()
         if job and job.state in ("done", "failed", "cancelled") and job.finished and not getattr(job, "_handled", 0):
             job._handled = 1
+            if job.kind == "app-update" and job.state != "done":
+                self.updater.restart = None  # the update didn't get ready: don't quit
+            self.updater.on_jobs_changed()  # an update waiting for the queue to empty installs now
             if job.kind in ("install", "test", "uninstall", "tool-frame") and self.target:
                 self.refresh_frame(quiet=True)  # re-renders when the Frame's list changed (e.g. after an uninstall)
             if job.kind == "install" and job.package and job.package in self._records():
@@ -1391,6 +1399,10 @@ def main(argv=None):
     applog.setup("gui")
     from ..core import library
 
+    from .updater import apply_pending_at_start
+
+    if apply_pending_at_start():  # "Install updates automatically": the new version starts instead of this one
+        return
     T.set_scale(T.scale_from_setting(library.setting("ui.scale", "auto")))  # before any view is built
     applog.log.info("ui scale %.2f", T.SCALE)
     ft.run(lambda page: FramePortApp(page), assets_dir=assets_dir())

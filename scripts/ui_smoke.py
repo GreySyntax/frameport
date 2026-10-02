@@ -44,6 +44,7 @@ def main() -> int:
     ap.add_argument("--no-test", action="store_true", help="with --frame: skip the launch-test job")
     ap.add_argument("--scale", type=float, default=1.0, help="UI scale to render at (e.g. 1.5)")
     ap.add_argument("--viewport", default="1280x820", help="browser size, e.g. 2560x1440")
+    ap.add_argument("--update", action="store_true", help="pretend a new FramePort release exists (update UI)")
     args = ap.parse_args()
     from frameport.ui import theme
 
@@ -60,6 +61,15 @@ def main() -> int:
         # last: the right-click menu stays open over whatever comes next
         steps.append(("library-menu", lambda a: (a.page.pop_dialog(), a.navigate(0), time.sleep(3),
                                                  a.library_view.open_menu(game))))
+    if args.update:
+        from frameport import updates
+
+        fake = updates.Update(version="9.9.9", tag="v9.9.9", page="https://example.invalid", asset=None, asset_url=None,
+                              sums_url=None, wheel_url=None,
+                              notes="## What's new\n- Self-update test release\n- **Bold** and `code` in notes")
+        steps += [("update-banner", lambda a: (a.updater._set(fake), a.navigate(0))),
+                  ("update-dialog", lambda a: a.updater.show_dialog()),
+                  ("update-settings", lambda a: (a.page.pop_dialog(), a.navigate(2)))]
     if args.frame:
         from frameport.frame.connection import parse_target
 

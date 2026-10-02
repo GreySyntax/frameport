@@ -13,7 +13,9 @@ import requests
 
 from .paths import user_data_dir
 
-USER_AGENT = "FramePort/0.1 (+https://github.com/ovrport/app compatible)"
+from .. import REPO_URL, __version__
+
+USER_AGENT = f"FramePort/{__version__} (+{REPO_URL})"
 _session = requests.Session()
 _session.headers["User-Agent"] = USER_AGENT
 

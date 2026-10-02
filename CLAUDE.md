@@ -111,6 +111,25 @@ Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
     chars). "Share working config" → `working-config.yml` issue → maintainer label `catalog-accepted` →
     `catalog-from-issue.yml` workflow (`scripts/catalog_from_issue.py` validates) opens a catalog PR. App log:
     `core/applog.py` (`<data>/logs/app.log`, finished GUI jobs in `<data>/logs/jobs/`).
+  - Self-update (docs/ARCHITECTURE.md "Self-update", docs/INSTALL.md "Updating"): `_version.py` = the only version
+    (`frameport.__version__`; pyproject reads it via hatch `dynamic`; app log, diagnostics, User-Agent, Settings use
+    it — never `importlib.metadata`, bundles have no dist-info). `updates.py` (no Flet): `check()` = GitHub
+    releases/latest via `cached_json("app-release.json")`, 6 h, skips drafts/prereleases and the user's skipped version
+    (settings `update.last_check`/`skipped`/`auto_check`/`auto_install`/`cli_hint`; env `FRAMEPORT_NO_UPDATE_CHECK`);
+    `install_kind()` = `bundle` (psutil exe path → FramePort.exe's folder / FramePort.app / FramePort/FramePort),
+    `source` (`.git` checkout: `git pull --ff-only` + `uv sync`, refused on a dirty tree), `wheel` (`uv tool`/pipx/pip
+    reinstall of the release's `.whl`); `prepare()` → `<data>/updates/<ver>/` (SHA256SUMS.txt required + checked,
+    layout checked, Windows: the new FramePort.exe must have the running exe's Authenticode signer when that one is
+    signed, `ready.json`); `apply()` writes + starts detached `apply.ps1`/`apply.sh` (wait for pid → Windows: copy over,
+    replaced files kept in `updates/<ver>/previous` because the zip has no top folder; macOS/Linux: mv to `.old` + swap,
+    rollback, `xattr -dr` quarantine → relaunch; `<data>/logs/update.log`). `ui/updater.py`: background check (10 s,
+    then 6 h), sidebar card (hidden control, toggled), Library bar (`library_bar`), notes dialog (`ft.Markdown`), job
+    `app-update` that restarts only when no other job is active, `apply_pending_at_start()` in `main()` for
+    "Install updates automatically"; Settings → Updates. CLI: `--version`, `frameport update [--check (exit 10)]
+    [--yes]`, once-a-day stderr hint read from the cache only (`refresh_cache()` in a daemon thread writes no
+    settings, to avoid read-modify-write races). `scripts/update_smoke.py <archive>` runs the real extract + swap script
+    (no relaunch) — CI runs it on all three OS with the archive it just built.
+    Verified: Linux + Windows (native, signer check) smoke with the v0.2.0 bundles; macOS only via the CI smoke.
 - `agent/frameport_agent.py` — runs **on the Frame** (python3 stdlib only), JSON over SSH. Owns the install layout,
   launch.sh template, Steam shortcuts (binary VDF), launch tests. Bump `AGENT_VERSION` when changing it.
 - `bootstrap/bootstrap.sh` — one-time Frame setup served by the pairing server (sshd, app key, avahi service, Lepton).
@@ -138,7 +157,7 @@ Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattr
 - Device checks: `frameport test <pkg>` / `frameport parity-device --results <parity.json> --baseline <launch.txt>
   [--test-only]`; the pre-FramePort baseline is `PATCHED/_known-good-2026-09-28/_frame-state/baseline-launch.txt`.
 - GUI smoke test: `uv pip install flet-web playwright && playwright install chromium`, then
-  `FRAMEPORT_HOME=<test dir> python scripts/ui_smoke.py --out <dir> [--game <pkg>] [--frame steamos@<host>]` and look
+  `FRAMEPORT_HOME=<test dir> python scripts/ui_smoke.py --out <dir> [--game <pkg>] [--frame steamos@<host>] [--update]` (`--update` = fake release: banner, dialog, Settings → Updates) and look
   at the PNGs. Flet 1.0 notes: `ft.run` must own the main thread; background work via `page.run_thread`; FilePicker is
   awaited (`await ft.FilePicker().get_directory_path()`); dialogs via `page.show_dialog/pop_dialog`; running from
   source needs `flet-desktop` (declared) and web mode needs `flet-web`.
@@ -306,7 +325,13 @@ crash): use PC versions.
 ## Releases, CI, GitHub
 Public repo `github.com/spoopyghosty0/frameport` (branch `main`). Push a `v*` tag → CI (`.github/workflows/build.yml`)
 tests, builds Windows x64 / macOS arm64 / Linux x64 bundles, signs, attests and publishes a GitHub Release
-(`FramePort-*.zip/.tar.gz`, `SHA256SUMS.txt`, `FramePort-selfsigned.cer`, notes from `docs/INSTALL.md`). v0.1.0 exists.
+(`FramePort-*.zip/.tar.gz`, the CLI wheel `frameport-<ver>-py3-none-any.whl`, `SHA256SUMS.txt`,
+`FramePort-selfsigned.cer`; notes = "What's new" from the annotated tag message + `docs/INSTALL.md` from "First launch").
+Installed apps find the release themselves (self-update), so the notes are what users see in the update dialog.
+- **Release checklist:** bump `src/frameport/_version.py` (the only version; `scripts/package.py` fails a tag build
+  whose tag ≠ `v<_version>`), commit, `git tag -a vX.Y.Z -m "FramePort X.Y.Z" -m "<What's new, Markdown bullets>"`,
+  push the commit and the tag. Never publish a release without its `SHA256SUMS.txt` (the updater refuses it) and keep
+  the asset names (`updates.ASSETS`) — renaming them breaks updating for every installed copy.
 - Signing is **free/self-signed by the owner's choice** (no paid certs, no SignPath): Windows binaries are signed with
   a self-signed "FramePort (self-signed)" code-signing cert (RSA 3072, valid to 2031, SHA-256
   `4E:12:98:91:62:C0:E4:50:FB:65:1D:34:BB:73:00:09:7B:78:BE:88:5C:A7:6C:42:23:46:9B:92:A1:59:A7:6E`); secrets

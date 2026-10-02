@@ -145,6 +145,7 @@ class LibraryView:
         self.select_mode = False
         self.sel_bar = ft.Container(visible=False)
         self.resume_bar = ft.Container(visible=False)
+        self.update_bar = ft.Container(visible=False)  # "FramePort x.y is available" (ui/updater.py)
         self.games: list[dict] = []
         self._lock = threading.Lock()
         self._search_timer: threading.Timer | None = None
@@ -187,7 +188,7 @@ class LibraryView:
             ft.Row([ft.Column([ft.Text("Library", size=T.T_TITLE, weight=ft.FontWeight.W_700, color=T.TEXT,
                                        no_wrap=True), self.subtitle], spacing=T.px(2), expand=True), self.search,
                     self.update_all_btn, self.rescan_btn, self.select_btn, add], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=T.S3),
-            self.resume_bar, self.hint, self.filters, self.body, self.sel_bar,
+            self.update_bar, self.resume_bar, self.hint, self.filters, self.body, self.sel_bar,
         ], expand=True, spacing=T.S4)
         # skeleton cards until the first batch arrives
         n = min(len(library.games()), 15)
@@ -198,6 +199,7 @@ class LibraryView:
     def mount(self) -> ft.Control:
         self._update_hint()
         self.update_resume_bar()
+        self.update_update_bar()
         self._update_sel_bar()
         return self.root
 
@@ -213,6 +215,7 @@ class LibraryView:
             pc = set(local_installs())
             tw = twins(games)
             self._update_header(games, pc)
+            self.update_update_bar()
             if not games:
                 self.body.content = C.empty_state(
                     ft.Icons.LIBRARY_ADD_ROUNDED, "Add your games",
@@ -296,6 +299,14 @@ class LibraryView:
         ], spacing=T.S2), bgcolor=T.SURFACE_2, border_radius=T.RADIUS, padding=ft.Padding(T.S4, T.S2, T.S2, T.S2),
             border=ft.Border.all(1, T.ACCENT))
         C.update(self.sel_bar, self.select_btn)
+
+    def update_update_bar(self) -> None:
+        from ..updater import library_bar
+
+        bar = library_bar(self.app)
+        self.update_bar.visible = bar is not None
+        self.update_bar.content = bar
+        C.update(self.update_bar)
 
     def update_resume_bar(self) -> None:
         """Installs that didn't finish (cancelled, failed, or the app closed): resume them from here."""

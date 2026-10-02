@@ -42,11 +42,95 @@ app.add_typer(pc_app, name="pc")
 app.add_typer(diag_app, name="diag")
 
 
+def _show_version(value: bool):
+    if value:
+        from . import __version__
+
+        typer.echo(f"FramePort {__version__}")
+        raise typer.Exit()
+
+
 @app.callback()
-def _setup():
+def _setup(ctx: typer.Context,
+           version: bool = typer.Option(False, "--version", is_eager=True, callback=_show_version,
+                                        help="Show the FramePort version and exit.")):
     from .core import applog
 
     applog.setup("cli")
+    if ctx.invoked_subcommand != "update":
+        _update_hint()
+
+
+def _update_hint() -> None:
+    """At most once a day: a one-line note when a newer FramePort release exists. Never waits for the network: it
+    reads what the last check cached and refreshes a stale cache in the background for next time."""
+    import threading
+    import time
+
+    from . import updates
+
+    if updates.checks_disabled():
+        return
+    age = updates.cache_age()
+    if age is None or age > updates.CHECK_EVERY:
+        threading.Thread(target=updates.refresh_cache, daemon=True).start()
+    up = updates.cached_update()
+    today = time.strftime("%Y-%m-%d")
+    if up and library.setting("update.cli_hint") != today:
+        library.set_setting("update.cli_hint", today)
+        typer.echo(f"FramePort {up.version} is available (you have {_version()}): run \"frameport update\"", err=True)
+
+
+def _version() -> str:
+    from . import __version__
+
+    return __version__
+
+
+@app.command("update")
+def update_cmd(check: bool = typer.Option(False, "--check", help="Only say whether a newer version exists."),
+               yes: bool = typer.Option(False, "--yes", "-y", help="Don't ask before updating.")):
+    """Update FramePort to the latest release (the app, a `uv tool`/pip install, or a source checkout)."""
+    import subprocess
+
+    from . import updates
+
+    up = updates.check(force=True)
+    if not up:
+        typer.echo(f"FramePort {_version()} is the latest version.")
+        return
+    typer.echo(f"FramePort {up.version} is available (you have {_version()}). {up.page}")
+    notes = [line for line in up.notes.strip().splitlines()][:25]
+    if notes:
+        typer.echo("\n" + "\n".join("  " + line for line in notes) + "\n")
+    if check:
+        raise typer.Exit(10)  # scripts: 10 = an update is available
+    kind = updates.install_kind()
+    if kind == "source" and updates.source_is_dirty():
+        typer.echo("This source checkout has uncommitted changes: commit or stash them first.", err=True)
+        raise typer.Exit(1)
+    if not yes and not typer.confirm(f"Update now ({kind})?", default=True):
+        raise typer.Exit()
+    if kind == "bundle":
+        rep = printing_reporter()
+        app_dir = updates.prepare(up, rep)
+        updates.apply(app_dir, relaunch=False)
+        typer.echo(f"FramePort {up.version} installs as soon as this command exits.")
+        return
+    cmds = updates.upgrade_commands(up, kind)
+    if kind == "wheel" and sys.platform == "win32":
+        # the running frameport.exe can't be replaced while it runs: finish the upgrade right after this exits
+        line = " && ".join(subprocess.list2cmdline(c) for c in cmds)
+        subprocess.Popen(f'cmd /c "timeout /t 2 /nobreak >nul && {line}"', creationflags=0x00000008 | 0x00000200,
+                         close_fds=True)
+        typer.echo(f"Updating to FramePort {up.version} in the background: run `frameport --version` in a few seconds.")
+        return
+    for cmd in cmds:
+        typer.echo("$ " + " ".join(cmd))
+        if subprocess.call(cmd):
+            typer.echo("Update failed.", err=True)
+            raise typer.Exit(1)
+    typer.echo(f"Updated to FramePort {up.version}.")
 
 
 def _target(frame: Optional[str], password: Optional[str] = None, to: str = "frame"):

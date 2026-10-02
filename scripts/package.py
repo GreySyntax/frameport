@@ -11,7 +11,9 @@ downloads and manages them on first run (Tools page), so bundles stay small and 
 from __future__ import annotations
 
 import argparse
+import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -20,6 +22,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "src/frameport/_data"
 TARGET = {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}[platform.system()]
+
+
+def version() -> str:
+    text = (ROOT / "src/frameport/_version.py").read_text(encoding="utf-8")
+    return re.search(r'__version__\s*=\s*"([^"]+)"', text).group(1)
+
+
+def check_tag() -> None:
+    """A release build (tag vX.Y.Z) must carry that version, or the app's update check would compare wrongly."""
+    ref = os.environ.get("GITHUB_REF_NAME", "")
+    if os.environ.get("GITHUB_REF_TYPE") == "tag" and ref.startswith("v") and ref[1:] != version():
+        raise SystemExit(f"tag {ref} doesn't match src/frameport/_version.py ({version()}): bump it first")
 
 
 def stage_data():
@@ -34,6 +48,8 @@ def main() -> int:
     ap.add_argument("--pyinstaller", action="store_true")
     ap.add_argument("--keep-data", action="store_true", help="leave src/frameport/_data after building")
     args = ap.parse_args()
+    check_tag()
+    print(f"FramePort {version()}")
     stage_data()
     try:
         if args.pyinstaller:
