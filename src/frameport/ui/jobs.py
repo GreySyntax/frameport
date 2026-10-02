@@ -12,7 +12,10 @@ from dataclasses import dataclass, field
 
 from ..core import applog
 from ..core.events import Cancelled, Event, Reporter
-from ..errors import explain
+from ..errors import explain, is_connection_error
+from ..i18n import tr
+
+MAX_FRAME_RETRIES = 5  # a job that keeps losing the Frame fails after this many tries
 
 _ids = itertools.count(1)
 
@@ -42,6 +45,8 @@ class Job:
     log_path: str | None = None  # full launch log saved by a launch test
     summary: dict | None = None  # launch-test summary (install/test jobs)
     to: str = "frame"
+    needs_frame: bool = False  # uses the Frame: a lost connection pauses the queue instead of failing the job
+    retries: int = 0  # times this job went back to the queue after losing the Frame
 
     @property
     def active(self) -> bool:
@@ -87,6 +92,7 @@ class JobManager:
         self._listeners: list[Callable[[Job | None], None]] = [on_change] if on_change else []
         self._throttle = throttle
         self._last = 0.0
+        self.paused: str | None = None  # why the queue waits (e.g. "frame": the Frame dropped off the network)
         self._worker = threading.Thread(target=self._loop, daemon=True, name="frameport-jobs")
         self._worker.start()
 
@@ -102,6 +108,21 @@ class JobManager:
             self._cv.notify()
         self._notify(job, force=True)
         return job
+
+    def pause(self, reason: str) -> None:
+        with self._cv:
+            self.paused = reason
+        self._notify(None, force=True)
+
+    def resume(self) -> None:
+        with self._cv:
+            self.paused = None
+            self._cv.notify()
+        self._notify(None, force=True)
+
+    def has_frame_work(self) -> bool:
+        """A job that uses the Frame is running or waiting (keep the Frame awake meanwhile)."""
+        return any(j.active and j.needs_frame for j in self.jobs)
 
     def current(self) -> Job | None:
         return next((j for j in self.jobs if j.state == "running"), None)
@@ -130,6 +151,8 @@ class JobManager:
         with self._cv:
             if job.state == "queued":
                 self._queue.remove(job)
+                if not self._queue:
+                    self.paused = None  # nothing left to wait for
                 job.state, job.finished = "cancelled", time.time()
                 job.version += 1
         job.cancel()
@@ -144,6 +167,20 @@ class JobManager:
         return False
 
     # ------------------------------------------------------------------ internals
+    def _wait_for_frame(self, job: Job, exc: BaseException) -> None:
+        """The Frame went away mid-job: put the job back at the front and pause until it's reachable again (the
+        app resumes the queue after reconnecting). Uploads continue where they stopped."""
+        applog.log.info("job %r: lost the Frame (%s: %s); queue paused", job.title, type(exc).__name__, exc)
+        with self._cv:
+            job.retries += 1
+            job.state, job.started, job.fraction, job.speed = "queued", None, None, ""
+            job.stage = tr("Waiting for the Frame")
+            job.log.append(f"lost the Frame ({type(exc).__name__}: {exc}); waiting to continue")
+            job.version += 1
+            self._queue.insert(0, job)
+            self.paused = "frame"
+        self._notify(job, force=True)
+
     def _event(self, job: Job, ev: Event) -> None:
         job._on_event(ev)
         self._notify(job, force=ev.kind in ("stage", "check"))
@@ -162,7 +199,7 @@ class JobManager:
     def _loop(self) -> None:
         while True:
             with self._cv:
-                while not self._queue:
+                while not self._queue or self.paused:
                     self._cv.wait()
                 job = self._queue.pop(0)
                 job.state, job.started = "running", time.time()
@@ -174,6 +211,10 @@ class JobManager:
             except Cancelled:
                 job.state = "cancelled"
             except Exception as exc:  # noqa: BLE001
+                if job.needs_frame and is_connection_error(exc) and job.retries < MAX_FRAME_RETRIES \
+                        and not job.reporter.cancelled.is_set():
+                    self._wait_for_frame(job, exc)
+                    continue
                 traceback.print_exc()
                 applog.log.exception("job %r failed", job.title)
                 job.state, job.error = "failed", explain(exc)

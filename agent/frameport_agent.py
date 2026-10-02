@@ -33,7 +33,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 29
+AGENT_VERSION = 30
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1819,6 +1819,29 @@ def cmd_finalize_pcvr(args):
     with open(os.path.join(anchor, "deployment.json"), "w") as f:
         json.dump(dep, f, indent=2)
     return {"ok": True, "base": base, "appid": appid, "moved_files": moved, "proton": tool["name"]}
+
+
+AWAKE_UNIT = "frameport-awake"
+
+
+def cmd_keep_awake(args):
+    """Keep the Frame from going idle/asleep while FramePort installs games (on=False ends it). An inhibitor lock held
+    by a `sleep` in its own user unit, so it outlives this SSH command and ends by itself after `minutes` if FramePort
+    disappears. Blocking sleep needs a local session (polkit inhibit-block-sleep: auth_admin_keep for others), so
+    when logind refuses it, idle alone is blocked (allowed for any user)."""
+    run(["systemctl", "--user", "stop", f"{AWAKE_UNIT}.service"])
+    run(["systemctl", "--user", "reset-failed", f"{AWAKE_UNIT}.service"])
+    if not args.get("on", True):
+        return {"awake": False}
+    seconds = int(min(max(float(args.get("minutes", 60)), 1), 240) * 60)
+    for what in ("idle:sleep", "idle"):
+        run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={AWAKE_UNIT}", "systemd-inhibit",
+             f"--what={what}", "--who=FramePort", "--why=Installing games", "--mode=block", "sleep", str(seconds)])
+        time.sleep(0.7)  # a refused lock ends the unit right away
+        if run(["systemctl", "--user", "is-active", f"{AWAKE_UNIT}.service"]).stdout.strip() == "active":
+            return {"awake": True, "what": what, "seconds": seconds}
+        run(["systemctl", "--user", "reset-failed", f"{AWAKE_UNIT}.service"])
+    return {"awake": False}
 
 
 def cmd_set_settings(args):

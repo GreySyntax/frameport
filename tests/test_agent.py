@@ -680,3 +680,25 @@ def test_launcher_exports_multiline_env_values(monkeypatch, tmp_path):
     out = subprocess.run(["bash", "-c", f'export {line}\nprintf %s "$LEPTON_GFXRECON_FP_PROPS"'],
                          capture_output=True, text=True, check=True).stdout
     assert out == "0\nqemu.hw.mainkeys=1"
+
+
+def test_keep_awake_falls_back_to_idle_when_sleep_is_refused(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    calls, started = [], []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[0] == "systemd-run":
+            started.append(next(c for c in cmd if c.startswith("--what=")))
+        active = cmd[:3] == ["systemctl", "--user", "is-active"] and started and started[-1] == "--what=idle"
+        return SimpleNamespace(returncode=0, stdout="active\n" if active else "failed\n", stderr="")
+
+    monkeypatch.setattr(a, "run", fake_run)
+    monkeypatch.setattr(a.time, "sleep", lambda s: None)
+    r = a.cmd_keep_awake({"on": True, "minutes": 30})
+    assert r == {"awake": True, "what": "idle", "seconds": 1800} and started == ["--what=idle:sleep", "--what=idle"]
+    run_cmd = next(c for c in calls if c[0] == "systemd-run")
+    assert "systemd-inhibit" in run_cmd and run_cmd[-2:] == ["sleep", "1800"]
+    calls.clear()
+    assert a.cmd_keep_awake({"on": False}) == {"awake": False}
+    assert calls and all(c[0] == "systemctl" for c in calls)  # only stops the unit

@@ -21,6 +21,8 @@ class FrameLeptonTarget(Target):
         self.label = target.label
 
     def connect(self) -> FrameLeptonTarget:
+        if self.frame.client is not None and not self.frame.alive():
+            self.frame.close()  # the link died (Frame asleep, Wi-Fi gone): open a fresh one
         if self.frame.client is None:
             self.frame.connect()
         return self

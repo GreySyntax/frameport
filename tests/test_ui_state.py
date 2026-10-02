@@ -349,3 +349,69 @@ def test_activity_pins_the_running_job_above_a_long_queue():
     panel.refresh(update=False)
     assert len(panel.pinned.controls) == 1  # the running job, outside the scrolling list
     assert panel.list.controls[0].controls[0].value == "Waiting (40)"
+
+
+def test_queue_waits_for_the_frame_instead_of_failing_every_install():
+    """A job that loses the Frame goes back to the front and the queue pauses; resume() continues it."""
+    import time
+
+    from paramiko.ssh_exception import NoValidConnectionsError
+
+    from frameport.ui.jobs import Job, JobManager
+
+    jm = JobManager(save_logs=False)
+    runs, online = [], {"up": False}
+
+    def install(name):
+        def run(job):
+            runs.append(name)
+            if not online["up"]:
+                raise NoValidConnectionsError({("10.0.0.9", 22): OSError("down")})
+            return "ok"
+        return run
+
+    a = jm.submit(Job("A", install("A"), "a", "install", needs_frame=True))
+    b = jm.submit(Job("B", install("B"), "b", "install", needs_frame=True))
+    for _ in range(200):
+        if jm.paused:
+            break
+        time.sleep(0.01)
+    assert jm.paused == "frame" and a.state == "queued" and b.state == "queued" and runs == ["A"]
+    assert jm.has_frame_work()
+    online["up"] = True
+    jm.resume()
+    assert jm.wait_idle(5) and a.state == b.state == "done" and runs == ["A", "A", "B"]
+    assert a.retries == 1 and not jm.has_frame_work()
+    pc = jm.submit(Job("PC", install("PC"), "p", "install"))  # doesn't use the Frame: fails normally
+    online["up"] = False
+    jm.wait_idle(5)
+    assert pc.state in ("done", "failed") and not jm.paused
+
+
+def test_free_space_is_checked_before_queueing(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from frameport.core import library
+    from frameport.ui.app import FramePortApp
+
+    apk = tmp_path / "g.apk"
+    apk.write_bytes(b"x" * 1000)
+    games = {p: {"package": p, "title": p, "apk": str(apk), "data_bytes": 3 * 2**30, "analysis": {},
+                 "recipe": {"patches": {}}} for p in ("com.a", "com.b")}
+    monkeypatch.setattr(library, "game", games.get)
+    dialogs, submitted = [], []
+    app = object.__new__(FramePortApp)
+    app.page = SimpleNamespace(show_dialog=dialogs.append, pop_dialog=lambda: None)
+    app.jobs = SimpleNamespace(busy_with=lambda p: None)
+    app.library_view, app.toast, app._title = None, lambda *a, **k: None, lambda p: p
+    app._submit_install = lambda p, to: submitted.append(p)
+    app.frame_info = {"free_bytes": 5 * 2**30, "installed": [{"package": "com.b"}]}  # com.b: update, no data
+    assert app.upload_estimate(["com.a", "com.b"]) == 3 * 2**30 + 2000
+    app.install_many(["com.a", "com.b"], "frame")
+    assert submitted == ["com.a", "com.b"] and not dialogs  # fits (5 GiB free, 1 GiB spare)
+    app.frame_info["free_bytes"] = 3 * 2**30
+    submitted.clear()
+    app.install_many(["com.a", "com.b"], "frame")
+    assert not submitted and len(dialogs) == 1  # asks first
+    dialogs[0].actions[-1].on_click(None)  # Install anyway
+    assert submitted == ["com.a", "com.b"] and not app._asking

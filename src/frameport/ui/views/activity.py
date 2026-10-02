@@ -102,6 +102,8 @@ class ActivityPanel:
                     tiles.append(self._queue_header(queued))
                 tiles.append(cached[1])
         self._tiles = {j.id: self._tiles[j.id] for j in jobs}
+        if self.app.jobs.paused == "frame":
+            pinned.insert(0, self._paused_notice())
         self.pinned.controls = pinned
         if not tiles and not pinned:
             tiles = [ft.Container(C.body(tr("Nothing running. Installs, launch tests and downloads show up here."),
@@ -109,6 +111,15 @@ class ActivityPanel:
         self.list.controls = tiles
         if update:
             C.update(self.root)
+
+    def _paused_notice(self) -> ft.Control:
+        return C.callout(ft.Column([
+            C.body(tr("Waiting for your Frame"), T.TEXT, weight=ft.FontWeight.W_600),
+            C.body(tr("It can't be reached (asleep, turned off or out of Wi-Fi). Wake it or turn it on: FramePort "
+                      "continues by itself, and uploads pick up where they stopped."), T.TEXT_2),
+            C.secondary(tr("Try now"), ft.Icons.REFRESH_ROUNDED,
+                        lambda e: self.app.run_bg(lambda: self.app.retry_frame())),
+        ], spacing=T.S2, horizontal_alignment=ft.CrossAxisAlignment.START), "warn", ft.Icons.WIFI_OFF_ROUNDED)
 
     def _queue_header(self, queued: list[Job]) -> ft.Control:
         def cancel_all(e):

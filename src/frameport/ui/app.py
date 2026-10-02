@@ -188,6 +188,9 @@ class FramePortApp:
             self._act_bar.value = cur.fraction
             more = tr(" · {queued} more queued").format(queued=queued) if queued else ""
             self._act_stage.value = (cur.stage or tr("Starting…")) + more
+        elif self.jobs.paused == "frame":
+            self._act_idle_text.value = tr("Paused: waiting for your Frame")
+            self._act_idle_text.color = T.WARN
         else:
             recent = next((j for j in self.jobs.recent(1)), None)
             self._act_idle_text.value = tr("No activity") if not recent else \
@@ -325,6 +328,7 @@ class FramePortApp:
     def _on_job(self, job: Job | None) -> None:
         self._refresh_sidebar()
         self.activity.refresh()
+        self._keep_frame_awake()
         if job and job.state in ("done", "failed", "cancelled") and job.finished and not getattr(job, "_handled", 0):
             job._handled = 1
             if job.kind == "app-update" and job.state != "done":
@@ -367,8 +371,11 @@ class FramePortApp:
             job._card_marked = 1  # "Working…" badge on the card
             self.refresh_view()
 
-    def submit(self, title: str, run, package: str | None = None, kind: str = "task", open_panel: bool = False) -> Job:
-        job = self.jobs.submit(Job(title, run, package, kind))
+    def submit(self, title: str, run, package: str | None = None, kind: str = "task", open_panel: bool = False,
+               to: str = "frame") -> Job:
+        # jobs that use the Frame wait for it (queue paused) when it drops off the network, instead of failing
+        needs_frame = kind in ("install", "test", "uninstall", "tool-frame") and to == "frame"
+        job = self.jobs.submit(Job(title, run, package, kind, to=to, needs_frame=needs_frame))
         if open_panel:
             self.show_activity(True)
         elif self.route[0] == "game":
@@ -560,6 +567,26 @@ class FramePortApp:
         return None
 
     # ---------------------------------------------------------------- queueing several installs
+    def upload_estimate(self, pkgs: list[str], to: str = "frame") -> int:
+        """Bytes these installs add on the target: the APK, plus the game's data unless it's installed already
+        (updates only re-send what changed)."""
+        info = getattr(self, "frame_info", None) or {}
+        installed = {d.get("package") for d in info.get("installed", [])} if to == "frame" else set()
+        total = 0
+        for p in pkgs:
+            g = library.game(p) or {}
+            if g.get("kind") == "rift":
+                total += 0 if p in installed else int((g.get("analysis") or {}).get("extra", {}).get("data_bytes") or 0)
+                continue
+            apk = (g.get("build") or {}).get("apk") or g.get("apk")
+            try:
+                total += Path(apk).stat().st_size if apk else 0
+            except OSError:
+                pass
+            if p not in installed:
+                total += int(g.get("data_bytes") or 0)
+        return total
+
     def install_many(self, pkgs: list[str], to: str = "frame", allow_blocked: bool = False,
                      then: Callable[[], None] | None = None) -> None:
         """Queue installs. Everything that needs a decision is asked first (which program starts each Rift game, one
@@ -674,6 +701,25 @@ class FramePortApp:
                          C.primary(tr("Install"), on_click=pick(ok))]))
 
         def go(final: list[str]):
+            need, free = self.upload_estimate(final, to), (getattr(self, "frame_info", None) or {}).get("free_bytes")
+            if to == "frame" and free is not None and need > free - 2**30:
+                # warn before queueing: the installs would fail one by one once the Frame is full
+                pick = C.one_choice()
+                self.page.show_dialog(ft.AlertDialog(
+                    title=ft.Text(tr("Not enough space on the Frame"), weight=ft.FontWeight.W_600),
+                    bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS), modal=True,
+                    content=ft.Container(C.body(tr(
+                        "These installs need about {need} on the Frame, and it has {free} free. Remove games you "
+                        "don't play (or use Free up space on the Steam Frame page), or install fewer at once.")
+                        .format(need=fmt_size(need), free=fmt_size(max(free, 0)))), width=T.px(480)),
+                    on_dismiss=pick(closed),
+                    actions=[C.ghost(tr("Cancel"), on_click=pick(cancel)),
+                             C.secondary(tr("Install anyway"), on_click=pick(lambda e: (self.page.pop_dialog(),
+                                                                                         queue(final))))]))
+                return
+            queue(final)
+
+        def queue(final: list[str]):
             for p in final:
                 self._submit_install(p, to)
             if len(final) > 1:
@@ -829,10 +875,7 @@ class FramePortApp:
                     .format(get=g.get('title'), where=where))
         job_title = tr("Install {title} on {value}").format(title=self._title(pkg),
                                                              value='Frame' if to == 'frame' else 'this PC')
-        job = self.submit(job_title, run, pkg,
-                          "install")
-        job.to = to
-        return job
+        return self.submit(job_title, run, pkg, "install", to=to)
 
     def updatable(self) -> list[tuple[str, str]]:
         """[(package, "frame" | "pc")] installs with an update ready (a newer build or changed patch settings)."""
@@ -900,7 +943,7 @@ class FramePortApp:
             job.summary, job.to, job.log_path = summary, to, summary.get("log_path")
             return tr("{title}: launch test {verdict} (furthest: {value})").format(
                 title=title, verdict=summary['verdict'], value=summary.get('milestone') or '—')
-        return self.submit(tr("Launch test: {title}").format(title=title), run, pkg, "test")
+        return self.submit(tr("Launch test: {title}").format(title=title), run, pkg, "test", to=to)
 
     def update_steam_art(self, pkg: str) -> Job:
         """Send the game's current artwork to its Steam entry on the Frame (Steam restarts once)."""
@@ -1212,7 +1255,10 @@ class FramePortApp:
         from ..frame.connection import saved_targets
 
         while True:
-            time.sleep(POLL_SECONDS)
+            time.sleep(10 if self.jobs.paused else POLL_SECONDS)
+            if self.jobs.paused == "frame":
+                self.retry_frame(quiet=True)
+                continue
             if self.jobs.current():
                 continue  # the job is using the connection
             try:
@@ -1222,6 +1268,49 @@ class FramePortApp:
                     self.connect(saved_targets()[0], quiet=True)
             except Exception:  # noqa: BLE001
                 traceback.print_exc()
+
+    def retry_frame(self, quiet: bool = False) -> bool:
+        """The queue waits for the Frame: reconnect, and continue the queue if it answers."""
+        target = self.target
+        if target is None:
+            return False
+        try:
+            target.connect()
+            info = target.describe()
+        except Exception as exc:  # noqa: BLE001 - still away
+            if not quiet:
+                self.toast(explain(exc), error=True)
+            return False
+        self.frame_info, self.frame_state = info, "connected"
+        self._awake_at = 0.0  # the lock went away with the old connection's Frame session: take it again
+        self.jobs.resume()
+        self.toast(tr("Your Frame is back: continuing"))
+        self.refresh_view()
+        return True
+
+    def _keep_frame_awake(self) -> None:
+        """Hold a wake lock on the Frame while jobs that use it run or wait (renewed every 30 min; it expires on its
+        own after an hour if FramePort goes away), release it when they're done."""
+        want = self.jobs.has_frame_work() and self.target is not None and self.frame_state == "connected" \
+            and not self.jobs.paused
+        now = time.time()
+        held = getattr(self, "_awake_at", 0.0)
+        if want == bool(held) and (not want or now - held < 1800) or getattr(self, "_awake_busy", False):
+            return
+        self._awake_busy = True
+        target = self.target
+
+        def work():
+            try:
+                r = target.frame.agent("keep_awake", on=want, minutes=60)
+                self._awake_at = time.time() if want and r.get("awake") else 0.0
+                applog.log.info("Frame wake lock: %s", r)
+            except Exception as exc:  # noqa: BLE001 - only a convenience
+                applog.log.info("Frame wake lock failed: %s", exc)
+                self._awake_at = 0.0 if not want else time.time()  # don't retry on every event
+            finally:
+                self._awake_busy = False
+        threading.Thread(target=work, daemon=True).start()
 
     def connect(self, target, password=None, quiet=False):
         from ..frame.connection import save_target
