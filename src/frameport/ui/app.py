@@ -562,6 +562,23 @@ class FramePortApp:
         the installs are queued or there was nothing to queue (not when the user cancels)."""
         from .views.exe_dialog import show_exe_dialog
 
+        if getattr(self, "_asking", False):  # another install's questions are still open
+            self.toast(tr("Answer the open install question first"))
+            return
+        self._asking = True
+
+        def finished() -> None:
+            self._asking = False
+            if then:
+                then()
+
+        def cancel(e=None) -> None:
+            self._asking = False
+            self.page.pop_dialog()
+
+        def closed(e=None) -> None:  # closed without a button (Esc): like Cancel
+            self._asking = False
+
         games = [library.game(p) for p in pkgs]
         games = [g for g in games if g and not self.jobs.busy_with(g["package"])]
         skipped = [g for g in games if to == "pc" and g.get("kind") != "rift" or
@@ -571,8 +588,7 @@ class FramePortApp:
         if not games:
             why = tr(" ({len} can't be installed there)").format(len=len(skipped)) if skipped else ""
             self.toast(tr("Nothing to install") + why)
-            if then:
-                then()
+            finished()
             return
         need_exe = [g["package"] for g in games if g.get("kind") == "rift" and g.get("exe_confirmed") is False]
 
@@ -592,6 +608,7 @@ class FramePortApp:
                 return ask_license()
             boxes = {g["package"]: ft.Checkbox(label=self._title(g["package"]), value=False, active_color=T.ACCENT)
                      for g in oculus}
+            pick = C.one_choice()
 
             def ok(e):
                 nonlocal games
@@ -601,8 +618,7 @@ class FramePortApp:
                 if not games:
                     self.toast(tr("Nothing to install on the Frame — "
                                   "those Oculus games need PC mode (SteamVR + Revive)."))
-                    if then:
-                        then()
+                    finished()
                     return
                 ask_license()
             self.page.show_dialog(ft.AlertDialog(
@@ -611,10 +627,12 @@ class FramePortApp:
                     C.body(tr("They're Oculus games that need Revive to reach VR, and Revive can't run on the Frame. "
                            "Play them on this PC instead (Install on this PC — SteamVR + Revive). Tick any you still "
                            "want to put on the Frame to experiment (they'll likely run flat or crash).")),
-                    *boxes.values()], spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=T.px(520)),
+                    *boxes.values()], spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=T.px(520),
+                    height=T.px(min(130 + 36 * len(boxes), 480))),  # fits the list; scrolls when long
                 bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
-                actions=[C.ghost(tr("Cancel"), on_click=lambda e: self.page.pop_dialog()),
-                         C.primary(tr("Continue"), on_click=ok)]))
+                modal=True, on_dismiss=pick(closed),
+                actions=[C.ghost(tr("Cancel"), on_click=pick(cancel)),
+                         C.primary(tr("Continue"), on_click=pick(ok))]))
 
         def ask_license():
             from ..core import winhost
@@ -626,6 +644,7 @@ class FramePortApp:
             frame = to == "frame"
             boxes = {g["package"]: ft.Checkbox(label=self._title(g["package"]), value=not frame,
                                                active_color=T.ACCENT) for g in sdk}
+            pick = C.one_choice()
 
             def ok(e):
                 self.page.pop_dialog()
@@ -641,10 +660,12 @@ class FramePortApp:
                            tr("They use the Oculus Platform SDK, which comes with the Meta Horizon (Oculus) app — it "
                            "isn't installed on this PC, so they may quit right after starting. FramePort doesn't "
                            "change how a game checks its license. Untick the ones you'd rather skip.")),
-                    *boxes.values()], spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=T.px(520)),
+                    *boxes.values()], spacing=T.S2, tight=True, scroll=ft.ScrollMode.AUTO), width=T.px(520),
+                    height=T.px(min(130 + 36 * len(boxes), 480))),  # fits the list; scrolls when long
                 bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
-                actions=[C.ghost(tr("Cancel"), on_click=lambda e: self.page.pop_dialog()),
-                         C.primary(tr("Install"), on_click=ok)]))
+                modal=True, on_dismiss=pick(closed),
+                actions=[C.ghost(tr("Cancel"), on_click=pick(cancel)),
+                         C.primary(tr("Install"), on_click=pick(ok))]))
 
         def go(final: list[str]):
             for p in final:
@@ -655,9 +676,12 @@ class FramePortApp:
                            action=tr("Activity"), on_action=lambda e: self.show_activity(True))
             if self.library_view:
                 self.library_view.set_select_mode(False)
-            if then:
-                then()
-        ask_exe()
+            finished()
+        try:
+            ask_exe()
+        except Exception:
+            self._asking = False  # never leave installs blocked behind a question that failed to show
+            raise
 
     def show_failures(self, jobs: list[Job]) -> None:
         """One pop-up for everything that went wrong in a batch: what happened, and Resume / Uninstall / log."""

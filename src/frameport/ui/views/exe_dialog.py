@@ -67,6 +67,7 @@ def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,
         if on_done:
             on_done()
 
+    pick = C.one_choice()
     title = tr("Which program starts {get}?").format(get=g.get('title'))
     lead = (tr("FramePort found more than one program that could start this game. Pick the one you'd double-click to "
             "play it. Oculus builds usually work better with Revive than Steam builds."))
@@ -76,4 +77,6 @@ def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,
         content=ft.Container(ft.Column([C.body(lead), group], spacing=T.S4, scroll=ft.ScrollMode.AUTO, tight=True),
                              width=T.px(620), height=min(120 + 96 * len(cands), 520)),
         bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
-        actions=[C.ghost(tr("Decide later"), on_click=later), C.primary(tr("Use this program"), on_click=use)]))
+        modal=True, on_dismiss=pick(lambda e: on_done() if on_done else None),  # closed (Esc) = decide later
+        actions=[C.ghost(tr("Decide later"), on_click=pick(later)),
+                 C.primary(tr("Use this program"), on_click=pick(use))]))

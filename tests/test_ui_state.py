@@ -296,7 +296,33 @@ def test_update_all_asks_each_question_once_for_all_games(monkeypatch):
     assert sorted(b.label for b in boxes) == ["G0", "G1", "G2"]
     for b in boxes:
         b.value = True
+    app.update_all()  # a second click while the question is open starts nothing
+    assert len(dialogs) == 1
     ok = dialogs[0].actions[-1]
     ok.on_click(None)
-    assert {p for p, to in submitted if to == "frame"} == {"rift.g0", "rift.g1", "rift.g2", "com.quest"}
-    assert ("rift.g0", "pc") in submitted  # the PC batch follows once the Frame batch is queued
+    ok.on_click(None)  # double click while the dialog closes: acts once
+    dialogs[0].on_dismiss(None)  # the close event after the button: ignored
+    assert sorted(p for p, to in submitted if to == "frame") == ["com.quest", "rift.g0", "rift.g1", "rift.g2"]
+    assert submitted.count(("rift.g0", "pc")) == 1  # the PC batch follows once the Frame batch is queued
+    assert not app._asking
+
+
+def test_closing_an_install_question_without_a_button_cancels_it(monkeypatch):
+    from types import SimpleNamespace
+
+    from frameport.core import library
+    from frameport.ui.app import FramePortApp
+
+    g = {"package": "rift.g", "kind": "rift", "title": "G", "analysis": {}, "recipe": {"patches": {"pcvr.revive": {}}}}
+    monkeypatch.setattr(library, "game", {"rift.g": g}.get)
+    dialogs, submitted = [], []
+    app = object.__new__(FramePortApp)
+    app.page = SimpleNamespace(show_dialog=dialogs.append, pop_dialog=lambda: None)
+    app.jobs = SimpleNamespace(busy_with=lambda p: None)
+    app.library_view, app.toast, app._title = None, lambda *a, **k: None, lambda p: "G"
+    app._submit_install = lambda p, to: submitted.append(p)
+    app.install_many(["rift.g"], "frame")
+    dialogs[0].on_dismiss(None)  # Esc
+    assert not app._asking and not submitted
+    app.install_many(["rift.g"], "frame")  # a later install can ask again
+    assert len(dialogs) == 2

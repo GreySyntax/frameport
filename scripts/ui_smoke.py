@@ -125,6 +125,9 @@ def main() -> int:
     ap.add_argument("--update", action="store_true", help="pretend a new FramePort release exists (update UI)")
     ap.add_argument("--fake-frame", action="store_true", help="pretend a Steam Frame is connected (no device needed)")
     ap.add_argument("--hover", default=None, help="x,y: move the mouse there before the Library screenshot")
+    ap.add_argument("--install-questions", nargs="+", metavar="PKG", default=None,
+                    help="open the install questions for these games, then click each dialog's main button twice "
+                         "(a double click must not duplicate dialogs); nothing is installed")
     ap.add_argument("--docs", action="store_true", help="only the screens used in the docs (Library, --game, Frame)")
     args = ap.parse_args()
     global STEP_SECONDS
@@ -155,6 +158,24 @@ def main() -> int:
         steps.append(("files", lambda a: a.go("files")))
         steps.append(("files-select", lambda a: [a.files_view._toggle(e.path, True)
                                                  for e in a.files_view.entries[1:3]]))
+    if args.install_questions:
+        queued: list[str] = []
+
+        def open_questions(a):
+            a._submit_install = lambda p, to: queued.append(p)
+            a.install_many(args.install_questions, "frame")
+
+        def double_click(a):
+            dialogs = [d for d in a.page._dialogs.controls if d.open]
+            print(f"open dialogs: {len(dialogs)}", flush=True)
+            button = dialogs[-1].actions[-1]
+            button.on_click(None)
+            button.on_click(None)
+
+        def report(a):
+            print(f"open dialogs: {len([d for d in a.page._dialogs.controls if d.open])}, queued: {queued}", flush=True)
+        steps = [("library", lambda a: a.navigate(0)), ("questions", open_questions),
+                 ("after-1st-double", double_click), ("after-2nd-double", double_click), ("end", report)]
     if args.update:
         from frameport import updates
 

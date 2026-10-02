@@ -84,6 +84,21 @@ def pc_outdated(g: dict, dep: dict) -> bool:
     return installed != want or list(dep.get("game_args") or []) != args
 
 
+def one_choice():
+    """Wraps the handlers of one dialog (its buttons and its on_dismiss) so that only the first of them acts: a second
+    click while the dialog closes (easy in a slow window) ran the rest of a question chain twice — duplicate dialogs
+    whose buttons no longer worked. Use: pick = one_choice(); on_click=pick(ok), on_dismiss=pick(closed)."""
+    state = {"done": False}
+
+    def wrap(fn):
+        def handler(e=None):
+            if not state["done"]:
+                state["done"] = True
+                return fn(e)
+        return handler
+    return wrap
+
+
 def update(*controls: ft.Control) -> None:
     """Update controls that may not be on the page yet (Flet raises for those)."""
     for c in controls:
