@@ -12,7 +12,8 @@ from pathlib import Path
 from ..core.paths import user_data_dir
 from . import fetch
 
-WIDTHS = {"portrait": 400, "square": 400, "landscape": 1280, "hero": 1280, "icon": 96, "logo": 600}
+WIDTHS = {"portrait": 400, "square": 400, "cover": 400, "banner": 1280, "landscape": 1280, "hero": 1280, "icon": 96,
+          "logo": 600}
 _locks: dict[str, threading.Lock] = {}
 _guard = threading.Lock()
 

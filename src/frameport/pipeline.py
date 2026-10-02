@@ -59,6 +59,9 @@ def add_path(path: Path, reporter: Reporter | None = None, on_added=None, force_
                 if art:
                     try:
                         artwork.fetch(entry["package"], Path(entry["apk"]))
+                        from .artwork.steam import ensure_cover
+
+                        ensure_cover(entry["package"])  # no store art (2D apps): a cover with its name and icon
                     except Exception:  # noqa: BLE001
                         pass
                     if not entry.get("details"):

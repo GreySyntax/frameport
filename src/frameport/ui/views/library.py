@@ -132,6 +132,7 @@ def save_filters(f: dict) -> None:
 
 # ------------------------------------------------------------------------------------------ view
 BATCH = 8
+CARD_ART = ("portrait", "square", "cover", "icon")  # store art first; cover = FramePort's own (no store art)
 def card_shadow(hover: bool = False) -> ft.BoxShadow:
     """Library cards float on the dark background; hovering lifts them further."""
     if hover:
@@ -511,14 +512,14 @@ class LibraryView:
         pkg = g["package"]
         job = self.app.jobs.busy_with(pkg)
         return (display_title(g, tw), (g.get("recipe") or {}).get("status"), C.install_state(g, self.app.frame_info),
-                pkg in pc, bool(job), self.app.quick_action(g)[0], thumbs.url(pkg, ("portrait", "square", "icon")),
+                pkg in pc, bool(job), self.app.quick_action(g)[0], thumbs.url(pkg, CARD_ART),
                 self.app.frame_state)
 
     def card(self, g: dict, pc: set[str], tw: set[str]) -> ft.Control:
         app = self.app
         pkg = g["package"]
         rift = g.get("kind") == "rift"
-        art = thumbs.url(pkg, ("portrait", "square", "icon"))
+        art = thumbs.url(pkg, CARD_ART)
         state = C.install_state(g, app.frame_info)
         on_pc = pkg in pc
         status = (g.get("recipe") or {}).get("status", "unknown")

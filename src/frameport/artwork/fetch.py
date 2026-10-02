@@ -20,7 +20,8 @@ KINDS = {
     "APP_IMG_LOGO_TRANSPARENT": "logo",
     "APP_IMG_ICON": "icon",
 }
-EXTRA_KINDS = ("square",)  # OculusDB's square cover (Rift games)
+# OculusDB's square cover (Rift games); FramePort's own cover/banner (no store art)
+EXTRA_KINDS = ("square", "cover", "banner")
 PICKED = ".picked"  # marker: the art in this folder was chosen by the user (Find artwork); automatic fetches skip it
 
 
@@ -76,21 +77,43 @@ def fetch(package: str, apk: Path | None = None, refresh: bool = False,
     return out, title
 
 
-def apk_icon(apk: Path) -> bytes | None:
-    """Largest PNG launcher icon inside the APK (mipmap/drawable)."""
+def apk_icon(apk: Path | str | None) -> bytes | None:
+    """The app's launcher icon from the APK as PNG bytes: the icon the manifest names (pyaxmlparser), else the
+    largest ic_launcher bitmap. None for vector/adaptive-only icons (no bitmap to use)."""
+    if not apk or not Path(apk).is_file():
+        return None
+    import io
+
+    from PIL import Image
+
+    dens = ("xxxhdpi", "xxhdpi", "xhdpi", "hdpi", "mdpi")
     try:
         with zipfile.ZipFile(apk) as z:
-            cands = [i for i in z.infolist() if i.filename.startswith("res/") and "ic_launcher" in i.filename
-                     and i.filename.endswith((".png", ".webp"))]
-            if not cands:
-                cands = [i for i in z.infolist() if i.filename.startswith("res/mipmap") and i.filename.endswith(".png")]
-            if not cands:
-                return None
-            best = max(cands, key=lambda i: i.file_size)
-            data = z.read(best)
-            return data if data[:4] == b"\x89PNG" else None
-    except (zipfile.BadZipFile, OSError):
+            listed = set(z.namelist())
+            names = []
+            try:
+                from pyaxmlparser import APK
+
+                named = APK(str(apk)).get_app_icon()
+                if named:
+                    names.append(named)
+            except Exception:  # noqa: BLE001 - unreadable resources: fall back to the usual file names
+                pass
+            names += sorted((n for n in listed if n.startswith("res/") and "ic_launcher" in n
+                             and n.endswith((".png", ".webp")) and "foreground" not in n and "background" not in n),
+                            key=lambda n: next((i for i, d in enumerate(dens) if d in n), len(dens)))
+            for n in names:
+                if n not in listed or not n.endswith((".png", ".webp")):
+                    continue
+                with Image.open(io.BytesIO(z.read(n))) as im:
+                    if im.width < 48:
+                        continue
+                    out = io.BytesIO()
+                    im.convert("RGBA").save(out, "PNG")
+                    return out.getvalue()
+    except (zipfile.BadZipFile, OSError, ValueError):
         return None
+    return None
 
 
 def files(package: str) -> list[Path]:

@@ -49,7 +49,7 @@ class GameView:
         from .library import display_title
 
         a = g["analysis"]
-        art = thumbs.url(pkg, ("hero", "landscape", "portrait", "square"), 1280, wait=False)
+        art = thumbs.url(pkg, ("hero", "landscape", "portrait", "square", "banner"), 1280, wait=False)
         platform = C.platform(g)[1]
         facts = " · ".join(x for x in (platform, a.get("engine"), a.get("xr")) if x and x != "?")
         recipe = g.get("recipe") or {}

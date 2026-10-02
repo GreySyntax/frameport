@@ -310,3 +310,26 @@ def test_picked_art_survives_installs(monkeypatch):
     assert (d / "portrait.png").read_bytes() == png("blue") and (d / "icon.png").exists()
     fetch.fetch("com.picked", refresh=True)  # "Find automatically": the store art replaces everything
     assert (d / "portrait.png").read_bytes() == png("red")
+
+
+def test_apps_without_store_art_get_a_cover(tmp_path):
+    """FramePort's library shows a cover (name + APK icon) for apps no store knows; store art always wins."""
+    import zipfile
+
+    from PIL import Image
+
+    from frameport.artwork import fetch, steam, thumbs
+    from frameport.core import library
+
+    icon = tmp_path / "icon.png"
+    Image.new("RGBA", (96, 96), (10, 200, 30, 255)).save(icon)
+    apk = tmp_path / "app.apk"
+    with zipfile.ZipFile(apk, "w") as z:
+        z.write(icon, "res/mipmap-xxxhdpi-v4/ic_launcher.png")
+    library.upsert_game("org.example.flat", title="Flat App", apk=str(apk))
+    cover = steam.ensure_cover("org.example.flat")
+    assert cover and cover.name == "cover.jpg" and (fetch.artwork_dir("org.example.flat") / "icon.png").exists()
+    assert thumbs.pick("org.example.flat", ("portrait", "square", "cover", "icon")).name == "cover.jpg"
+    Image.new("RGB", (60, 90)).save(fetch.artwork_dir("org.example.flat") / "portrait.jpg")  # store art arrives
+    assert steam.ensure_cover("org.example.flat") is None
+    assert thumbs.pick("org.example.flat", ("portrait", "square", "cover", "icon")).name == "portrait.jpg"

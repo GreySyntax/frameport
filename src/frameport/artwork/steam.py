@@ -126,7 +126,44 @@ def steam_set(package: str, title: str = "", apk: str | Path | None = None) -> d
     return result
 
 
-PLACEHOLDER_VERSION = 1
+PLACEHOLDER_VERSION = 2
+
+
+STORE_KINDS = {"portrait", "square", "landscape", "hero"}
+
+
+def ensure_cover(package: str) -> Path | None:
+    """A cover for FramePort's own library when a game has no store art (e.g. a 2D Android app): the same name +
+    APK icon design as the Steam placeholder, saved as artwork/<pkg>/cover.jpg. None when store art exists."""
+    from ..core import library
+
+    d = fetch.artwork_dir(package)
+    if {p.stem for p in fetch.files(package)} & STORE_KINDS:
+        return None
+    g = library.game(package) or {}
+    if not any(d.glob("icon.*")):  # the icon also shows in lists (Frame page)
+        icon = fetch.apk_icon(g.get("apk"))
+        if icon:
+            (d / "icon.png").write_bytes(icon)
+    # icon-only (the card and the game page show the name anyway): a tall cover for cards, a wide banner for the page
+    title = g.get("title") or package
+    cover, banner = d / "cover.jpg", d / "banner.jpg"
+    stamp = d / ".cover"
+    key = f"{PLACEHOLDER_VERSION}:{title}:{next((p.stat().st_size for p in d.glob('icon.*')), 0)}"
+    if cover.exists() and banner.exists() and stamp.exists() and stamp.read_text(encoding="utf-8") == key:
+        return cover
+    icon = _load_icon(next(iter(sorted(d.glob("icon.*"))), None), g.get("apk"))
+    background = _background_for(title)
+    # cover: icon a bit above the middle (the card's title sits at the bottom); banner: icon on the right (the game
+    # page draws the title on the left)
+    for path, size, side, centre in ((cover, (600, 900), 300, (0.5, 0.4)), (banner, (1600, 600), 320, (0.75, 0.5))):
+        im = background(size)
+        if icon is not None:
+            ic = icon.resize((side, side))
+            im.paste(ic, (round(size[0] * centre[0] - side / 2), round(size[1] * centre[1] - side / 2)), ic)
+        im.save(path, "JPEG", quality=90, optimize=True)
+    stamp.write_text(key, encoding="utf-8")
+    return cover
 
 
 def steam_set_for(package: str) -> dict[str, Path]:
@@ -138,38 +175,16 @@ def steam_set_for(package: str) -> dict[str, Path]:
 
 
 def _apk_icon(apk: str | Path | None):
-    """The APK's launcher icon as a PIL image, or None (adaptive/vector icons have no bitmap to use)."""
-    if not apk or not Path(apk).is_file():
-        return None
+    """The APK's launcher icon as a PIL image, or None (see fetch.apk_icon)."""
     import io
-    import zipfile
 
     from PIL import Image
 
-    try:
-        with zipfile.ZipFile(apk) as z:
-            names = []
-            try:
-                from pyaxmlparser import APK
-
-                icon = APK(str(apk)).get_app_icon()
-                if icon:
-                    names.append(icon)
-            except Exception:  # noqa: BLE001 - unreadable resources: fall back to the usual file names
-                pass
-            dens = ("xxxhdpi", "xxhdpi", "xhdpi", "hdpi", "mdpi")
-            names += sorted((n for n in z.namelist() if "ic_launcher" in n and n.endswith((".png", ".webp"))
-                             and "foreground" not in n and "background" not in n),
-                            key=lambda n: next((i for i, d in enumerate(dens) if d in n), len(dens)))
-            for n in names:
-                if n.endswith((".png", ".webp")) and n in z.namelist():
-                    im = Image.open(io.BytesIO(z.read(n)))
-                    im.load()
-                    if im.width >= 48:
-                        return im.convert("RGBA")
-    except Exception:  # noqa: BLE001 - not a readable APK
+    data = fetch.apk_icon(apk)
+    if not data:
         return None
-    return None
+    with Image.open(io.BytesIO(data)) as im:
+        return im.convert("RGBA")
 
 
 def _font(size: int):
@@ -209,28 +224,40 @@ def _title_block(draw, text: str, box: tuple[int, int, int, int], max_size: int,
         draw.text((x0 + (x1 - x0 - w) / 2, top + i * line_h), line, font=font, fill=fill)
 
 
-def _placeholder(out_dir: Path, title: str, icon_file: Path | None, apk) -> dict[str, Path]:
-    """Name-on-colour art (portrait, landscape, hero, logo, icon), the hue picked from the title."""
+def _background_for(title: str):
+    """A vertical gradient in a colour picked from the title: background(size) -> PIL image."""
     import colorsys
 
-    from PIL import Image, ImageDraw
+    from PIL import Image
 
     hue = int(hashlib.sha1(title.encode()).hexdigest()[:4], 16) / 0xFFFF
     top = tuple(round(c * 255) for c in colorsys.hls_to_rgb(hue, 0.30, 0.45))
     bottom = tuple(round(c * 255) for c in colorsys.hls_to_rgb(hue, 0.10, 0.40))
-    icon = None
-    if icon_file:
-        try:
-            with Image.open(icon_file) as im:
-                icon = im.convert("RGBA")
-        except Exception:  # noqa: BLE001
-            icon = None
-    if icon is None:
-        icon = _apk_icon(apk)
 
     def background(size):
         mask = Image.linear_gradient("L").resize(size)  # 0 at the top → 255 at the bottom
         return Image.composite(Image.new("RGB", size, bottom), Image.new("RGB", size, top), mask)
+    return background
+
+
+def _load_icon(icon_file: Path | None, apk):
+    from PIL import Image
+
+    if icon_file:
+        try:
+            with Image.open(icon_file) as im:
+                return im.convert("RGBA")
+        except Exception:  # noqa: BLE001
+            pass
+    return _apk_icon(apk)
+
+
+def _placeholder(out_dir: Path, title: str, icon_file: Path | None, apk) -> dict[str, Path]:
+    """Name-on-colour art (portrait, landscape, hero, logo, icon), the hue picked from the title."""
+    from PIL import Image, ImageDraw
+
+    icon = _load_icon(icon_file, apk)
+    background = _background_for(title)
 
     result: dict[str, Path] = {}
     for kind, (w, h) in SIZES.items():

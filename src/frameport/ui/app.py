@@ -98,6 +98,7 @@ class FramePortApp:
         self.go("welcome" if needed() else "library")
         threading.Thread(target=self._startup, daemon=True).start()
         threading.Thread(target=self._poll, daemon=True).start()
+        threading.Thread(target=self._backfill_covers, daemon=True).start()
         self.updater.start()
 
     # ================================================================== shell
@@ -1292,6 +1293,22 @@ class FramePortApp:
         self.toast(tr("Your Frame is back: continuing"))
         self.refresh_view()
         return True
+
+    def _backfill_covers(self) -> None:
+        """Games without store art (2D Android apps) get a cover with their name and icon (once; cached)."""
+        from ..artwork import steam
+
+        made = 0
+        for g in library.games():
+            if g.get("kind") == "rift":
+                continue
+            try:
+                had = (steam.fetch.artwork_dir(g["package"]) / "cover.jpg").exists()
+                made += bool(steam.ensure_cover(g["package"])) and not had
+            except Exception:  # noqa: BLE001 - artwork is optional
+                applog.log.info("cover for %s failed", g.get("package"), exc_info=True)
+        if made:
+            self.refresh_view()
 
     def _keep_frame_awake(self) -> None:
         """Hold a wake lock on the Frame while jobs that use it run or wait (renewed every 30 min; it expires on its
