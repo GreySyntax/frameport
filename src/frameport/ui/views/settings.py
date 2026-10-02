@@ -220,7 +220,7 @@ class SettingsView:
                 C.kv(tr("Frame agent"), self.agent_text(), "frame_agent"),
                 C.kv(tr("Source"), ft.TextButton(REPO_URL.removeprefix("https://"), icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                                              url=REPO_URL)),
-                C.meta(tr("Uses overport, Revive (LibreVR), Valve's Lepton and Proton. "
+                C.meta(tr("Uses OVRPort, Revive (LibreVR), Valve's Lepton and Proton. "
                           "Not affiliated with Valve or Meta.")),
             ], spacing=T.S2))),
         ], spacing=T.S5, scroll=ft.ScrollMode.AUTO, expand=True)

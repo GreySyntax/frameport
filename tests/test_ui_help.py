@@ -60,11 +60,15 @@ def test_right_click_menu_follows_install_state(monkeypatch):
     app = _app(monkeypatch, g, {"installed": [{"package": "com.q", "sha256": "old"}]})
     installed = _labels(app.game_actions("com.q"))
     assert installed[:3] == ["Open", "Play on Frame", "Update on Frame"]
-    expected = {"Launch test on Frame", "Adapter settings…", "Uninstall from Frame", "Remove from library"}
+    expected = {"Launch test on Frame", "Game settings…", "Uninstall from Frame", "Remove from library"}
     assert expected <= set(installed)
 
     missing = _labels(_app(monkeypatch, g, {"installed": []}).game_actions("com.q"))
     assert "Install on Frame" in missing and "Uninstall from Frame" not in missing and "Play on Frame" not in missing
+    assert "Game settings…" in missing  # saved to the recipe, used when it's installed
+
+    flat = {**g, "analysis": {"extra": {"vr_kind": "none"}}}  # a 2D Android app has no adapter
+    assert "Game settings…" not in _labels(_app(monkeypatch, flat, {"installed": []}).game_actions("com.q"))
 
     offline = _labels(_app(monkeypatch, g).game_actions("com.q"))
     assert "Connect your Frame" in offline and "Launch test on Frame" not in offline

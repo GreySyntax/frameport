@@ -91,6 +91,81 @@ SETTINGS = [
 ]
 
 
+# How the "Game settings" dialog shows each setting to non-technical users: group, level (common settings are always
+# shown; advanced ones only under "Show advanced settings"), a plain label and one-line help, the control, and the
+# setting it depends on (only shown while that one is on). The technical title/description above stay for the CLI.
+GROUPS = [("picture", "Picture"), ("controllers", "Controllers"), ("screens", "Menus and screens"),
+          ("room", "Mixed reality"), ("video360", "360° pictures and video"), ("troubleshooting", "Troubleshooting")]
+REFRESH_CHOICES = [(0.0, "Game's choice"), *((float(hz), f"{hz} Hz") for hz in (72, 80, 90, 96, 108, 120, 144))]
+UI: dict[str, dict] = {
+    "scale": dict(group="picture", level="common", label="Sharpness",
+                  help="Higher looks sharper but needs more power; lower runs smoother. 1.0× is the game's own.",
+                  control=("slider", 0.5, 2.0, 0.1, "{:.1f}×")),
+    "refresh_rate": dict(group="picture", level="common", label="Refresh rate",
+                         help="How often the picture updates. Higher is smoother if the game can keep up.",
+                         control=("choice", REFRESH_CHOICES)),
+    "controller_fix": dict(group="controllers", level="common", label="Use controllers",
+                           help="Turn off only for games you play with your hands instead of controllers.",
+                           control=("switch",)),
+    "aim_pitch": dict(group="controllers", level="common", label="Pointer angle",
+                      help="If the pointer doesn't hit what you aim at, tilt it up or down.",
+                      control=("slider", -30.0, 30.0, 1.0, "{:+.0f}°")),
+    "aim_yaw": dict(group="controllers", level="advanced", label="Pointer turn",
+                    help="Turns the pointer left or right.", control=("slider", -30.0, 30.0, 1.0, "{:+.0f}°")),
+    "aim_forward": dict(group="controllers", level="advanced", label="Pointer start",
+                        help="Moves where the pointer starts, forward or back.",
+                        control=("slider", -0.3, 0.3, 0.01, "{:+.2f} m")),
+    "controller_models": dict(group="controllers", level="common", label="Show Steam Frame controllers",
+                              help="For games that show the headset's own controllers. Takes effect after a "
+                                   "reinstall.", control=("switch",), reinstall=True),
+    "cylinder_strips": dict(group="screens", level="common", label="Show curved menus and screens",
+                            help="The Frame can't show curved panels; this shows them as gently bent strips.",
+                            control=("switch",)),
+    "flip_emul": dict(group="screens", level="common", label="Fix upside-down menus",
+                      help="Turns menus and text the right way up.", control=("switch",)),
+    "stable_local": dict(group="screens", level="common", label="Keep menus in place",
+                         help="For games whose menus or screens jump to wherever you look.", control=("switch",)),
+    "focus_hold": dict(group="screens", level="common", label="Don't pause on short interruptions",
+                       help="For games that pause or recenter when the headset briefly loses focus.",
+                       control=("switch",)),
+    "passthrough_emul": dict(group="room", level="common", label="See your room",
+                             help="Shows the Frame's cameras where the game expects passthrough.",
+                             control=("switch",)),
+    "scene_emul": dict(group="room", level="common", label="Pretend room layout",
+                       help="Mixed-reality games that build their level from your room get a simple room with walls.",
+                       control=("switch",)),
+    "scene_height": dict(group="room", level="advanced", label="Room height", depends="scene_emul",
+                         help="Ceiling height of the pretend room.", control=("slider", 2.0, 4.0, 0.1, "{:.1f} m")),
+    "scene_width": dict(group="room", level="advanced", label="Room width", depends="scene_emul",
+                        help="0 = the size of your play area.", control=("slider", 0.0, 10.0, 0.5, "{:.1f} m")),
+    "scene_depth": dict(group="room", level="advanced", label="Room depth", depends="scene_emul",
+                        help="0 = the size of your play area.", control=("slider", 0.0, 10.0, 0.5, "{:.1f} m")),
+    "equirect_emul": dict(group="video360", level="common", label="Show 360° backgrounds and videos",
+                          help="Video players' virtual theatres and 360° videos would otherwise stay black.",
+                          control=("switch",)),
+    "equirect_res": dict(group="video360", level="advanced", label="360° sharpness", depends="equirect_emul",
+                         help="Higher is sharper but needs more power.",
+                         control=("choice", [(1024, "Low"), (1536, "Normal"), (2048, "High"), (3072, "Very high")])),
+    "equirect_face": dict(group="video360", level="advanced", label="360° detail", depends="equirect_emul",
+                          help="Higher keeps more detail but uses more memory.",
+                          control=("choice", [(1024, "Low"), (1536, "Normal"), (2048, "High"), (2730, "Maximum")])),
+    "equirect_fps": dict(group="video360", level="advanced", label="360° video frame rate limit",
+                         depends="equirect_emul", help="Must be at least the video's own frame rate.",
+                         control=("choice", [(0.0, "No limit"), (24.0, "24"), (30.0, "30"), (60.0, "60"),
+                                             (90.0, "90")])),
+    "equirect_flip": dict(group="video360", level="advanced", label="360° picture orientation", depends="equirect_emul",
+                          help="Only if 360° pictures show wrongly.",
+                          control=("choice", [(0, "Normal"), (1, "Upside down"), (2, "Mirrored"),
+                                              (3, "Upside down and mirrored"), (4, "Turned around")])),
+    "equirect_stereo": dict(group="video360", level="advanced", label="360° 3D", depends="equirect_emul",
+                            help="Shows 3D 360° pictures flat if they look doubled.",
+                            control=("choice", [(0, "As the game sends it"), (2, "Flat")])),
+    **{key: dict(group="troubleshooting", level="advanced", control=("switch",)) for key in (
+        "foveation_fix", "swapchain_fix", "layer_fix", "gl_hide_multiview", "mutable_fix", "flip_quads", "swap_eyes",
+        "strip_depth", "respace_kick", "layer_debug")},
+}
+
+
 class AdapterSetting(Patch):
     category = "adapter"
     stage = "install"
@@ -98,7 +173,7 @@ class AdapterSetting(Patch):
     def __init__(self, key, kind, default, title, description):
         self.id = f"adapter.{key}"
         self.key = key
-        self.title = title
+        self.title = UI.get(key, {}).get("label") or title  # the plain label the Game settings dialog uses
         self.description = description
         self.params = [Param("value", kind, default, description)]
         self.default = default

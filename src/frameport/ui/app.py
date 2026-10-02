@@ -515,8 +515,9 @@ class FramePortApp:
                 if on_pc:
                     out.append((tr("Launch test on this PC"), ft.Icons.SCIENCE_OUTLINED,
                                 lambda e: self.test_game(pkg, "pc")))
+                if self.has_game_settings(g):
+                    out.append((tr("Game settings…"), ft.Icons.TUNE_ROUNDED, lambda e: self.settings_dialog(pkg)))
                 if on_frame and not rift:
-                    out.append((tr("Adapter settings…"), ft.Icons.TUNE_ROUNDED, lambda e: self.settings_dialog(pkg)))
                     out.append((tr("Add videos and files…"), ft.Icons.VIDEO_LIBRARY_OUTLINED,
                                 lambda e: self.go("files", pkg)))
                 if on_frame:
@@ -1045,28 +1046,19 @@ class FramePortApp:
             ], tight=True, spacing=T.S3, width=T.px(600)),
             actions=[C.ghost(tr("Cancel"), on_click=lambda e: self.page.pop_dialog()), send]))
 
+    @staticmethod
+    def has_game_settings(g: dict | None) -> bool:
+        """Quest games built with FramePort's adapter have game settings; PC VR games and 2D Android apps don't."""
+        if not g:
+            return True  # installed on the Frame but not in this library: a Quest game
+        if g.get("kind") == "rift" or not g.get("analysis"):
+            return g.get("kind") != "rift"
+        return library.analysis_from_dict(g["analysis"]).vr_kind != "none"
+
     def settings_dialog(self, package: str) -> None:
-        from ..patches.settings import SETTINGS
+        from .views.adapter_dialog import show_adapter_dialog
 
-        fields = {key: ft.TextField(label=title, value="", hint_text=str(default), width=T.px(200), dense=True,
-                                    border_color=T.BORDER) for key, kind, default, title, _ in SETTINGS}
-
-        def save(e):
-            vals = {k: f.value for k, f in fields.items() if f.value.strip()}
-            self.page.pop_dialog()
-            target = self.target
-            if target is None:
-                self.toast(tr("Connect your Frame first"), error=True)
-                return
-            self.run_bg(lambda: self.toast(
-                tr("Saved: {settings}").format(settings=target.set_settings(package, vals)['settings'])))
-        self.page.show_dialog(ft.AlertDialog(
-            title=ft.Text(tr("Adapter settings · {title}").format(title=self._title(package))), bgcolor=T.SURFACE_2,
-            content=ft.Column([C.body(tr("Only filled-in values change. Restart the game afterwards.")),
-                               ft.Row(list(fields.values()), wrap=True, width=T.px(640))], tight=True,
-                              scroll=ft.ScrollMode.AUTO),
-            actions=[C.ghost(tr("Cancel"), on_click=lambda e: self.page.pop_dialog()),
-                     C.primary(tr("Save"), on_click=save)]))
+        show_adapter_dialog(self, package)
 
     # ================================================================== library
     async def pick_folder(self, e=None):

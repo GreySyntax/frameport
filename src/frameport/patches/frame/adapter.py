@@ -28,7 +28,7 @@ class FrameBridgeAdapter(Patch):
         "extensions and layers, emulates XR_FB_passthrough (ALPHA_BLEND), Meta scene/spatial entities (guardian-sized "
         "room), XR_KHR_convert_timespec_time, and vertically flipped quad layers; maps Frame controllers to Touch; "
         "optionally serves Steam Frame controller models (XR_FB_render_model). "
-        "Settings are in the Adapter settings group."
+        "Its settings are under Game settings."
     )
     category = "frame"
     order = 10

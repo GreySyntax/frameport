@@ -48,6 +48,7 @@ def from_code() -> tuple[dict, list[str]]:
 def from_data() -> dict:
     """Help texts and patch titles/descriptions (defined as data, translated where they're shown)."""
     from frameport.patches import base
+    from frameport.patches.settings import GROUPS, UI
     from frameport.ui.help import HELP
 
     texts = {dict.__getitem__(HELP, k): "" for k in HELP}
@@ -55,6 +56,16 @@ def from_data() -> dict:
         for t in (p.title, p.description):
             if t:
                 texts[t] = ""
+    for _, title in GROUPS:  # the Game settings dialog
+        texts[title] = ""
+    for ui in UI.values():
+        for t in (ui.get("label"), ui.get("help")):
+            if t:
+                texts[t] = ""
+        if ui["control"][0] == "choice":
+            for _, label in ui["control"][1]:
+                if any(c.isalpha() for c in label):
+                    texts[label] = ""
     return texts
 
 

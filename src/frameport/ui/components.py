@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from types import SimpleNamespace
 
 import flet as ft
 
@@ -118,10 +119,24 @@ def h2(text: str) -> ft.Text:
     return ft.Text(text, size=T.T_H2, weight=ft.FontWeight.W_600, color=T.TEXT)
 
 
-def switch(label: str, **kw) -> ft.Switch:
-    """A labelled switch in the theme's text colour (Material's default label is dark text)."""
+def switch(label: str = "", wrap: bool = True, **kw) -> ft.Control:
+    """A labelled switch in the theme's text colour (Material's default label is dark text). The label wraps (a
+    Switch's own label is cut off when it's longer than the window); clicking it toggles the switch too.
+    wrap=False keeps the built-in label, for a short label in a Row next to other controls."""
     kw.setdefault("active_color", T.ACCENT)
-    return ft.Switch(label=label, label_text_style=ft.TextStyle(color=T.TEXT, size=T.px(14)), **kw)
+    if not wrap or not label:
+        return ft.Switch(label=label or None, label_text_style=ft.TextStyle(color=T.TEXT, size=T.px(14)), **kw)
+    sw = ft.Switch(**kw)
+
+    def click_label(e):
+        if sw.disabled:
+            return
+        sw.value = not sw.value
+        update(sw)
+        if sw.on_change:
+            sw.on_change(SimpleNamespace(control=sw))
+    return ft.Row([sw, ft.Container(ft.Text(label, color=T.TEXT, size=T.px(14)), expand=True, on_click=click_label)],
+                  spacing=T.S2, vertical_alignment=ft.CrossAxisAlignment.CENTER, data="switch")
 
 
 def body(text: str, color: str = T.TEXT_2, size: int | None = None, **kw) -> ft.Text:
@@ -178,6 +193,8 @@ def with_help(control: ft.Control, key: str | None) -> ft.Control:
     """`control` followed by a help icon (or just `control` when there's no key)."""
     if not key:
         return control
+    if getattr(control, "data", None) == "switch":
+        control.expand = True  # a wrapping label needs the row's width
     return ft.Row([control, help_icon(key)], spacing=T.px(4), tight=True,
                   vertical_alignment=ft.CrossAxisAlignment.CENTER)
 

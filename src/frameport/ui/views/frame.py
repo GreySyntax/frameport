@@ -111,18 +111,19 @@ class FrameView:
             pcvr = d.get("kind") == "pcvr"
             art = thumbs.url(pkg, ("icon", "square", "portrait"), 96)
             size = d.get("apk_size", 0)
-            sub = (tr("PC VR · Proton") + (tr(" + Revive") if d.get("revive") else "")) if pcvr else tr("Quest")
+            in_lib = pkg in games
+            sub = (tr("PC VR · Proton") + (tr(" + Revive") if d.get("revive") else "")) if pcvr else \
+                (C.platform(games[pkg])[0] if in_lib else tr("Quest"))
             sub += (tr(" · {value:.1f} GiB").format(value=size / 2**30) if size >= 2**30
                     else tr(" · {value:.0f} MiB").format(value=size / 2**20))
-            in_lib = pkg in games
             title = display_title(games[pkg], tw) if in_lib else (d.get("title") or pkg)
             rows.append(ft.Container(ft.Row([
                 C.art_fill(art, radius=T.px(8), width=T.px(44), height=T.px(44)),
                 ft.Column([C.body(title, T.TEXT, weight=ft.FontWeight.W_500), C.meta(sub)],
                           spacing=T.px(2), expand=True),
-                # same slots on every row: PC VR games have no adapter settings, so theirs is an invisible spacer
-                (settings_slot() if pcvr else
-                 C.icon_btn(ft.Icons.TUNE_ROUNDED, C.tip(tr("Adapter settings. ") + HELP["adapter_settings"]),
+                # same slots on every row: games without settings (PC VR, 2D apps) get an invisible spacer
+                (settings_slot() if pcvr or not app.has_game_settings(games.get(pkg)) else
+                 C.icon_btn(ft.Icons.TUNE_ROUNDED, C.tip(tr("Game settings. ") + HELP["adapter_settings"]),
                             lambda e, p=pkg: app.settings_dialog(p))),
                 C.icon_btn(ft.Icons.FOLDER_OPEN_ROUNDED, tr("Files on the Frame: browse what this install contains"),
                            lambda e, p=pkg, t=title: show_files_dialog(app, p, t)),

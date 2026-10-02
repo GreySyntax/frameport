@@ -10,7 +10,7 @@ import flet as ft
 from ... import pipeline
 from ...artwork import thumbs
 from ...core import library
-from ...i18n import tr
+from ...i18n import tr, tr_n
 from ...patches import base
 from ...recommend import catalog, engine
 from .. import components as C
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ..app import FramePortApp
 
 CATEGORY_TITLES = {"frame": tr("Steam Frame patches"), "overport": tr("OVRPort patches"),
-                   "adapter": tr("Adapter settings"), "device": tr("Files and environment on the Frame"),
+                   "adapter": tr("Game settings"), "device": tr("Files and environment on the Frame"),
                    "pcvr": tr("PC VR (Revive / Proton)")}
 
 
@@ -453,6 +453,22 @@ class GameView:
 
         sections = []
         for cat in ("pcvr", "frame", "overport", "adapter", "device"):
+            if cat == "adapter":  # one row: the settings themselves are in the Game settings dialog (plain words)
+                if app.has_game_settings(g):
+                    from .adapter_dialog import default, recipe_values
+
+                    vals = recipe_values(g)
+                    changed = sum(1 for k, v in vals.items() if v != default(k))
+                    sections.append(C.card(ft.Row([
+                        ft.Column([ft.Row([C.body(CATEGORY_TITLES[cat], T.TEXT, weight=ft.FontWeight.W_600),
+                                           C.help_icon("cat_adapter")], spacing=T.S2),
+                                   C.meta(tr_n("{n} setting changed from the default",
+                                               "{n} settings changed from the default", changed) if changed
+                                          else tr("All at their defaults"))], spacing=T.px(2), expand=True),
+                        C.secondary(tr("Change settings…"), ft.Icons.TUNE_ROUNDED,
+                                    lambda e: app.settings_dialog(package)),
+                    ], spacing=T.S3), padding=ft.Padding(T.S4, T.S3, T.S4, T.S3)))
+                continue
             rows = []
             for p in [p for p in base.all_patches() if p.category == cat and p.id in listed]:
                 on = p.id in recipe.patches

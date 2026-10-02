@@ -360,3 +360,30 @@ def test_patch_registry_is_complete_for_every_thread(monkeypatch):
     for t in threads:
         t.join()
     assert not errors and found == ["device.hide_navbar"] * 4
+
+
+def test_game_settings_dialog_shows_relevant_settings_and_saves_only_changes():
+    from dataclasses import asdict
+
+    from frameport.core import library
+    from frameport.core.models import Recipe
+    from frameport.patches.settings import SETTINGS, UI
+    from frameport.ui.views import adapter_dialog as ad
+
+    assert set(UI) == {k for k, *_ in SETTINGS}  # every setting has a plain label/control
+    vulkan = _analysis()
+    gles = _analysis(graphics="GLES (declared in manifest)")
+    assert ad.relevant(vulkan, "flip_emul", 1) and not ad.relevant(gles, "flip_emul", 1)  # Vulkan-only
+    assert ad.relevant(gles, "equirect_emul", 0) and not ad.relevant(vulkan, "equirect_emul", 0)
+    assert ad.relevant(vulkan, "equirect_emul", 1)  # changed from its default: always shown
+    r = Recipe("com.x", patches={"adapter.scale": {"value": 1.5}, "frame.launcher": {}})
+    library.upsert_game("com.x", title="X", recipe=asdict(r), analysis=asdict(vulkan))
+    vals = ad.recipe_values(library.game("com.x"))
+    assert vals["scale"] == 1.5 and vals["controller_fix"] == 1 and vals["refresh_rate"] == 0.0
+    vals.update(scale=1.0, refresh_rate=90.0, aim_pitch=-5.0)
+    ad.save_to_recipe("com.x", vals)
+    saved = library.game("com.x")["recipe"]
+    adapter = {k: v for k, v in saved["patches"].items() if k.startswith("adapter.")}
+    assert adapter == {"adapter.refresh_rate": {"value": 90.0}, "adapter.aim_pitch": {"value": -5.0}}  # no defaults
+    assert "frame.launcher" in saved["patches"]  # other patches untouched
+    assert saved["source"] == "user" and saved["reasons"]["adapter.aim_pitch"] == "Set by you."

@@ -88,7 +88,7 @@ class FilesView:
             C.ghost(tr("New folder"), ft.Icons.CREATE_NEW_FOLDER_OUTLINED, lambda e: self.new_folder()),
             C.icon_btn(ft.Icons.REFRESH_ROUNDED, tr("Refresh"), lambda e: self.load()),
         ], spacing=T.S2, wrap=True, run_spacing=T.S2)
-        self.hidden_switch = C.switch(tr("Show hidden files"), value=False, on_change=self._toggle_hidden)
+        self.hidden_switch = C.switch(tr("Show hidden files"), wrap=False, value=False, on_change=self._toggle_hidden)
         self.selected: set[str] = set()  # paths of checked entries in the current folder
         self.checks: dict[str, ft.Checkbox] = {}
         self.select_all = ft.Checkbox(value=False, active_color=T.ACCENT, check_color=T.ON_ACCENT,

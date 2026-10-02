@@ -69,8 +69,9 @@ HELP: dict[str, str] = _Translated({
                  "extensions, Lepton's launcher requirements).",
     "cat_overport": "OVRPort converts Quest games from Meta's own VR APIs to standard OpenXR. These are its "
                     "optional patches.",
-    "cat_adapter": "Settings of FrameBridge, the adapter FramePort adds to Quest games. They can also be changed "
-                   "after installing, from the Frame page.",
+    "cat_adapter": "Game settings: picture, controllers, menus and more, used by the adapter FramePort adds to Quest "
+                   "games. Change them here or from the Frame page; an installed game uses them the next time it "
+                   "starts.",
     "cat_device": "Files and environment variables placed next to the game on the Frame.",
     # ---- Frame
     "developer_mode": "Developer Mode (on the Frame: Settings → System → Developer) lets FramePort find the Frame on "
@@ -105,8 +106,8 @@ HELP: dict[str, str] = _Translated({
                   "Storage = 4XPlayer): upload into that folder in the game's storage.",
     "free_space": "Deletes the rollback copies kept from each game's previous install and leftover uploads. The "
                   "games and saves stay.",
-    "adapter_settings": "Change FrameBridge settings of an installed game (render scale, controller mapping and so "
-                        "on). They're read when the game starts.",
+    "adapter_settings": "Sharpness, refresh rate, controllers, menus and more for this game. Changes are used the "
+                        "next time it starts.",
     "frame_summary": "Quest ✓: Lepton is installed, so Quest games can run. PC VR ✓: Proton is installed, so PC VR "
                      "games can run on the Frame.",
     # ---- settings

@@ -5,6 +5,7 @@ the user's SSH agent/keys, then a password if given.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -104,13 +105,123 @@ class AgentFailed(RuntimeError):
     pass
 
 
+SFTP_CHANNELS = 3  # OpenSSH allows 10 channels per connection (MaxSessions): leave room for commands
+
+
+class SftpPool:
+    """A few SFTP channels shared by all threads, lent out per operation (or while a remote file is open).
+    paramiko's SFTPClient must not be used by two threads at once; one channel per thread was kept open for good and
+    long-lived GUI worker threads ran the connection out of channels ("ChannelException(2, 'Connect failed')").
+    A thread that already holds a channel reuses it for nested calls (no deadlock)."""
+
+    def __init__(self, open_channel, size: int = SFTP_CHANNELS):
+        self._open, self.size = open_channel, size
+        self._free: list = []
+        self._all: list = []
+        self._cv = threading.Condition()
+        self._local = threading.local()
+
+    @contextlib.contextmanager
+    def lease(self):
+        loc = self._local
+        if getattr(loc, "depth", 0):
+            loc.depth += 1
+            try:
+                yield loc.client
+            finally:
+                loc.depth -= 1
+            return
+        with self._cv:
+            while True:
+                while self._free:
+                    client = self._free.pop()
+                    if not client.sock.closed:
+                        break
+                    self._all.remove(client)
+                else:
+                    client = None
+                if client is not None or len(self._all) < self.size:
+                    break
+                self._cv.wait()
+            if client is None:
+                client = self._open()
+                self._all.append(client)
+        loc.client, loc.depth = client, 1
+        try:
+            yield client
+        finally:
+            loc.client, loc.depth = None, 0
+            with self._cv:
+                self._free.append(client)
+                self._cv.notify()
+
+    def close(self) -> None:
+        with self._cv:
+            clients, self._all, self._free = self._all, [], []
+            self._cv.notify_all()
+        for c in clients:
+            try:
+                c.close()
+            except Exception:  # noqa: BLE001 - closing anyway
+                pass
+
+
+class _LeasedFile:
+    """A remote file that holds its SFTP channel until it's closed."""
+
+    def __init__(self, f, lease):
+        self._f, self._lease = f, lease
+
+    def __getattr__(self, name):
+        return getattr(self._f, name)
+
+    def __iter__(self):
+        return iter(self._f)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def close(self) -> None:
+        if self._lease is not None:
+            lease, self._lease = self._lease, None
+            try:
+                self._f.close()
+            finally:
+                lease.__exit__(None, None, None)
+
+
+class SftpProxy:
+    """frame.sftp: looks like a paramiko SFTPClient; each call borrows a channel from the pool."""
+
+    def __init__(self, pool: SftpPool):
+        self._pool = pool
+
+    def open(self, *args, **kwargs):
+        lease = self._pool.lease()
+        client = lease.__enter__()
+        try:
+            f = client.open(*args, **kwargs)
+        except BaseException:
+            lease.__exit__(None, None, None)
+            raise
+        return _LeasedFile(f, lease)
+
+    def __getattr__(self, name):
+        def call(*args, **kwargs):
+            with self._pool.lease() as client:
+                return getattr(client, name)(*args, **kwargs)
+        return call
+
+
 @dataclass
 class Frame:
     target: FrameTarget
     password: str | None = None
     client: paramiko.SSHClient | None = None
-    _sftp: threading.local = field(default_factory=threading.local)  # one SFTP channel per thread (see sftp)
-    _sftps: list = field(default_factory=list)
+    _pool: SftpPool | None = None  # SFTP channels shared by all threads (see sftp)
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _agent_digest: str = ""  # the agent version known to be on the Frame (checked once per connection)
     home: str = ""
@@ -183,16 +294,12 @@ class Frame:
 
     def close(self) -> None:
         with self._lock:
-            sftps, self._sftps = self._sftps, []
-        for s in sftps:
-            try:
-                s.close()
-            except Exception:  # noqa: BLE001 - closing anyway
-                pass
+            pool, self._pool = self._pool, None
+        if pool:
+            pool.close()
         if self.client:
             self.client.close()
         self.client = None
-        self._sftp = threading.local()
         self._agent_digest = ""
 
     def alive(self) -> bool:
@@ -201,16 +308,12 @@ class Frame:
         return bool(transport and transport.is_active())
 
     @property
-    def sftp(self) -> paramiko.SFTPClient:
-        """This thread's SFTP channel. paramiko's SFTPClient must not be shared between threads (replies get mixed up);
-        channels on one SSH connection can run side by side."""
-        client = getattr(self._sftp, "client", None)
-        if client is None or client.sock.closed:
-            client = self.client.open_sftp()
-            self._sftp.client = client
-            with self._lock:
-                self._sftps.append(client)
-        return client
+    def sftp(self) -> SftpProxy:
+        """SFTP for any thread (see SftpPool): the same calls as paramiko's SFTPClient."""
+        with self._lock:
+            if self._pool is None:
+                self._pool = SftpPool(lambda: self.client.open_sftp())
+            return SftpProxy(self._pool)
 
     def run(self, command: str, stdin: str | None = None,
             timeout: float | None = RUN_TIMEOUT) -> tuple[int, str, str]:
