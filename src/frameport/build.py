@@ -64,18 +64,29 @@ def build(source: SourceGame, analysis: Analysis, recipe: Recipe, outdir: Path, 
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     outdir.mkdir(parents=True, exist_ok=True)
-    variants = [("primary", False)] + ([("alt", True)] if recipe.alt_patches and recipe.overport else [])
+    # an APK that is already an OVRPort/FramePort build (e.g. a copy from an earlier FramePort) isn't converted again:
+    # a second conversion replaces OVRPort's platform loader and drops what the first build linked to it (the Meta
+    # stand-ins: Wallace & Gromit / Espire 2 then crashed with "cannot locate symbol ovr_..."). Only the Steam Frame
+    # patches are applied on top. Its alternate build, if wanted, is the copy saved next to it.
+    convert = recipe.overport and not analysis.is_overport_output
+    variants = [("primary", False)] + ([("alt", True)] if recipe.alt_patches and convert else [])
+    input_apk = Path(source.apk)
+    if recipe.overport and not convert and recipe.use_alt:
+        sibling = input_apk.with_name(f"{pkg}.alt-noforcequit.apk")
+        input_apk = sibling if sibling.exists() else input_apk
     results = {}
     all_checks, applied = [], []
     try:
         for variant, alt in variants:
-            if recipe.overport:
+            if convert:
                 reporter.stage(f"OVRPort ({variant})")
                 ids = overport_ids(recipe, alt)
                 patched = overport_tool.patch(source.apk, work, f"{pkg}.{variant}.overport.apk", ids, reporter)
-            else:  # an ordinary Android app: no VR translation, only the Frame fixes it needs (e.g. launcher)
+            else:  # an ordinary Android app, or an already converted build: only the Frame patches it needs
+                if recipe.overport:
+                    reporter.log(f"{input_apk.name} is already converted: applying only the Steam Frame patches")
                 patched = work / f"{pkg}.{variant}.original.apk"
-                shutil.copyfile(source.apk, patched)
+                shutil.copyfile(input_apk, patched)
             reporter.stage(f"Frame fixes ({variant})")
             unsigned = work / f"{pkg}.{variant}.unsigned.apk"
             applied, checks = apply_frame_fixes(patched, unsigned, analysis, recipe, reporter)

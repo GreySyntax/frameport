@@ -410,3 +410,45 @@ def test_every_patch_has_a_plain_summary():
 
     missing = [p.id for p in base.all_patches() if p.category != "adapter" and not p.summary]
     assert not missing, f"add plain summaries to patches/summaries.py: {missing}"
+
+
+def test_an_already_converted_apk_is_not_converted_again(tmp_path, monkeypatch):
+    """A converted copy (e.g. from an earlier FramePort) gets only the Steam Frame patches: converting it again
+    replaced the platform loader and dropped its link to the Meta stand-ins (crash: cannot locate symbol ovr_...)."""
+    from frameport import build
+    from frameport.core.events import Reporter
+    from frameport.core.models import SourceGame
+
+    apk = tmp_path / "com.x.apk"
+    apk.write_bytes(b"converted")
+    (tmp_path / "com.x.alt-noforcequit.apk").write_bytes(b"converted alt")
+    used = []
+    monkeypatch.setattr(build.overport_tool, "patch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("OVRPort")))
+    monkeypatch.setattr(build, "apply_frame_fixes",
+                        lambda src, out, *a: (used.append(src.read_bytes()), out.write_bytes(b"u"), ([], []))[2])
+    monkeypatch.setattr(build.sign, "sign", lambda src, dst, pkg: dst.write_bytes(b"signed"))
+    monkeypatch.setattr(build, "check_apk", lambda *a, **k: [])
+    analysis = _analysis(package="com.x", is_overport_output=True)
+    recipe = Recipe("com.x", patches={"patch_copy_libraries": {}}, alt_patches=["patch_remove_unreal_force_quit"],
+                    use_alt=True)
+    src = SourceGame(name="X", apk=apk)
+    res = build.build(src, analysis, recipe, tmp_path / "out", Reporter())
+    assert used == [b"converted alt"]  # one build, from the saved alternate copy, never through OVRPort
+    assert res.alt_apk is None and res.apk.exists()
+
+
+
+def test_stand_ins_count_only_when_the_loader_links_them(monkeypatch):
+    """A libovrstubs.so that nothing loads doesn't provide anything (the check passed while the game crashed)."""
+    from frameport.analysis import detect
+
+    exports = {b"loader": {"ovr_Present"}, b"stubs": {"ovr_Room_GetNextRoomArrayPage"}, b"game": set()}
+    imports = {b"game": {"ovr_Present", "ovr_Room_GetNextRoomArrayPage"}}
+    linked = {b"loader": []}
+    monkeypatch.setattr(detect.elf, "is_elf", lambda d: True)
+    monkeypatch.setattr(detect.elf, "dyn_symbols", lambda d, defined: exports[d] if defined else imports.get(d, set()))
+    monkeypatch.setattr(detect.elf, "needed", lambda d: linked.get(d, []))
+    libs = {"libgame.so": b"game", "libovrplatformloader.so": b"loader", "libovrstubs.so": b"stubs"}
+    assert detect.missing_ovr_symbols(libs) == {"ovr_Room_GetNextRoomArrayPage"}
+    linked[b"loader"] = ["libovrstubs.so"]
+    assert detect.missing_ovr_symbols(libs) == set()

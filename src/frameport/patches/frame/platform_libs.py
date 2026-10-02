@@ -58,12 +58,21 @@ class OvrStubs(Patch):
 
     def apply(self, ctx: ApkContext) -> bool:
         ws = ctx.ws
-        if not ws.has(ws.lib(LOADER)) or ws.has(ws.lib(STUBS)):
+        if not ws.has(ws.lib(LOADER)):
             return False
+        loader = ws.read_lib(LOADER)
+        if ws.has(ws.lib(STUBS)):
+            if STUBS in elf.needed(loader):
+                return False  # already linked (an earlier build)
+            # the stand-ins exist but nothing loads them (the loader was replaced, e.g. a converted APK converted
+            # again): link them again
+            ws.put(ws.lib(LOADER), elf.add_needed(loader, STUBS))
+            ctx.notes.append("linked the existing stand-ins again")
+            return True
         missing = missing_ovr_symbols(_lib_bytes(ws))
         if not missing:
             return False
-        ws.put(ws.lib(LOADER), elf.add_needed(ws.read_lib(LOADER), STUBS))
+        ws.put(ws.lib(LOADER), elf.add_needed(loader, STUBS))
         ws.put(ws.lib(STUBS), build_stub_library(sorted(missing), STUBS, ws.abi))
         ctx.notes.append(f"stubbed {len(missing)} function(s)")
         return True
