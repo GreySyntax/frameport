@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -31,6 +32,8 @@ from . import REPO_URL, __version__
 from .core import cache, library
 from .core.events import Reporter
 from .core.paths import user_data_dir
+
+_log = logging.getLogger("frameport.updates")
 
 REPO = REPO_URL.removeprefix("https://github.com/").strip("/")
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -266,15 +269,29 @@ def _extract(archive: Path, dest: Path, platform: str) -> Path:
     return folder
 
 
+def _powershell() -> tuple[str, dict]:
+    """Windows PowerShell 5.1 (always installed) and an environment it can load its own modules in: started from
+    PowerShell 7 (pwsh), PSModulePath points at pwsh's modules and 5.1 fails to load Microsoft.PowerShell.Security /
+    .Management (Get-AuthenticodeSignature, Copy-Item). Without PSModulePath it rebuilds its default."""
+    exe = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    env = {k: v for k, v in os.environ.items() if k.upper() != "PSMODULEPATH"}
+    return (str(exe) if exe.exists() else "powershell"), env
+
+
 def _signer_thumbprint(exe: Path) -> str | None:
     """Windows: the Authenticode signer certificate's thumbprint ('' if unsigned, None if it can't be read)."""
+    ps, env = _powershell()
     try:
-        out = subprocess.run(["powershell", "-NoProfile", "-Command",
-                              f"(Get-AuthenticodeSignature -LiteralPath '{exe}').SignerCertificate.Thumbprint"],
-                             capture_output=True, text=True, timeout=60)
-        return out.stdout.strip() if out.returncode == 0 else None
-    except (OSError, subprocess.SubprocessError):
+        out = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-Command",
+                              f"(Get-AuthenticodeSignature -LiteralPath {_ps_quote(exe)}).SignerCertificate.Thumbprint"],
+                             capture_output=True, text=True, timeout=60, env=env)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _log.warning("reading the signature of %s failed: %s", exe, exc)
         return None
+    if out.returncode:
+        _log.warning("reading the signature of %s failed (%s): %s", exe, out.returncode, out.stderr.strip()[-500:])
+        return None
+    return out.stdout.strip()
 
 
 def prepare(up: Update, reporter: Reporter | None = None, platform: str | None = None,
@@ -433,10 +450,12 @@ def apply(app: Path, target: Path | None = None, relaunch: bool = True, pid: int
     script = updates_dir() / ("apply.ps1" if platform == "win32" else "apply.sh")
     script.write_text(swap_script(app, target, pid, platform, relaunch, log), encoding="utf-8")
     if platform == "win32":
-        cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", str(script)]
+        ps, env = _powershell()
+        cmd = [ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File",
+               str(script)]
         flags = 0 if wait else (0x00000008 | 0x00000200 | 0x08000000)  # DETACHED, NEW_PROCESS_GROUP, NO_WINDOW
         proc = subprocess.Popen(cmd, creationflags=flags, close_fds=True, stdin=subprocess.DEVNULL,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
     else:
         proc = subprocess.Popen(["/bin/sh", str(script)], start_new_session=not wait, close_fds=True,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

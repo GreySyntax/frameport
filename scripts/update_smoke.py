@@ -20,6 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 
 def main() -> int:
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
     archive = Path(sys.argv[1]).resolve()
     home = Path(tempfile.mkdtemp(prefix="fp-update-smoke-"))
     os.environ["FRAMEPORT_HOME"] = str(home / "data")
