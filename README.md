@@ -58,7 +58,7 @@ switched on or off under **Customize**.
 |---|---|
 | Meta Quest games (APK) | Translated to OpenXR (OVRPort) and patched for the Frame; run in Valve's Android runtime (Lepton) |
 | Other Android VR apps using OpenXR (e.g. Pico builds) | Translated the same way; the other headset's own extensions and store services aren't available |
-| Ordinary Android apps and games (no VR) | Installed unchanged and run in Lepton |
+| Ordinary Android apps and games (no VR) | Installed unchanged and shown as a flat window in the headset |
 | PC VR games (Windows; OpenXR, SteamVR or Oculus) | Run through Proton on the Frame (experimental), or on a Windows PC with SteamVR and streamed to the Frame; Oculus-only games use Revive |
 | Can't run | 32-bit-only or x86-only APKs, Pico/HTC Wave SDK apps, Android XR apps, and games that check an Oculus licence (they need the Oculus app on a PC) |
 
