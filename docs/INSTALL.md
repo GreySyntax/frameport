@@ -33,6 +33,23 @@ start shows a warning:
    run the command FramePort shows. It enables SSH, authorises this computer and installs Valve's Android runtime
    (Lepton) if needed.
 
+## Installing games
+
+- **Install on Frame** on a game's page (or select several in the Library and install them together). Installs run
+  one after another in the background; **Activity** shows the current one at the top.
+- **Update all** reinstalls every game whose build changed (e.g. after a FramePort update). Questions that need an
+  answer (e.g. Oculus games that can't run on the Frame) are asked once, for all games.
+- If the Frame goes to sleep, turns off or leaves the Wi-Fi, the queue **waits** and continues once it's back; uploads
+  pick up where they stopped. While installs run, FramePort keeps the Frame from going to sleep. Before a large batch
+  it checks the Frame has enough free space.
+- Your own game files are never changed. The converted copy is temporary: it's removed once the game is on the Frame
+  (Settings → Installing: keep them, or remove all now).
+- **Game settings…** (game menu or the Steam Frame page): sharpness, refresh rate, controllers, menus, 360° video and
+  mixed-reality options in plain words, only those that matter for the game. Changes are kept with the game and,
+  when it's installed, used the next time it starts.
+- Ordinary Android apps (no VR) are installed unchanged and shown as a flat window in the headset. Android's
+  back/home/recents buttons are hidden by default (patch **Hide Android's navigation bar**).
+
 ## Updating
 
 FramePort checks for a new release at start and every 6 hours (it only downloads the release information). When one
@@ -82,7 +99,8 @@ Command line: `frameport frame send <files> --dest videos` (`frameport frame sto
 ## Sharing a working game, reporting a problem
 
 - **Share working config…** (game menu): opens a prefilled GitHub issue with the game's patches and settings. Accepted
-  configs become built-in recipes.
+  configs become built-in recipes. Untested games ask on their page once they've been installed or tested: **It
+  works**, **It has issues** or **It doesn't run**.
 - **Report a problem…** (game menu, or Settings → Problems and feedback): saves a diagnostics zip to Documents (logs,
   recipe, device details; IP addresses, user names, home folders and Steam ids replaced) and opens a prefilled GitHub
   issue to attach it to. Command line: `frameport diag report <game>`, `frameport share-recipe <game>`.

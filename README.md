@@ -1,8 +1,8 @@
 # FramePort
 
-FramePort installs Meta Quest standalone games and Oculus Rift PC VR games on the **Valve Steam Frame**. It patches a
-game so it runs on the Frame's runtimes, copies it to the headset over Wi-Fi and adds it to the Frame's Steam library
-with artwork.
+FramePort installs Meta Quest standalone games, other Android apps and PC VR games on the **Valve Steam Frame**. It
+patches a game so it runs on the Frame's runtimes, copies it to the headset over Wi-Fi and adds it to the Frame's Steam
+library with artwork.
 
 ![Library](docs/images/library.png)
 
@@ -39,10 +39,17 @@ marked as not runnable on the Frame.
    game folders.
    FramePort identifies each game and fetches its artwork and store details.
 5. **Install**: open a game and click **Install on Frame**. FramePort patches, checks, uploads and adds the game to the
-   Frame's Steam library, then runs a short launch test.
+   Frame's Steam library, then runs a short launch test. Several installs queue up; if the Frame goes to sleep or
+   drops off the Wi-Fi, the queue waits and continues where it stopped (FramePort keeps the Frame awake meanwhile).
+   Your game files are never changed: the converted copy is temporary.
 6. **Play**: put the headset on and start the game from the Steam library (or click **Play on Frame**).
 
 ![Game page](docs/images/game.png)
+
+Each game has **Game settings** in plain words (sharpness, refresh rate, controllers, menus, 360° video, mixed
+reality), showing only what matters for that game. Changes are kept with the game and reach the Frame right away.
+
+![Game settings](docs/images/game-settings.png)
 
 FramePort updates itself: when a new version is released, the Library shows **Update now**.
 
@@ -50,7 +57,11 @@ FramePort updates itself: when a new version is released, the Library shows **Up
 
 The built-in catalog has tested settings for 38 games (27 work, 5 work with known issues, 6 can't run on the Frame).
 Other games get suggested patches from detection rules; each suggestion states its reason, and every patch can be
-switched on or off under **Customize**.
+switched on or off under **Customize**: described in plain words, with **Show technical details** for the exact
+effect of each patch.
+
+Tried an untested game? Its page asks how it runs; **Share working config…** opens a prefilled GitHub issue so your
+recipe can join the built-in catalog for everyone.
 
 ![Patches](docs/images/patches.png)
 
@@ -102,6 +113,7 @@ The same functions are available as `frameport` (included in the source tree; al
 - [docs/PLAYBOOK.md](docs/PLAYBOOK.md): symptoms and fixes per game.
 - [docs/FRAME_RUNTIME.md](docs/FRAME_RUNTIME.md): Steam Frame runtime facts.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the code is organised.
+- [CONTRIBUTING.md](CONTRIBUTING.md): contributing code, recipes and translations.
 
 ## Development
 
