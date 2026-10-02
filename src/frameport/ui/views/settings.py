@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 
 import flet as ft
 
-from ... import REPO_URL, __version__, i18n
+from ... import REPO_URL, __version__, i18n, pipeline
 from ...core.paths import user_data_dir
 from ...errors import explain
-from ...i18n import tr
+from ...i18n import fmt_size, tr
 from ...recommend import catalog
 from .. import components as C
 from .. import theme as T
@@ -79,9 +79,23 @@ class SettingsView:
 
         def changed(e):
             library.set_setting("install.launch_test", bool(e.control.value))
-        return C.switch(tr("Launch test after installing on the Frame (starts the game once without the headset "
-                               "and checks its log)"), value=bool(library.setting("install.launch_test", True)),
-                         on_change=changed)
+        def keep_changed(e):
+            library.set_setting("build.keep_copies", bool(e.control.value))
+
+        def clean(e):
+            def work():
+                freed = pipeline.remove_all_converted_copies()
+                self.app.toast(tr("Removed the converted copies ({size})").format(size=fmt_size(freed)))
+            self.app.run_bg(work)
+        keep = C.switch(tr("Keep converted copies on this PC after installing (FramePort converts again for every "
+                           "install, so they're only needed for inspecting a build)"),
+                        value=bool(library.setting("build.keep_copies", False)), on_change=keep_changed)
+        launch = C.switch(tr("Launch test after installing on the Frame (starts the game once without the headset "
+                             "and checks its log)"), value=bool(library.setting("install.launch_test", True)),
+                          on_change=changed)
+        return ft.Column([launch, keep, C.ghost(tr("Remove converted copies now"), ft.Icons.CLEANING_SERVICES_ROUNDED,
+                                               clean, tooltip=tr("Your own game files aren't touched."))],
+                         spacing=T.S2, horizontal_alignment=ft.CrossAxisAlignment.START)
 
     def updates_card(self) -> ft.Control:
         """Settings → Updates: FramePort's own updates (ui/updater.py, frameport/updates.py)."""

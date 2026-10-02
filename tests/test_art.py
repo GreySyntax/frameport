@@ -333,3 +333,25 @@ def test_apps_without_store_art_get_a_cover(tmp_path):
     Image.new("RGB", (60, 90)).save(fetch.artwork_dir("org.example.flat") / "portrait.jpg")  # store art arrives
     assert steam.ensure_cover("org.example.flat") is None
     assert thumbs.pick("org.example.flat", ("portrait", "square", "cover", "icon")).name == "portrait.jpg"
+
+
+def test_converted_copies_are_removed_after_installing(tmp_path, monkeypatch):
+    """Converted APKs live in FramePort's output folder only until they're on the Frame; the user's files stay."""
+    from frameport import pipeline
+    from frameport.core import library
+    from frameport.core.paths import output_dir
+
+    own = tmp_path / "mine.apk"
+    own.write_bytes(b"x")
+    out = output_dir() / "Game"
+    out.mkdir(parents=True)
+    (out / "com.g.apk").write_bytes(b"y" * 10)
+    (out / "com.g.alt-noforcequit.apk").write_bytes(b"z" * 5)
+    library.upsert_game("com.g", build={"apk": str(out / "com.g.apk"),
+                                        "alt_apk": str(out / "com.g.alt-noforcequit.apk")})
+    library.upsert_game("com.mine", build={"apk": str(own)})  # "install as is": the build is the user's own file
+    assert pipeline.remove_converted_copies("com.mine") == 0 and own.exists()
+    library.set_setting("build.keep_copies", True)
+    assert pipeline.remove_converted_copies("com.g") == 0
+    library.set_setting("build.keep_copies", False)
+    assert pipeline.remove_converted_copies("com.g") == 15 and not out.exists()

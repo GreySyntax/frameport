@@ -397,16 +397,54 @@ def install_game(package: str, target: Target, reporter: Reporter, apk_only: boo
     entry = library.game(package)
     if is_rift(entry):
         return install_rift(package, target, reporter, add_to_library)
+    test_build = apk is not None
     b = entry.get("build") or {}
     recipe = library.recipe_from_dict(entry["recipe"])
     apk = Path(apk) if apk else Path(b["alt_apk"] if recipe.use_alt and b.get("alt_apk") else b["apk"])
+    if not test_build and not apk.exists():  # the converted copy was removed after an earlier install: make it again
+        build_game(package, reporter)
+        return install_game(package, target, reporter, apk_only, add_to_library)
     data_dir = Path(entry["data_dir"]) if entry.get("data_dir") else None
     title = steam_title(entry)
     result = target.install(package, title, apk, data_dir, recipe, reporter, apk_only)
     if add_to_library:
         target.add_to_library([package], reporter)
     _record_install(package, target.label, {"apk": str(apk), "result": result, "time": time.time()})
+    if not test_build:
+        remove_converted_copies(package)
     return result
+
+
+def converted_copies_size() -> int:
+    return sum(p.stat().st_size for p in output_dir().rglob("*.apk") if p.is_file())
+
+
+def remove_all_converted_copies() -> int:
+    """Remove every converted APK in FramePort's output folder (installs convert again when needed)."""
+    import shutil
+
+    freed = converted_copies_size()
+    for d in output_dir().iterdir():
+        shutil.rmtree(d, ignore_errors=True) if d.is_dir() else d.unlink(missing_ok=True)
+    return freed
+
+
+def remove_converted_copies(package: str) -> int:
+    """The converted APKs are only needed until they're on the Frame (every install converts again): remove them
+    unless the user keeps them (setting build.keep_copies). Only files in FramePort's own output folder, never the
+    game files the user added. Returns the bytes freed."""
+    if library.setting("build.keep_copies", False):
+        return 0
+    b = (library.game(package) or {}).get("build") or {}
+    out, freed = output_dir().resolve(), 0
+    for key in ("apk", "alt_apk"):
+        p = Path(b[key]) if b.get(key) else None
+        if p and p.exists() and out in p.resolve().parents:
+            freed += p.stat().st_size
+            p.unlink()
+            if not any(p.parent.iterdir()):
+                p.parent.rmdir()
+    return freed
 
 
 def _record_install(package: str, where: str, record: dict) -> None:
