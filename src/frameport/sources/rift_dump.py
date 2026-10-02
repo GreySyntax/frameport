@@ -4,7 +4,7 @@ When scanning, the chosen folder's subfolders are the games (the folder itself o
 it). A subfolder is **one game** when it has candidate programs (see analysis.rift.candidates), no APKs (those are Quest
 dumps) and all candidates sit at its top level or under a single subfolder — repacks put the game one or more levels
 down, next to installers and archives. Otherwise it's a **collection**: every subfolder is one game (or, again, a
-collection), e.g. ARMGDDN_PCVR_OCULUS/<Game vX -TAG>/<Game>/…/Game.exe. Loose programs in a collection are ignored.
+collection), e.g. <PC VR games>/<Game vX -TAG>/<Game>/…/Game.exe. Loose programs in a collection are ignored.
 """
 from __future__ import annotations
 

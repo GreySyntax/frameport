@@ -1,7 +1,7 @@
 """Find Quest games on disk.
 
 Accepted layouts:
-  <folder>/<something>.apk [+ <folder>/<package>/ (OBB or raw asset data)]   e.g. VR CyberDeck / VRP downloads
+  <folder>/<something>.apk [+ <folder>/<package>/ (OBB or raw asset data)]   e.g. common downloader layouts
   <folder>/<package>.apk + <folder>/obb/                                       FramePort/PATCHED output layout
   a single .apk file
 """

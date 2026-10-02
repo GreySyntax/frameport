@@ -160,7 +160,7 @@ Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
 UV_LINK_MODE=copy uv sync --extra dev   # creates/updates ./.venv
 uv run pytest                # unit tests (no device, no game files)
 uv run frameport --help      # CLI;  uv run frameport-gui  for the GUI
-uv run frameport parity --known-good <PATCHED/_known-good-*> --sources "<VR CyberDeck downloads>"
+uv run frameport parity --known-good <PATCHED/_known-good-*> --sources "<folder with the game dumps>"
 ```
 Games tests: `pytest -m games` (FRAMEPORT_GAMES=<downloads dir>); on-device checks are CLI commands (below);
 native layer test: `FRAMEPORT_NATIVE_TESTS=1 pytest -m native` (compiles with the NDK, ~2 min on NTFS).

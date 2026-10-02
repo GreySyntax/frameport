@@ -272,11 +272,11 @@ _TAG_WORDS = r"(?:ARMGDDN|VRP|JF|FFA|Repacks?|Shipping|GOG|CODEX|PLAZA|FitGirl|D
 
 
 def clean_title(name: str) -> str:
-    """'Asgards Wrath v1.6.0 -ARMGDDN' -> 'Asgards Wrath'; 'Arktika 1 (v1.0.0.7) -VRP' -> 'Arktika 1';
+    """'Asgards Wrath v1.6.0 -TAG' -> 'Asgards Wrath'; 'Arktika 1 (v1.0.0.7) -VRP' -> 'Arktika 1';
     'Vader Immortal - Episode II v2.0.2+236948 Shipping' -> 'Vader Immortal - Episode II'."""
     t = re.sub(r"\[[^\]]*\]", " ", name)  # [FFA Repacks]
     t = re.sub(r"\((?:[^)]*\d[^)]*|[^)]*" + _TAG_WORDS + r"[^)]*)\)", " ", t, flags=re.I)  # (v1.0.0.7)
-    t = re.sub(r"\s-\s*" + _TAG_WORDS + r"\b.*$", " ", t, flags=re.I)  # -ARMGDDN, -VRP v76
+    t = re.sub(r"\s-\s*" + _TAG_WORDS + r"\b.*$", " ", t, flags=re.I)  # -TAG, -TAG v76
     t = re.sub(r"\bv\d[\w.+\-]*", " ", t, flags=re.I)  # v1.6.0, v008, v2.0.2+236948
     t = re.sub(r"(?<![\w.])\d+(?:\.\d+){2,}[\w+\-]*", " ", t)  # 4.15.20, 21.11.08.358012
     t = re.sub(r"\b" + _TAG_WORDS + r"\b", " ", t, flags=re.I)
