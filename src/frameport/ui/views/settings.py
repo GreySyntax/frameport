@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import flet as ft
 
+from ... import REPO_URL
 from ...core.paths import user_data_dir
 from ...recommend import catalog
 from .. import components as C
@@ -162,8 +163,8 @@ class SettingsView:
             C.section("About", C.card(ft.Column([
                 C.kv("Version", ver),
                 C.kv("Frame agent", self.agent_text(), "frame_agent"),
-                C.kv("Source", ft.TextButton("github.com/spoopyghosty0/frameport", icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
-                                             url="https://github.com/spoopyghosty0/frameport")),
+                C.kv("Source", ft.TextButton(REPO_URL.removeprefix("https://"), icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
+                                             url=REPO_URL)),
                 C.meta("Uses overport, Revive (LibreVR), Valve's Lepton and Proton. Not affiliated with Valve or Meta."),
             ], spacing=T.S2))),
         ], spacing=T.S5, scroll=ft.ScrollMode.AUTO, expand=True)

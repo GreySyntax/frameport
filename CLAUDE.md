@@ -318,8 +318,14 @@ tests, builds Windows x64 / macOS arm64 / Linux x64 bundles, signs, attests and 
   Windows console) plus PYTHONUTF8; macOS builds need `--python-version 3.12 --arch arm64` (cryptography has no wheels
   for flet's default Python / x86_64 cross-build), with a PyInstaller fallback step; `astral-sh/setup-uv` has no
   floating major tags after v7 → pin the exact version; force-moving a tag starts duplicate runs (cancel one).
-- `gh` is a local install at `~/.local/bin/gh` (logged in as spoopyghosty0 with `workflow` scope; token in
-  `~/.config/gh/hosts.yml`). Commit as `spoopyghosty0 <336754034+spoopyghosty0@users.noreply.github.com>` (set in the repo config).
+- **This project's GitHub identity is `spoopyghosty0`** (a dedicated account; the machine's default gh/git login is a
+  different, personal account that must never touch this repo). `gh` (`~/.local/bin/gh`) uses it through
+  `GH_CONFIG_DIR=~/.config/gh-spoopyghosty0` (set for Claude Code in the git-ignored `.claude/settings.local.json`);
+  git pushes from this folder authenticate as it through a repo-local credential helper, and commits use the repo-local
+  identity `spoopyghosty0 <336754034+spoopyghosty0@users.noreply.github.com>`. Check with `gh api user --jq .login`
+  before any GitHub action.
+- **No Claude trailers** (`Co-Authored-By: Claude …`, `Claude-Session: …`) in commits or PR descriptions — the owner's
+  rule; history was rewritten to remove them.
 - **The repo is public: never commit personal data** — the Frame's IP address, the Steam user id, the owner's email,
   local home paths (native builds use `-ffile-prefix-map`). History was rewritten once to remove them.
 

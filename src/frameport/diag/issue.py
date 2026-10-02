@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 
 from . import redact
 
-REPO = "https://github.com/spoopyghosty0/frameport"
+from .. import REPO_URL as REPO
 MAX_URL = 7500
 
 
