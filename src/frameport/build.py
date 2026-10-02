@@ -64,21 +64,20 @@ def build(source: SourceGame, analysis: Analysis, recipe: Recipe, outdir: Path, 
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     outdir.mkdir(parents=True, exist_ok=True)
-    # an APK that is already an OVRPort/FramePort build (e.g. a copy from an earlier FramePort) isn't converted again:
-    # a second conversion replaces OVRPort's platform loader and drops what the first build linked to it (the Meta
-    # stand-ins: Wallace & Gromit / Espire 2 then crashed with "cannot locate symbol ovr_..."). Only the Steam Frame
-    # patches are applied on top. Its alternate build, if wanted, is the copy saved next to it.
-    convert = recipe.overport and not analysis.is_overport_output
-    variants = [("primary", False)] + ([("alt", True)] if recipe.alt_patches and convert else [])
-    input_apk = Path(source.apk)
-    if recipe.overport and not convert and recipe.use_alt:
-        sibling = input_apk.with_name(f"{pkg}.alt-noforcequit.apk")
-        input_apk = sibling if sibling.exists() else input_apk
+    # an APK that is already an OVRPort/FramePort build (e.g. a copy from an earlier FramePort) isn't converted again
+    # for the normal build: a second conversion replaces OVRPort's platform loader and drops what the first build
+    # linked to it (Wallace & Gromit / Espire 2 then crashed with "cannot locate symbol ovr_..."). Only the Steam
+    # Frame patches are applied on top. Its alternate build is the copy saved next to it, or (no copy) one more
+    # OVRPort run for the alternate patches; the stand-ins patch relinks what that drops.
+    converted = recipe.overport and analysis.is_overport_output
+    variants = [("primary", False)] + ([("alt", True)] if recipe.alt_patches and recipe.overport else [])
+    alt_copy = Path(source.apk).with_name(f"{pkg}.alt-noforcequit.apk")
     results = {}
     all_checks, applied = [], []
     try:
         for variant, alt in variants:
-            if convert:
+            input_apk = alt_copy if converted and alt and alt_copy.exists() else Path(source.apk)
+            if recipe.overport and (not converted or alt and input_apk == Path(source.apk)):
                 reporter.stage(f"OVRPort ({variant})")
                 ids = overport_ids(recipe, alt)
                 patched = overport_tool.patch(source.apk, work, f"{pkg}.{variant}.overport.apk", ids, reporter)

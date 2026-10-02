@@ -433,8 +433,19 @@ def test_an_already_converted_apk_is_not_converted_again(tmp_path, monkeypatch):
                     use_alt=True)
     src = SourceGame(name="X", apk=apk)
     res = build.build(src, analysis, recipe, tmp_path / "out", Reporter())
-    assert used == [b"converted alt"]  # one build, from the saved alternate copy, never through OVRPort
-    assert res.alt_apk is None and res.apk.exists()
+    assert used == [b"converted", b"converted alt"]  # both builds without OVRPort: the alternate one is the saved copy
+    assert res.alt_apk.exists() and res.apk.exists()
+    (tmp_path / "com.x.alt-noforcequit.apk").unlink()  # no saved alternate copy: OVRPort makes it (only that one)
+    calls = []
+
+    def fake_overport(src, work, name, ids, rep):
+        calls.append(ids)
+        (work / name).write_bytes(b"alt")
+        return work / name
+    monkeypatch.setattr(build.overport_tool, "patch", fake_overport)
+    used.clear()
+    build.build(src, analysis, recipe, tmp_path / "out", Reporter())
+    assert used == [b"converted", b"alt"] and len(calls) == 1 and "patch_remove_unreal_force_quit" in calls[0]
 
 
 
