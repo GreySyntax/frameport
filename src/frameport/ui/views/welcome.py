@@ -53,7 +53,7 @@ class WelcomeView:
             app.welcome_started = True
             tool_job = app.update_tools(quiet=True)
         t_state = "done" if tools_done else "busy" if tool_job else "error"
-        t_text = (tr("Java, overport and apksigner are ready.") if tools_done else
+        t_text = (tr("Java, OVRPort and apksigner are ready.") if tools_done else
                   (tool_job.message or tool_job.stage or tr("Downloading…")) if tool_job else
                   tr("The download didn't finish. Check your internet connection."))
         f_state = {"connected": "done", "connecting": "busy"}.get(app.frame_state, "todo")

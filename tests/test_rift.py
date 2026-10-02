@@ -316,20 +316,20 @@ def test_release_for_matches_build_date(tmp_path, monkeypatch):
 
 
 # ------------------------------------------------------------------------------------------ nested collections
-def armgddn_tree(root: Path) -> Path:
-    """A collection like ARMGDDN_PCVR_OCULUS: one folder per game, the game nested inside, installers around it."""
+def collection_tree(root: Path) -> Path:
+    """A collection folder: one folder per game, the game nested inside, installers around it."""
     col = root / "PCVR"
     # Unity game one level down, with an uninstaller and a top-level Setup.exe next to archive parts
-    a = col / "Space Game v1.6.0 -ARMGDDN"
+    a = col / "Space Game v1.6.0 -GRP"
     (a / "Space Game" / "Space Game_Data").mkdir(parents=True)
     (a / "Setup.exe").write_bytes(make_pe())
-    (a / "Space Game v1.6.0 -ARMGDDN.7z.001").write_bytes(b"7z")
+    (a / "Space Game v1.6.0 -GRP.7z.001").write_bytes(b"7z")
     (a / "Space Game" / "Space Game.exe").write_bytes(make_pe(extra=b"ovr_Initialize"))
     (a / "Space Game" / "UnityPlayer.dll").write_bytes(make_pe(imports=("d3d11.dll",)))
     (a / "Space Game" / "_UnInstall").mkdir()
     (a / "Space Game" / "_UnInstall" / "unins000.exe").write_bytes(make_pe())
     # Unreal: bootstrap exe + the shipping build that really runs (UTF-16 marker, as Unreal stores strings)
-    b = col / "Wrath Game v008 [FFA Repacks]" / "Wrath" / "WindowsNoEditor"
+    b = col / "Wrath Game v008 [XYZ Repacks]" / "Wrath" / "WindowsNoEditor"
     (b / "WrathGame" / "Binaries" / "Win64").mkdir(parents=True)
     (b / "WrathGame.exe").write_bytes(make_pe())
     (b / "WrathGame" / "Binaries" / "Win64" / "WrathGame-Win64-Shipping.exe").write_bytes(
@@ -337,7 +337,7 @@ def armgddn_tree(root: Path) -> Path:
     (b.parent / "Engine" / "Binaries" / "Win64").mkdir(parents=True)
     (b.parent / "Engine" / "Binaries" / "Win64" / "CrashReportClient.exe").write_bytes(make_pe())
     # two builds of the same game: ambiguous
-    c = col / "The Climber v1.5.0.16 -ARMGDDN" / "The Climber" / "bin"
+    c = col / "The Climber v1.5.0.16 -GRP" / "The Climber" / "bin"
     for build in ("win_x64", "win_x64-steam"):
         (c / build).mkdir(parents=True)
         (c / build / "Climber.exe").write_bytes(make_pe(extra=b"LibOVRRT64_1.dll"))
@@ -345,43 +345,46 @@ def armgddn_tree(root: Path) -> Path:
     tool = col / "Some Tool"
     tool.mkdir()
     (tool / "tool.exe").write_bytes(make_pe(subsystem=3))
-    q = col / "Quest Game -VRP"
+    q = col / "Quest Game -RLS"
     q.mkdir()
     (q / "game.apk").write_bytes(b"PK")
     return col
 
 
 def test_scan_collection_finds_nested_games(tmp_path):
-    col = armgddn_tree(tmp_path)
+    col = collection_tree(tmp_path)
     games = rift_dump.scan(col)
-    assert sorted(p.name for p in games) == ["Space Game v1.6.0 -ARMGDDN", "The Climber v1.5.0.16 -ARMGDDN",
-                                             "Wrath Game v008 [FFA Repacks]"]
+    assert sorted(p.name for p in games) == ["Space Game v1.6.0 -GRP", "The Climber v1.5.0.16 -GRP",
+                                             "Wrath Game v008 [XYZ Repacks]"]
     assert [p.name for p in rift_dump.scan(tmp_path)] == [p.name for p in games]  # a level above works too
 
 
 def test_ranking_and_ambiguity(tmp_path):
-    col = armgddn_tree(tmp_path)
-    a = rift.analyze(col / "Space Game v1.6.0 -ARMGDDN")
+    col = collection_tree(tmp_path)
+    a = rift.analyze(col / "Space Game v1.6.0 -GRP")
     assert a.extra["exe"] == "Space Game/Space Game.exe" and a.extra["exe_confirmed"] and a.label == "Space Game"
-    w = rift.analyze(col / "Wrath Game v008 [FFA Repacks]")
+    w = rift.analyze(col / "Wrath Game v008 [XYZ Repacks]")
     assert w.extra["exe"].endswith("WrathGame-Win64-Shipping.exe") and w.xr == "LibOVR" and w.engine == "Unreal"
     assert "Unreal launcher (starts the real game build)" in w.extra["exe_candidates"][1]["reasons"]
-    c = rift.analyze(col / "The Climber v1.5.0.16 -ARMGDDN")
+    c = rift.analyze(col / "The Climber v1.5.0.16 -GRP")
     assert c.extra["exe_confirmed"] is False and c.extra["exe"] == "The Climber/bin/win_x64/Climber.exe"
     assert "Steam build" in c.extra["exe_candidates"][1]["reasons"]
     assert c.label == "The Climber" and c.package == "rift.the_climber"
 
 
 @pytest.mark.parametrize("name,title", [
-    ("Asgards Wrath v1.6.0 -ARMGDDN", "Asgards Wrath"),
-    ("Arktika 1 (v1.0.0.7) -VRP", "Arktika 1"),
+    ("Asgards Wrath v1.6.0 -GRP", "Asgards Wrath"),
+    ("Arktika 1 (v1.0.0.7) -RLS", "Arktika 1"),
     ("Vader Immortal - Episode II v2.0.2+236948 Shipping", "Vader Immortal - Episode II"),
-    ("Vader Immortal - Episode I v1.1.0+236956 Shipping -[VRP Repacks]", "Vader Immortal - Episode I"),
-    ("Vader Immortal - Episode III v3.0.2+236944 [FFA Repacks]", "Vader Immortal - Episode III"),
-    ("Lies Beneath 4.15.20 -ARMGDDN", "Lies Beneath"),
-    ("Defector v21.11.08.358012 -ARMGDDN", "Defector"),
+    ("Vader Immortal - Episode I v1.1.0+236956 Shipping -[ABC Repacks]", "Vader Immortal - Episode I"),
+    ("Vader Immortal - Episode III v3.0.2+236944 [XYZ Repacks]", "Vader Immortal - Episode III"),
+    ("Lies Beneath 4.15.20 -GRP", "Lies Beneath"),
+    ("Defector v21.11.08.358012 -GRP", "Defector"),
     ("Lone Echo 2", "Lone Echo 2"),
-    ("Rick and Morty - Virtual Rick-ality v2288226 -ARMGDDN", "Rick and Morty - Virtual Rick-ality"),
+    ("Rick and Morty - Virtual Rick-ality v2288226 -GRP", "Rick and Morty - Virtual Rick-ality"),
+    ("Rick and Morty - Virtual Rick-ality", "Rick and Morty - Virtual Rick-ality"),  # no tag: nothing cut
+    ("Half-Life Alyx -GRP v12", "Half-Life Alyx"),
+    ("Some Game (Oculus Release) -GRP", "Some Game"),
 ])
 def test_clean_title(name, title):
     assert rift.clean_title(name) == title
@@ -390,7 +393,7 @@ def test_clean_title(name, title):
 def test_set_exe_and_rescan_keep_choice(tmp_path):
     from frameport import pipeline
 
-    col = armgddn_tree(tmp_path)
+    col = collection_tree(tmp_path)
     added = {g["title"]: g for g in pipeline.add_path(col)}
     assert set(added) == {"Space Game", "Wrath Game", "The Climber"}  # the fake Quest dump isn't a real APK
     climber = added["The Climber"]
@@ -407,7 +410,7 @@ def test_set_exe_and_rescan_keep_choice(tmp_path):
 def test_unchanged_folder_not_reanalyzed(tmp_path, monkeypatch):
     from frameport import pipeline
 
-    col = armgddn_tree(tmp_path)
+    col = collection_tree(tmp_path)
     pipeline.add_path(col)
     calls = []
     real = rift.analyze
@@ -452,11 +455,11 @@ def test_quest_as_is_skips_patching(quest_manifest, tmp_path, monkeypatch):
 def test_same_game_scanned_from_wrapper_or_inner_folder(tmp_path):
     from frameport import pipeline
 
-    col = armgddn_tree(tmp_path)
+    col = collection_tree(tmp_path)
     pipeline.add_path(col)
     pkg = "rift.space_game"
     library.upsert_game(pkg, title="Space Game: Remastered", art_source="oculusdb")
-    pipeline.add_path(col / "Space Game v1.6.0 -ARMGDDN")  # scanning the game's own folder finds the inner one
+    pipeline.add_path(col / "Space Game v1.6.0 -GRP")  # scanning the game's own folder finds the inner one
     games = [g for g in library.games() if g["package"].startswith("rift.space")]
     assert len(games) == 1 and games[0]["title"] == "Space Game: Remastered"
 
@@ -590,3 +593,14 @@ def test_unreal_dual_api_uses_vd_bat_args(tmp_path):
     assert pcvr.game_args(r) == ["-steam", "-hmd=OpenXR", "-nocrashreports"]
     (exe_dir / "VD.bat").unlink()
     assert rift.analyze(g).extra["launch_args"] == "-hmd=OpenXR"  # engine default without VD.bat
+
+
+@pytest.mark.parametrize("folder,name", [
+    ("Some Game v3055+2.5.0 -RLS v76", "Some Game v3055+2.5.0"),
+    ("Some Game v974+2.2 -RLS R2", "Some Game v974+2.2"),
+    ("Some Game - Episode One v12+1.0", "Some Game - Episode One v12+1.0"),  # a subtitle isn't a release tag
+])
+def test_quest_folder_display_name(folder, name):
+    from frameport.sources.quest_dump import display_name
+
+    assert display_name(folder) == name

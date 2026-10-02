@@ -1,9 +1,9 @@
-"""overport CLI patches. These run inside overport; we only choose which ones. The CLI comes from the downstream fork
+"""OVRPort CLI patches. These run inside OVRPort; we only choose which ones. The CLI comes from the downstream fork
 github.com/Android-XR-Bridge/OVRPort (1.2.5+), originally github.com/ovrport/app.
 
-The patch list is discovered dynamically (`overport patches`), and titles are fetched from ovrport/app's
+The patch list is discovered dynamically (the CLI's `patches` command), and titles are fetched from ovrport/app's
 strings.xml on GitHub (both cached; the fork dropped that file, so its new patches are described here). The table
-below is the offline fallback and adds what we learned on the Steam Frame; `default` mirrors overport's recommended
+below is the offline fallback and adds what we learned on the Steam Frame; `default` mirrors OVRPort's recommended
 set (Patch(..., true) in its sources).
 """
 from __future__ import annotations
@@ -13,14 +13,14 @@ from .base import Patch, Suggestion, register
 
 # id, title, default, detail
 OVERPORT_PATCHES = [
-    ("patch_copy_libraries", "Copy overport libraries", True,
-     "Adds overport's OpenXR loader dispatcher and platform loader. Required: without it nothing is translated."),
+    ("patch_copy_libraries", "Copy OVRPort libraries", True,
+     "Adds OVRPort's OpenXR loader dispatcher and platform loader. Required: without it nothing is translated."),
     ("patch_copy_ovrplugin_vrapi", "Copy OVRPlugin if VrApi is present", True,
      "Swaps in an OpenXR OVRPlugin for games that use VrApi through OVRPlugin (older Unity/Unreal)."),
     ("patch_replace_icon_label", "Replace application label and icon", True,
-     "Uses the store title/icon (overport image service) for the app label."),
+     "Uses the store title/icon (OVRPort image service) for the app label."),
     ("patch_fix_min_android_sdk", "Fix minimal Android SDK", True, "Raises minSdk where the loader needs it."),
-    ("patch_generate_config", "Generate overport config", True, "Writes liboverport.config.so with runtime options."),
+    ("patch_generate_config", "Generate OVRPort config", True, "Writes liboverport.config.so with runtime options."),
     ("patch_remove_localized_names", "Remove localized app names", True, "Keeps one label so the title is stable."),
     ("patch_clean_up_frida", "Clean up Frida leftovers in smali", True, "Removes leftovers from dumped/modded APKs."),
     ("patch_oculus_unity", "Patch Oculus detection for Unity", True,
@@ -47,7 +47,7 @@ OVERPORT_PATCHES = [
      "For heavy games that use application space warp: it causes artifacts or hangs on non-Quest runtimes "
      "(e.g. Asgard's Wrath 2, Batman: Arkham Shadow)."),
     ("patch_disable_controller_offset", "Disable controller tracking offset", False,
-     "Removes overport's controller pose offset if controllers look misplaced."),
+     "Removes OVRPort's controller pose offset if controllers look misplaced."),
     ("patch_remove_vrapi", "Remove VrApi library", False,
      "Not recommended: breaks games that load VrApi through OVRPlugin."),
     ("patch_vrapi_openxr", "VrApi → OpenXR adapter (OVRPort)", False,
@@ -87,7 +87,7 @@ class OverportPatch(Patch):
 
         a = analysis
         if self.default_on:
-            return Suggestion(True, "overport default.")
+            return Suggestion(True, "OVRPort default.")
         if self.id == "patch_force_passthrough" and a.extra.get("mr_only"):
             return Suggestion(True, "Mixed-reality-only game (passthrough required, no guardian): force "
                                     "passthrough on.")
@@ -127,7 +127,7 @@ for _pid, _title, _default, _detail in OVERPORT_PATCHES:
 
 
 def refresh(list_patches=None, fetch_titles: bool = True) -> list[str]:
-    """Register patches the installed overport CLI offers that this table doesn't know yet, and update titles.
+    """Register patches the installed OVRPort CLI offers that this table doesn't know yet, and update titles.
     `list_patches` is a callable returning patch ids (tools.overport.list_patches). Returns newly added ids."""
     import re
 
@@ -143,11 +143,14 @@ def refresh(list_patches=None, fetch_titles: bool = True) -> list[str]:
         for pid in ids:
             if pid not in REGISTRY:
                 register(OverportPatch(pid, pid.removeprefix("patch_").replace("_", " ").capitalize(), False,
-                                       "New overport patch (not yet described by FramePort)."))
+                                       "New OVRPort patch (not yet described by FramePort)."))
                 added.append(pid)
     if fetch_titles:
         text = cached_text("overport-strings.xml", STRINGS_URL, max_age=7 * 86400)
+        known = {row[0] for row in OVERPORT_PATCHES}
         for pid, title in re.findall(r'<string name="(patch_[a-z0-9_]+)">([^<]+)</string>', text or ""):
-            if pid in REGISTRY and REGISTRY[pid].category == "overport":
+            # only for patches FramePort doesn't describe yet: ours are worded for the Frame and are the keys of
+            # their translations
+            if pid in REGISTRY and REGISTRY[pid].category == "overport" and pid not in known:
                 REGISTRY[pid].title = title.replace("\\'", "'")
     return added

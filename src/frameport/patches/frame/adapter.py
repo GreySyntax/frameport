@@ -1,4 +1,4 @@
-"""FrameBridge: wraps overport's generic OpenXR loader to paper over Steam Frame runtime gaps."""
+"""FrameBridge: wraps OVRPort's generic OpenXR loader to paper over Steam Frame runtime gaps."""
 from __future__ import annotations
 
 from ...analysis import elf
@@ -23,7 +23,7 @@ class FrameBridgeAdapter(Patch):
     id = "frame.adapter"
     title = "FrameBridge OpenXR adapter"
     description = (
-        "Wraps overport's generic OpenXR loader (renamed libopenxr_loader_original.so). Fixes the Frame runtime's "
+        "Wraps OVRPort's generic OpenXR loader (renamed libopenxr_loader_original.so). Fixes the Frame runtime's "
         "gaps: retries rejected GLES swapchain formats/MSAA (Frame takes sRGB only), drops unsupported instance "
         "extensions and layers, emulates XR_FB_passthrough (ALPHA_BLEND), Meta scene/spatial entities (guardian-sized "
         "room), XR_KHR_convert_timespec_time, and vertically flipped quad layers; maps Frame controllers to Touch; "
@@ -40,7 +40,7 @@ class FrameBridgeAdapter(Patch):
     def apply(self, ctx: ApkContext) -> bool:
         ws = ctx.ws
         if not ws.has(ws.lib(GENERIC)):
-            raise RuntimeError("overport output has no libopenxr_loader_generic.so (not an overport build?)")
+            raise RuntimeError("OVRPort output has no libopenxr_loader_generic.so (not an OVRPort build?)")
         adapter = artifact(ws.abi, GENERIC)
         settings = settings_text(ctx.recipe_patches)
         changed = False
@@ -65,7 +65,7 @@ class FrameBridgeAdapter(Patch):
 
 
 def needs_xrshim(recipe_patches: dict) -> bool:
-    """Adapter features whose functions overport's dispatcher doesn't forward (it only knows a fixed table)."""
+    """Adapter features whose functions OVRPort's dispatcher doesn't forward (it only knows a fixed table)."""
     from ..settings import adapter_settings
 
     return bool(adapter_settings(recipe_patches).get("controller_models"))
@@ -76,7 +76,7 @@ def add_xrshim(ctx: ApkContext) -> bool:
 
     OVRPlugin gets xrGetInstanceProcAddr with dlopen("libopenxr_loader.so") + dlsym (checked in Toy Master's
     OVRPlugin), so the loader name string it dlopens is pointed at the shim instead (same length, in place); the shim
-    forwards every other lookup to overport's dispatcher."""
+    forwards every other lookup to OVRPort's dispatcher."""
     ws = ctx.ws
     shim = artifact(ws.abi, XRSHIM)
     changed = False

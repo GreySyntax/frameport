@@ -1,4 +1,4 @@
-"""Portable toolchain: FramePort manages its own Java, overport CLI and apksigner (no admin rights, no PATH edits).
+"""Portable toolchain: FramePort manages its own Java, OVRPort CLI and apksigner (no admin rights, no PATH edits).
 
 Everything is resolved dynamically (latest versions from their official sources, checksummed) and installed into
 <user data>/tools/. Overrides for development: FRAMEPORT_JAVA, FRAMEPORT_OVERPORT_JAR, FRAMEPORT_APKSIGNER_JAR.
@@ -128,7 +128,7 @@ def _overport_asset(rel: dict) -> dict | None:
 
 
 def latest_overport() -> tuple[str, str] | None:
-    """(version, download url) of the newest overport CLI, from the first source that has one."""
+    """(version, download url) of the newest OVRPort CLI, from the first source that has one."""
     for cache_name, url in OVERPORT_RELEASES:
         rel = cache.cached_json(cache_name, url, max_age=6 * 3600)
         if not rel or rel.get("draft") or rel.get("prerelease"):
@@ -142,7 +142,7 @@ def latest_overport() -> tuple[str, str] | None:
 def install_overport(progress=None) -> ToolStatus:
     latest = latest_overport()
     if not latest:
-        raise RuntimeError("could not reach GitHub to find the latest overport release")
+        raise RuntimeError("could not reach GitHub to find the latest OVRPort release")
     version, url = latest
     dest = tools_dir() / f"overport-{version}"
     jar = next(dest.glob("*.jar"), None) if dest.exists() else None

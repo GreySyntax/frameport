@@ -36,7 +36,7 @@ class NoDebuggable(Patch):
     id = "frame.nodebug"
     needs_vr = False
     title = "Clear android:debuggable"
-    description = ("overport marks apps debuggable; that turns on CheckJNI, which aborts some Unreal games on sloppy "
+    description = ("OVRPort marks apps debuggable; that turns on CheckJNI, which aborts some Unreal games on sloppy "
                    "JNI calls ('JNI DETECTED ERROR', e.g. 'GetStringUTFChars ... NULL' in Time Stall). Clear it for "
                    "those.")
     order = 21

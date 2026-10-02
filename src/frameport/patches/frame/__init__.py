@@ -1,4 +1,4 @@
-"""Steam Frame fixes applied to the overport output (stage "apk"). One module per fix; each registers itself."""
+"""Steam Frame fixes applied to the OVRPort output (stage "apk"). One module per fix; each registers itself."""
 from __future__ import annotations
 
 from ...core.paths import artifacts_dir

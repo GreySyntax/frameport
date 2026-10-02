@@ -175,7 +175,7 @@ def entry_from_library(g: dict, status: str = "works", notes: str | None = None,
 
 def generic_source_hint(name: str) -> str:
     """The game's title from a download folder name, without what varies between releases: version ("v20022+2.0.22"),
-    bracketed notes ("(Pro + Trial Bypass)", "(English Only)") and release-group suffixes ("-VRP", "-JF")."""
+    bracketed notes ("(Pro)", "(English Only)") and release-tag suffixes ("-TAG")."""
     import re
 
     t = re.sub(r"[\(\[][^)\]]*[\)\]]", " ", name or "")

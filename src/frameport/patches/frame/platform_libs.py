@@ -1,4 +1,4 @@
-"""Meta platform SDK gaps in overport's libovrplatformloader.so."""
+"""Meta platform SDK gaps in OVRPort's libovrplatformloader.so."""
 from __future__ import annotations
 
 from ...analysis import elf
@@ -31,7 +31,7 @@ class PlatformCompat(Patch):
     default_on = True
 
     def detect(self, a):
-        return Suggestion(True, "Applied automatically when the overport build needs it.")
+        return Suggestion(True, "Applied automatically when the OVRPort build needs it.")
 
     def apply(self, ctx: ApkContext) -> bool:
         ws = ctx.ws
@@ -47,14 +47,14 @@ class PlatformCompat(Patch):
 class OvrStubs(Patch):
     id = "frame.ovrstubs"
     title = "Stub missing Meta platform functions"
-    description = ("Generates no-op stubs for ovr_* functions the game imports but overport's platform loader "
+    description = ("Generates no-op stubs for ovr_* functions the game imports but OVRPort's platform loader "
                    "lacks (e.g. Espire 1/2, Wallace & Gromit, The Climb 2). Symptom: UnsatisfiedLinkError / "
                    "'cannot locate symbol ovr_...'. Online/store features stay unavailable.")
     order = 31
     default_on = True
 
     def detect(self, a):
-        return Suggestion(True, "Applied automatically when the overport build needs it.")
+        return Suggestion(True, "Applied automatically when the OVRPort build needs it.")
 
     def apply(self, ctx: ApkContext) -> bool:
         ws = ctx.ws

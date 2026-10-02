@@ -45,7 +45,7 @@ HELP: dict[str, str] = _Translated({
     "standard_fixes": "Patches every game of this kind gets (on by default). Customize lists them all.",
     "as_is": "Turn this on if your copy is already patched: an APK is installed unchanged instead of being patched "
              "again. PC VR games are never modified on this PC; the Frame's copy only gets launch fixes.",
-    "alt_build": "Some games need a second build with different overport patches (for some Unreal games: one with "
+    "alt_build": "Some games need a second build with different OVRPort patches (for some Unreal games: one with "
                  "Unreal's ForceQuit removed). Turn this on to install that build instead.",
     "show_all": "Patches that can't matter for this game (wrong engine or API) are hidden. Show them to force one on "
                 "anyway.",

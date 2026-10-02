@@ -1,8 +1,8 @@
 """The patch plugin interface.
 
 A patch is one self-contained, optional change. Stages run in this order:
-  overport  -> passed to the overport CLI as `--patches=` (see patches/overport.py)
-  apk       -> edits the overport output (FrameBridge adapter, manifest fixes, library fixes)
+  OVRPort  -> passed to the OVRPort CLI as `--patches=` (see patches/overport.py)
+  apk       -> edits the OVRPort output (FrameBridge adapter, manifest fixes, library fixes)
   install   -> files/env written on the Frame at install time (adapter settings, config files)
 
 Each patch can suggest itself from an Analysis (`detect`), applies itself (`apply`) and can report checks

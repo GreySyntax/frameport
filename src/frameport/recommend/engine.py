@@ -159,7 +159,7 @@ def warnings(recipe: Recipe) -> list[str]:
     if recipe.as_is or not recipe.overport:
         return out  # installed unchanged / an ordinary Android app: no VR translation expected
     if "patch_copy_libraries" not in recipe.patches:
-        out.append("Without 'Copy overport libraries' nothing is translated to OpenXR.")
+        out.append("Without 'Copy OVRPort libraries' nothing is translated to OpenXR.")
     if "frame.adapter" not in recipe.patches:
         out.append("Without the FrameBridge adapter most games fail on the Frame runtime.")
     return out

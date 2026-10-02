@@ -91,7 +91,7 @@ def _ovrport_manifest(new: bytes, old: bytes) -> str | None:
     if not added or any(line not in a for line in b):
         return None
     if all(any(f'"{n}"' in line for n in OVRPORT_METADATA) for line in added):
-        return f"overport CLI (OVRPort 1.2.5+) VR metadata: {len(added)} optional tracking feature/permission entries"
+        return f"OVRPort CLI 1.2.5+ VR metadata: {len(added)} optional tracking feature/permission entries"
     return None
 
 
@@ -113,7 +113,7 @@ def _overport_config(new: bytes, old: bytes) -> str | None:
     if added and set(added) <= RECIPE_ONLY_PATCHES:
         a["patched"]["patches"] = [p for p in a["patched"]["patches"] if p not in added]
     extra = f"; recipe now adds {', '.join(added)}" if added else ""
-    return f"written by overport CLI {by_a} (known-good: {by_b}){extra}; same settings" if a == b else None
+    return f"written by OVRPort CLI {by_a} (known-good: {by_b}){extra}; same settings" if a == b else None
 
 
 def _compat_export(data: bytes) -> bool:
@@ -125,7 +125,7 @@ def classify(name: str, new: bytes, old: bytes) -> tuple[str, str]:
     if base == COMPAT and _compat_export(new) and _compat_export(old):
         current = (artifacts_dir() / name.split("/")[1] / base) if name.startswith("lib/") else None
         if not (current and current.exists() and current.read_bytes() == new):
-            return "expected", "platform compat now added by the overport CLI (OVRPort 1.2.5+): same single export"
+            return "expected", "platform compat now added by the OVRPort CLI 1.2.5+: same single export"
     if base == "AndroidManifest.xml":
         why = _ovrport_manifest(new, old)
         if why:
@@ -140,7 +140,7 @@ def classify(name: str, new: bytes, old: bytes) -> tuple[str, str]:
             and _text_bytes(new) == _text_bytes(old)):
         ignore = {"libovrstubs.so", COMPAT}
         if set(elf.needed(new)) - ignore == set(elf.needed(old)) - ignore and COMPAT in elf.needed(new):
-            return "expected", "same loader, linked to the platform compat library by the overport CLI (OVRPort 1.2.5+)"
+            return "expected", "same loader, linked to the platform compat library by the OVRPort CLI 1.2.5+"
     if base in OWNED:
         current = (artifacts_dir() / name.split("/")[1] / base) if name.startswith("lib/") else None
         is_current = current is not None and current.exists() and current.read_bytes() == new
@@ -205,7 +205,7 @@ def compare(new_apk: Path, old_apk: Path) -> dict:
             if current is not None and current.exists() and current.read_bytes() == _read(new_apk, n):
                 rows.append((n, "expected", f"{OWNED[base]} added (current build)"))
             elif base == COMPAT and _compat_export(_read(new_apk, n)):
-                rows.append((n, "expected", "platform compat added by the overport CLI (OVRPort 1.2.5+)"))
+                rows.append((n, "expected", "platform compat added by the OVRPort CLI 1.2.5+"))
             else:
                 rows.append((n, "UNEXPLAINED", "only in the new build"))
         elif n not in a:

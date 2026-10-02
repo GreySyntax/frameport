@@ -15,14 +15,14 @@ class VrApiBridge(Patch):
         "Replaces libvrapi.so with a VrApi→OpenXR bridge (Android-XR-Bridge/OVRPort fork, GPL-3.0, patched for the "
         "Frame: GLES sessions, cylinder→quad layers, sRGB format fallback, 30 s VR-mode deadline, emulated time "
         "conversion). Needed when the engine calls VrApi itself instead of through OVRPlugin (e.g. The Climb 2, Path "
-        "of the Warrior); overport cannot translate those."
+        "of the Warrior); OVRPort cannot translate those."
     )
     order = 60
     experimental = True
 
     def detect(self, a):
         if a.direct_vrapi and "arm64-v8a" in a.abis:
-            return Suggestion(True, "The engine calls libvrapi.so directly; overport can't translate it.")
+            return Suggestion(True, "The engine calls libvrapi.so directly; OVRPort can't translate it.")
         return None
 
     def applies(self, a):

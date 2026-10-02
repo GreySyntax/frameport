@@ -2,7 +2,7 @@
 Exit codes: 0 done, 1 something failed, 2 wrong usage, 10 (`update --check`) a newer version exists.
 Errors are one line on stderr; FRAMEPORT_DEBUG=1 shows the traceback.
 
-    frameport tools install                      # portable Java + overport + apksigner
+    frameport tools install                      # portable Java + OVRPort + apksigner
     frameport scan "<folder with game dumps>"    # analyze + suggest recipes
     frameport list | show <pkg> | patches
     frameport recipe <pkg> --enable frame.nodebug --set scale=1.2
@@ -206,7 +206,7 @@ def tools_install(update: bool = typer.Option(False, help="update to the newest 
 
     added = op.refresh(ov.list_patches)
     if added:
-        typer.echo("new overport patches: " + ", ".join(added))
+        typer.echo("new OVRPort patches: " + ", ".join(added))
 
 
 @tools_app.command("import-keys")

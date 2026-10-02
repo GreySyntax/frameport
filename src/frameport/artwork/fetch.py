@@ -1,6 +1,6 @@
 """Store artwork for the Steam library (portrait/landscape/hero/logo/icon).
 
-Fetched live from overport's image service (Meta store art by package name), cached per package. Falls back to
+Fetched live from OVRPort's image service (Meta store art by package name), cached per package. Falls back to
 the APK's launcher icon when the store has nothing (e.g. sideload-only titles).
 """
 from __future__ import annotations

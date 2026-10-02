@@ -73,7 +73,7 @@ SETTINGS = [
      "Games that ask the headset for its controller models (Meta's runtime controller models, XR_FB_render_model) get "
      "the Steam Frame controllers instead of Quest Touch controllers. The models come from the Frame's own SteamVR and "
      "are converted on the Frame at install time. Games that ship their own controller meshes aren't affected. Turning "
-     "it on needs a rebuild (it adds a small library in front of overport's loader)."),
+     "it on needs a rebuild (it adds a small library in front of OVRPort's loader)."),
     ("scene_height", "float", 2.5, "Emulated room height (m)", "Ceiling height for scene_emul."),
     ("scene_width", "float", 0.0, "Emulated room width (m)",
      "Override the guardian width (0 = use guardian, min 1.5 m)."),

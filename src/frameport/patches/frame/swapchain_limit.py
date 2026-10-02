@@ -1,4 +1,4 @@
-"""overport's dispatcher aborts on swapchains wider or taller than 4096 px; raise that guard so the runtime decides."""
+"""OVRPort's dispatcher aborts on swapchains wider or taller than 4096 px; raise that guard so the runtime decides."""
 from __future__ import annotations
 
 from ...analysis import elf
@@ -13,7 +13,7 @@ VIDEO_LIBS = ("libavcodec", "libffmpeg", "libvlc", "libmpv", "libijkffmpeg")
 
 
 def raise_swapchain_limit(data: bytes) -> tuple[bytes | None, int]:
-    """Rewrite the `cmp wN, #4096` size guards at the start of overport's swapchain entry points."""
+    """Rewrite the `cmp wN, #4096` size guards at the start of OVRPort's swapchain entry points."""
     try:
         dynsym = elf._elf(data).get_section_by_name(".dynsym")
     except Exception:  # noqa: BLE001
@@ -39,7 +39,7 @@ def raise_swapchain_limit(data: bytes) -> tuple[bytes | None, int]:
 class SwapchainLimit(Patch):
     id = "frame.swapchain_limit"
     title = "Allow swapchains larger than 4096 px"
-    description = ("overport's OpenXR dispatcher aborts the app ('Wrong createInfo size', SIGABRT in "
+    description = ("OVRPort's OpenXR dispatcher aborts the app ('Wrong createInfo size', SIGABRT in "
                    "libopenxr_loader.so xrCreateSwapchain) when a swapchain is wider or taller than 4096 px, which "
                    "video players do for 8K video or big theatre textures (e.g. 4XVR). Raises the guard to 16384 px so "
                    "the Frame's runtime (8192 px max) decides instead.")
@@ -50,8 +50,8 @@ class SwapchainLimit(Patch):
         video = sorted(lib for lib in a.libs if lib.lower().startswith(VIDEO_LIBS))
         if video:
             return Suggestion(True, f"Video player ({', '.join(video[:2])}): creates swapchains larger than 4096 px "
-                                    "(8K video, theatre textures), which overport's dispatcher aborts on.")
-        return Suggestion(True, "Recommended for every game: overport aborts on swapchains larger than 4096 px; "
+                                    "(8K video, theatre textures), which OVRPort's dispatcher aborts on.")
+        return Suggestion(True, "Recommended for every game: OVRPort aborts on swapchains larger than 4096 px; "
                                 "the Frame's runtime handles them.")
 
     def applies(self, a):

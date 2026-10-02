@@ -33,7 +33,7 @@ def render() -> str:
                 line += f" PC VR: {e.pcvr_alternative}"
             out.append(line)
         out.append("")
-    out += ["All games also get the overport defaults and the automatic Frame fixes (FrameBridge adapter, launcher "
+    out += ["All games also get the OVRPort defaults and the automatic Frame fixes (FrameBridge adapter, launcher "
             "category, platform stubs/compat, telemetry stubs) when they need them. See docs/PLAYBOOK.md in "
             "FramePort.", ""]
     return "\n".join(out)

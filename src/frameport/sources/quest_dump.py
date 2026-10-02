@@ -13,11 +13,12 @@ from pathlib import Path
 
 from ..core.models import SourceGame
 
-TAG = re.compile(r"\s+-(VRP|JF)\b.*$")
+# a release tag at the end of a download folder name: " -TAG" or " -TAG v76" (no space after the dash)
+TAG = re.compile(r"\s+-(?=[A-Za-z])[A-Za-z0-9]{2,12}(?:\s+[A-Za-z]?\d{1,4})?\s*$")
 
 
 def display_name(folder_name: str) -> str:
-    """'PowerWash Simulator VR v3055+2.5.0 -VRP v76' -> 'PowerWash Simulator VR v3055+2.5.0'."""
+    """'PowerWash Simulator VR v3055+2.5.0 -TAG v76' -> 'PowerWash Simulator VR v3055+2.5.0'."""
     return re.sub(r'[<>:"/\\|?*]', "_", TAG.sub("", folder_name).strip())
 
 

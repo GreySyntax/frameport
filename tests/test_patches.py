@@ -232,7 +232,7 @@ def test_vk_sanitize_routes_engine_vulkan_through_shim(tmp_path, quest_manifest)
 def test_source_hints_are_generic_and_match_loosely():
     from frameport.recommend.catalog import generic_source_hint, source_hint_matches
 
-    assert generic_source_hint("4XVR Video Player (Pro + Trial Bypass) v20022+2.0.22 -JF") == "4XVR Video Player"
+    assert generic_source_hint("4XVR Video Player (Pro) v20022+2.0.22 -RLS") == "4XVR Video Player"
     assert generic_source_hint("Marvels Deadpool VR (English Only) v8742+1.0.40.356975.Quest") == "Marvels Deadpool VR"
     assert generic_source_hint("Batman- Arkham Shadow (Inc Lang Packs) v350961+1.4.1-350961") == "Batman- Arkham Shadow"
     # other release, other name

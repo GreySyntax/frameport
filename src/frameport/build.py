@@ -1,4 +1,4 @@
-"""Build stage: overport → Frame fixes (apk-stage patches) → sign → static validation."""
+"""Build stage: OVRPort → Frame fixes (apk-stage patches) → sign → static validation."""
 from __future__ import annotations
 
 import hashlib
@@ -25,7 +25,7 @@ def sha256(path: Path) -> str:
 
 
 def overport_ids(recipe: Recipe, alt: bool = False) -> list[str]:
-    """overport defaults (overport's order) first, then extras in recipe order, then the alt-build extras."""
+    """OVRPort defaults (OVRPort's order) first, then extras in recipe order, then the alt-build extras."""
     chosen = [pid for pid in recipe.patches if base.get(pid).category == "overport"]
     order = [pid for pid, *_ in OVERPORT_PATCHES]
     defaults = [pid for pid in order if pid in chosen and base.get(pid).default_on]
@@ -70,7 +70,7 @@ def build(source: SourceGame, analysis: Analysis, recipe: Recipe, outdir: Path, 
     try:
         for variant, alt in variants:
             if recipe.overport:
-                reporter.stage(f"overport ({variant})")
+                reporter.stage(f"OVRPort ({variant})")
                 ids = overport_ids(recipe, alt)
                 patched = overport_tool.patch(source.apk, work, f"{pkg}.{variant}.overport.apk", ids, reporter)
             else:  # an ordinary Android app: no VR translation, only the Frame fixes it needs (e.g. launcher)

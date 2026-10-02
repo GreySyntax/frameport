@@ -3,7 +3,7 @@
     add (scan/import) → analyze → suggest recipe → [user confirms] → build → static checks
         → install on target → add to library → launch test (+ triage suggestions)
 
-Quest games (APK + OBB) are rebuilt with overport and installed on the Frame (Lepton). Oculus Rift games (Windows PC VR
+Quest games (APK + OBB) are rebuilt with OVRPort and installed on the Frame (Lepton). Oculus Rift games (Windows PC VR
 folders, ids "rift.<slug>") aren't modified: "build" checks them and fetches Revive, and they install either on this
 PC (Revive + local Steam) or on the Frame (Proton + Revive).
 """

@@ -1,6 +1,6 @@
 """Signing (apksigner via the managed JRE) and alignment checks.
 
-overport creates one keystore per package (password "password", alias "key"). The same key must sign every later
+OVRPort creates one keystore per package (password "password", alias "key"). The same key must sign every later
 build of that package, or Android refuses the update and saves are lost on reinstall.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ def _apksigner() -> str:
 
 
 def ensure_keystore(package: str) -> Path:
-    """The package's signing key. overport creates it on its first patch; apps built without overport (ordinary
+    """The package's signing key. OVRPort creates it on its first patch; apps built without OVRPort (ordinary
     Android apps) get one made here with the same layout (password "password", alias "key")."""
     ks = overport_tool.keystore(package)
     if ks.exists():

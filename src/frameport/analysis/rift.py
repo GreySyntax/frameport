@@ -268,18 +268,22 @@ def candidates(tree: Tree) -> list[Path]:
 
 
 # ------------------------------------------------------------------------------------------ naming
-_TAG_WORDS = r"(?:ARMGDDN|VRP|JF|FFA|Repacks?|Shipping|GOG|CODEX|PLAZA|FitGirl|DODI|ElAmigos|Oculus|Rift|PCVR)"
+# words that describe a build rather than the game (neutral; release tags are removed by their form, not by name)
+_BUILD_WORDS = r"(?:Shipping|GOG|Oculus|Rift|PCVR|Repacks?|Release)"
+# a release tag at the end: " -TAG", " -TAG v76", " -[TAG Repacks]" (a space before the dash and none after it, so
+# subtitles like " - Episode II" and hyphenated words like "Rick-ality" stay)
+_TRAILING_TAG = r"\s-(?=[\[A-Za-z0-9])(?:\[[^\]]*\]|[A-Za-z0-9]{2,12}\b)(?:\s+v\d+)?.*$"
 
 
 def clean_title(name: str) -> str:
-    """'Asgards Wrath v1.6.0 -TAG' -> 'Asgards Wrath'; 'Arktika 1 (v1.0.0.7) -VRP' -> 'Arktika 1';
+    """'Asgards Wrath v1.6.0 -TAG' -> 'Asgards Wrath'; 'Arktika 1 (v1.0.0.7) -TAG' -> 'Arktika 1';
     'Vader Immortal - Episode II v2.0.2+236948 Shipping' -> 'Vader Immortal - Episode II'."""
-    t = re.sub(r"\[[^\]]*\]", " ", name)  # [FFA Repacks]
-    t = re.sub(r"\((?:[^)]*\d[^)]*|[^)]*" + _TAG_WORDS + r"[^)]*)\)", " ", t, flags=re.I)  # (v1.0.0.7)
-    t = re.sub(r"\s-\s*" + _TAG_WORDS + r"\b.*$", " ", t, flags=re.I)  # -TAG, -TAG v76
+    t = re.sub(_TRAILING_TAG, " ", name)
+    t = re.sub(r"\[[^\]]*\]", " ", t)  # [TAG Repacks]
+    t = re.sub(r"\((?:[^)]*\d[^)]*|[^)]*\b" + _BUILD_WORDS + r"\b[^)]*)\)", " ", t, flags=re.I)  # (v1.0.0.7)
     t = re.sub(r"\bv\d[\w.+\-]*", " ", t, flags=re.I)  # v1.6.0, v008, v2.0.2+236948
     t = re.sub(r"(?<![\w.])\d+(?:\.\d+){2,}[\w+\-]*", " ", t)  # 4.15.20, 21.11.08.358012
-    t = re.sub(r"\b" + _TAG_WORDS + r"\b", " ", t, flags=re.I)
+    t = re.sub(r"\b" + _BUILD_WORDS + r"\b", " ", t, flags=re.I)
     t = re.sub(r"[_]+", " ", t)
     t = re.sub(r"\s+", " ", t).strip(" -_.")
     return t or name.strip()

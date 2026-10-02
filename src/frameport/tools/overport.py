@@ -1,4 +1,4 @@
-"""overport CLI wrapper. overport's workspace (runtime versions, per-package signing keys) lives in our data dir."""
+"""OVRPort CLI wrapper. OVRPort's workspace (runtime versions, per-package signing keys) lives in our data dir."""
 from __future__ import annotations
 
 import re
@@ -36,7 +36,7 @@ def import_keystores(*dirs: Path) -> int:
 def _jar() -> str:
     jar = toolchain.overport_jar()
     if not jar:
-        raise RuntimeError("overport is not installed; run `frameport tools install`")
+        raise RuntimeError("OVRPort is not installed; run `frameport tools install`")
     return str(jar)
 
 
@@ -53,15 +53,15 @@ def cli_version() -> str | None:
 
 def patch(apk: Path, outdir: Path, name: str, patches: list[str], reporter: Reporter,
           version: str = "latest") -> Path:
-    """Run `overport patch`; returns the output APK path. version='latest' always uses the newest runtime."""
+    """Run `OVRPort patch`; returns the output APK path. version='latest' always uses the newest runtime."""
     if not patches:  # overport 1.2.5+ refuses an empty --patches= (and without patches it only re-signs)
-        raise ValueError("no overport patches selected")
+        raise ValueError("no OVRPort patches selected")
     outdir.mkdir(parents=True, exist_ok=True)
     target = outdir / name
     target.unlink(missing_ok=True)
     args = ["-jar", _jar(), "patch", f"--input={apk}", f"--output={outdir}", f"--output-name={name}",
             f"--workspace={workspace()}", f"--version={version}", "--patches=" + ";".join(patches)]
-    reporter.log("overport " + " ".join(a for a in args[3:] if not a.startswith("--patches")))
+    reporter.log("OVRPort " + " ".join(a for a in args[3:] if not a.startswith("--patches")))
     p = toolchain.run_java(args)
     # overport draws spinners with \r; keep only final line states
     for line in (p.stdout + p.stderr).splitlines():
@@ -69,5 +69,5 @@ def patch(apk: Path, outdir: Path, name: str, patches: list[str], reporter: Repo
         if line:
             reporter.log("  " + line)
     if p.returncode or not target.exists():
-        raise RuntimeError(f"overport failed (exit {p.returncode}); see log")
+        raise RuntimeError(f"OVRPort failed (exit {p.returncode}); see log")
     return target

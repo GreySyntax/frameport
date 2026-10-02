@@ -58,8 +58,8 @@ def _features(manifest: bytes) -> dict[str, bool]:
 
 def vr_kind(libs: set[str], manifest_strings: list[str]) -> str:
     """What kind of Android app this is, for choosing how to port it:
-    quest       Meta Quest app (VrApi / OVRPlugin / Meta's OpenXR loader + Oculus manifest entries): overport
-    openxr      another headset's OpenXR app (Pico, Khronos loader): overport's loader + the Frame adapter
+    quest       Meta Quest app (VrApi / OVRPlugin / Meta's OpenXR loader + Oculus manifest entries): OVRPort
+    openxr      another headset's OpenXR app (Pico, Khronos loader): OVRPort's loader + the Frame adapter
     android_xr  Android XR (Jetpack XR / spatial) app: needs system services Lepton doesn't have
     pico_sdk    Pico's pre-OpenXR SDK, wave: HTC Vive Wave SDK: no OpenXR path, can't run
     none        an ordinary (2D) Android app or game: installed without the VR translation"""

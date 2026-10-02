@@ -1,6 +1,6 @@
 """Generate a tiny Android shared library whose exported functions all `return 0` (no compiler needed).
 
-Used for Meta platform functions (ovr_*) that overport's platform loader lacks: without them the game fails with
+Used for Meta platform functions (ovr_*) that OVRPort's platform loader lacks: without them the game fails with
 UnsatisfiedLinkError / dlopen errors. The layout follows what bionic requires: section headers present (.dynsym,
 .dynstr, .hash, .text, .dynamic, .shstrtab), PT_LOAD segments 16 KiB aligned, PT_DYNAMIC matching the .dynamic
 section, DT_HASH, DT_SONAME and PT_GNU_STACK non-executable.

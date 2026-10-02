@@ -1,4 +1,4 @@
-"""PC VR (Oculus Rift) options, shown in the UI as patches like the overport ones.
+"""PC VR (Oculus Rift) options, shown in the UI as patches like the OVRPort ones.
 
 They don't edit the game: they decide how FramePort launches it. The analysis (analysis/rift.py launch_mode)
 picks one of three ways, and the patches below follow it (the user can change each one):
@@ -172,7 +172,7 @@ class NoCrashReporter(_PcvrPatch):
 class OculusUnreal(_PcvrPatch):
     id = "pcvr.oculus_unreal"
     title = "Patch Oculus detection for Unreal (Frame)"
-    description = ("The PC VR counterpart of overport's 'Patch Oculus detection for Unreal'. Unreal's Oculus plugin "
+    description = ("The PC VR counterpart of OVRPort's 'Patch Oculus detection for Unreal'. Unreal's Oculus plugin "
                    "only starts when the Oculus service announces a headset (the Windows event 'OculusHMDConnected'); "
                    "without it the game runs as a flat window. On the Frame the launcher runs the game through "
                    "FramePort's small helper (fp_oculushmd.exe) that provides that event while the game runs, instead "
