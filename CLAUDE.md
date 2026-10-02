@@ -378,6 +378,9 @@ Installed apps find the release themselves (self-update), so the notes are what 
   Windows console) plus PYTHONUTF8; macOS builds need `--python-version 3.12 --arch arm64` (cryptography has no wheels
   for flet's default Python / x86_64 cross-build), with a PyInstaller fallback step; `astral-sh/setup-uv` has no
   floating major tags after v7 → pin the exact version; force-moving a tag starts duplicate runs (cancel one).
+- macOS runner (2026-10-02): `macos-latest` jobs went unassigned (cancelled after 15 min, no steps); `macos-15`'s Xcode
+  16.4 fails a Flutter plugin (`NWPath has no member`); `macos-26` (Xcode 26) builds with `flet build`. The PyInstaller
+  fallback (`package.py --pyinstaller`) passes `--yes` so a failed `flet build`'s folder doesn't stop it at a prompt.
 - Windows PowerShell calls from Python (`updates._powershell()`): use `%SystemRoot%\System32\WindowsPowerShell\v1.0\
   powershell.exe` with `PSModulePath` removed from the environment — started under PowerShell 7 (CI's default shell,
   or a user's pwsh terminal) it couldn't run Get-AuthenticodeSignature (v0.3.0's Windows update smoke failed on it).
