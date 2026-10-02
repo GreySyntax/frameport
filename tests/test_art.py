@@ -243,3 +243,39 @@ def test_plain_description_drops_store_markup():
 
     text = "[media]\n\n# Become The Knight.\n\nIt's **bold** and [a link](https://x.invalid).\n\n\n\n[media]\n\n**Hard**"
     assert plain_description(text) == "Become The Knight.\n\nIt's bold and a link.\n\nHard"
+
+
+def test_steam_placeholder_for_apps_without_artwork(tmp_path):
+    """No store art: a name-on-colour set (with the APK's launcher icon), so Steam shows the name, not a blank tile."""
+    import zipfile
+
+    from PIL import Image
+
+    from frameport.artwork import fetch, steam
+
+    pkg = "org.example.flat"
+    assert steam.steam_set(pkg) == {}  # no art and no title: nothing to make
+    icon = tmp_path / "icon.png"
+    Image.new("RGBA", (96, 96), (200, 30, 30, 255)).save(icon)
+    apk = tmp_path / "app.apk"
+    with zipfile.ZipFile(apk, "w") as z:
+        z.write(icon, "res/mipmap-xxxhdpi-v4/ic_launcher.png")
+    art = steam.steam_set(pkg, title="A Flat Little App", apk=apk)
+    assert set(art) == {"portrait", "landscape", "hero", "logo", "icon"}
+    with Image.open(art["portrait"]) as im:
+        assert im.size == (600, 900)
+    with Image.open(art["icon"]) as im:  # the APK's icon is used
+        assert im.convert("RGB").getpixel((128, 128)) == (200, 30, 30)
+    with Image.open(art["logo"]) as im:
+        assert im.mode == "RGBA" and im.getbbox()
+    assert steam.steam_set(pkg, title="A Flat Little App", apk=apk) == art  # cached
+    (fetch.artwork_dir(pkg) / "portrait.png").write_bytes(icon.read_bytes())  # real art arrives: no placeholder
+    assert "logo" not in steam.steam_set(pkg, title="A Flat Little App", apk=apk)
+
+
+def test_no_store_details_for_android_apps_without_vr(monkeypatch):
+    from frameport.artwork import details
+
+    monkeypatch.setattr(details, "steam_app", lambda title: (_ for _ in ()).throw(AssertionError("looked up")))
+    entry = {"package": "org.example.flat", "title": "2048", "analysis": {"extra": {"vr_kind": "none"}}}
+    assert details.fetch_details(entry)["sources"] == []

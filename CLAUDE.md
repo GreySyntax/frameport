@@ -82,7 +82,8 @@ Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
     package or Rift match) + Steam appdetails (exact title: developer, release date, up to 6 screenshots → artwork
     `shot_N.jpg`). Meta store pages reject scraping, so Oculus exclusives have no screenshots. Genres become automatic
     tags. Steam shortcuts get a complete composed art set (`artwork/steam.py`: 600×900 / 920×430 / 1920×620 / logo /
-    256 icon, blurred-backdrop compositing for square-only covers) and tags: how it runs, the original platform
+    256 icon, blurred-backdrop compositing for square-only covers; no store art (at most the APK icon) → a placeholder
+    set: the name on a colour from the title hash + the APK icon, `steam_set_for`; 2D Android apps get no store lookups) and tags: how it runs, the original platform
     (Meta Quest / Oculus Rift), genres, user tags — merged with tags set in Steam (non-Steam shortcuts can't hold a
     description).
   - Quest/Rift twins stay separate entries, shown and named in Steam "Title (Quest)"/"(Rift)" (`core/titles.py`).

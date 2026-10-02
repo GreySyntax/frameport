@@ -327,10 +327,10 @@ def _tags(package: str) -> list[str]:
 
 def upload_steam_art(frame: Frame, package: str, base: str, reporter: Reporter) -> None:
     """The complete Steam art set (portrait, wide, hero, logo, icon — composed where the store has no such shape)."""
-    from ..artwork.steam import steam_set
+    from ..artwork.steam import steam_set_for
 
     reporter.stage("Artwork for the Steam library")
-    art = steam_set(package)
+    art = steam_set_for(package)
     remote_art = posixpath.join(base, "incoming-artwork")
     frame.run(f"rm -rf {sh_quote(remote_art)} && mkdir -p {sh_quote(remote_art)}")
     for kind, f in art.items():
@@ -341,14 +341,14 @@ def upload_steam_art(frame: Frame, package: str, base: str, reporter: Reporter) 
 def update_steam_art(frame: Frame, package: str, reporter: Reporter) -> dict:
     """Replace an installed game's Steam library art with the current artwork (after the user picked new art):
     the art set goes to the game's anchor, then the shortcut is rewritten (Steam restarts once)."""
-    from ..artwork.steam import steam_set
+    from ..artwork.steam import steam_set_for
 
     dep = next((d for d in frame.agent("list_installed")["games"] if d.get("package") == package), None)
     if not dep:
         raise RuntimeError(f"{package} isn't installed on the Frame")
     if not dep.get("anchor"):
         raise RuntimeError("the Frame's FramePort agent is too old; reinstall the game to update its art")
-    art = steam_set(package)
+    art = steam_set_for(package)
     if not art:
         raise RuntimeError("no artwork to send")
     reporter.stage("Artwork for the Steam library")

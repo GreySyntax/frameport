@@ -182,7 +182,7 @@ class PcReviveTarget(Target):
     def add_to_library(self, packages, reporter):
         from ..artwork import fetch as artwork
         from ..artwork import sources
-        from ..artwork.steam import steam_set, steam_tags
+        from ..artwork.steam import steam_set_for, steam_tags
         from ..core import library
 
         reporter.stage("Add to Steam library (this PC)")
@@ -204,7 +204,7 @@ class PcReviveTarget(Target):
                     entry = library.game(pkg) or {"kind": "rift"}
                     if not sources.has_art(pkg):
                         artwork.fetch(pkg, lookup=dep.get("art_lookup"))
-                    art = steam_set(pkg)
+                    art = steam_set_for(pkg)
                     for stale in vdf_mod.prune_shortcuts(str(vdf), dep["title"], exe, (TAG, *OLD_TAGS)):
                         from ..uninstall import grid_files
 

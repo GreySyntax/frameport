@@ -4,6 +4,8 @@ Steam wants: portrait 600×900 (library grid), landscape 920×430 (recent/horizo
 logo (transparent, drawn on the hero) and an icon. Store art rarely covers all of them — Rift games from OculusDB only
 have a square cover — so missing shapes are composed: the best source image, fitted and centred over a blurred,
 darkened copy of itself (or a screenshot, for the hero). Results are cached in artwork/<pkg>/steam/.
+A game without any artwork (e.g. an Android app that isn't on a VR store) gets a placeholder set: its name on a
+coloured background, with the APK's own launcher icon when it has a bitmap one.
 """
 from __future__ import annotations
 
@@ -65,15 +67,20 @@ def _ratio_ok(src: Path, size) -> bool:
     return abs(r - target) / target < 0.18
 
 
-def steam_set(package: str) -> dict[str, Path]:
-    """{portrait, landscape, hero, logo?, icon?} files ready for Steam (created once per source change)."""
+def steam_set(package: str, title: str = "", apk: str | Path | None = None) -> dict[str, Path]:
+    """{portrait, landscape, hero, logo?, icon?} files ready for Steam (created once per source change). Without any
+    artwork: a placeholder set showing `title` (+ the launcher icon from `apk`), or {} without a title."""
     src = _sources(package)
-    if not src:
+    if not src and not title:
         return {}
+    title = title or package
     out_dir = fetch.artwork_dir(package) / "steam"
-    out_dir.mkdir(exist_ok=True)
-    key = hashlib.sha1("|".join(f"{k}:{p.stat().st_size}:{p.stat().st_mtime_ns}" for k, p in sorted(src.items()))
-                       .encode()).hexdigest()[:8]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    placeholder = not (set(src) - {"icon"})  # no store art (at most the APK's icon): the name on a coloured tile
+    parts = [f"{k}:{p.stat().st_size}:{p.stat().st_mtime_ns}" for k, p in sorted(src.items())]
+    if placeholder:
+        parts.append(f"placeholder:{PLACEHOLDER_VERSION}:{title}:{apk or ''}")
+    key = hashlib.sha1("|".join(parts).encode()).hexdigest()[:8]
     stamp = out_dir / f".{key}"
     result: dict[str, Path] = {}
     if stamp.exists():
@@ -83,6 +90,10 @@ def steam_set(package: str) -> dict[str, Path]:
         return result
     for p in out_dir.iterdir():
         p.unlink()
+    if placeholder:
+        result = _placeholder(out_dir, title, src.get("icon"), apk)
+        stamp.write_text("")
+        return result
     for kind, size in SIZES.items():
         choice = next((k for k in PREFER[kind] if k in src), None)
         if not choice:
@@ -112,6 +123,148 @@ def steam_set(package: str) -> dict[str, Path]:
         except Exception:  # noqa: BLE001
             pass
     stamp.write_text("")
+    return result
+
+
+PLACEHOLDER_VERSION = 1
+
+
+def steam_set_for(package: str) -> dict[str, Path]:
+    """steam_set() with the library entry's title and APK, so a game without artwork gets a placeholder."""
+    from ..core import library
+
+    g = library.game(package) or {}
+    return steam_set(package, title=g.get("title") or package, apk=g.get("apk"))
+
+
+def _apk_icon(apk: str | Path | None):
+    """The APK's launcher icon as a PIL image, or None (adaptive/vector icons have no bitmap to use)."""
+    if not apk or not Path(apk).is_file():
+        return None
+    import io
+    import zipfile
+
+    from PIL import Image
+
+    try:
+        with zipfile.ZipFile(apk) as z:
+            names = []
+            try:
+                from pyaxmlparser import APK
+
+                icon = APK(str(apk)).get_app_icon()
+                if icon:
+                    names.append(icon)
+            except Exception:  # noqa: BLE001 - unreadable resources: fall back to the usual file names
+                pass
+            dens = ("xxxhdpi", "xxhdpi", "xhdpi", "hdpi", "mdpi")
+            names += sorted((n for n in z.namelist() if "ic_launcher" in n and n.endswith((".png", ".webp"))
+                             and "foreground" not in n and "background" not in n),
+                            key=lambda n: next((i for i, d in enumerate(dens) if d in n), len(dens)))
+            for n in names:
+                if n.endswith((".png", ".webp")) and n in z.namelist():
+                    im = Image.open(io.BytesIO(z.read(n)))
+                    im.load()
+                    if im.width >= 48:
+                        return im.convert("RGBA")
+    except Exception:  # noqa: BLE001 - not a readable APK
+        return None
+    return None
+
+
+def _font(size: int):
+    from PIL import ImageFont
+
+    try:
+        return ImageFont.load_default(size=size)  # Pillow's bundled scalable font (needs FreeType)
+    except Exception:  # noqa: BLE001
+        return ImageFont.load_default()
+
+
+def _wrap(draw, text: str, font, width: int) -> list[str]:
+    lines: list[str] = []
+    for word in text.split():
+        if lines and draw.textlength(f"{lines[-1]} {word}", font=font) <= width:
+            lines[-1] += f" {word}"
+        else:
+            lines.append(word)
+    return lines or [text]
+
+
+def _title_block(draw, text: str, box: tuple[int, int, int, int], max_size: int, fill) -> None:
+    """Draw `text` centred in box (x0, y0, x1, y1), as large as fits (wrapped, at most 3 lines)."""
+    x0, y0, x1, y1 = box
+    size = max_size
+    while True:
+        font = _font(size)
+        lines = _wrap(draw, text, font, x1 - x0)
+        line_h = round(size * 1.2)
+        too_wide = any(draw.textlength(line, font=font) > x1 - x0 for line in lines)
+        if size <= 14 or (len(lines) <= 3 and not too_wide and line_h * len(lines) <= y1 - y0):
+            break
+        size = round(size * 0.9)
+    top = y0 + (y1 - y0 - line_h * len(lines)) // 2
+    for i, line in enumerate(lines):
+        w = draw.textlength(line, font=font)
+        draw.text((x0 + (x1 - x0 - w) / 2, top + i * line_h), line, font=font, fill=fill)
+
+
+def _placeholder(out_dir: Path, title: str, icon_file: Path | None, apk) -> dict[str, Path]:
+    """Name-on-colour art (portrait, landscape, hero, logo, icon), the hue picked from the title."""
+    import colorsys
+
+    from PIL import Image, ImageDraw
+
+    hue = int(hashlib.sha1(title.encode()).hexdigest()[:4], 16) / 0xFFFF
+    top = tuple(round(c * 255) for c in colorsys.hls_to_rgb(hue, 0.30, 0.45))
+    bottom = tuple(round(c * 255) for c in colorsys.hls_to_rgb(hue, 0.10, 0.40))
+    icon = None
+    if icon_file:
+        try:
+            with Image.open(icon_file) as im:
+                icon = im.convert("RGBA")
+        except Exception:  # noqa: BLE001
+            icon = None
+    if icon is None:
+        icon = _apk_icon(apk)
+
+    def background(size):
+        mask = Image.linear_gradient("L").resize(size)  # 0 at the top → 255 at the bottom
+        return Image.composite(Image.new("RGB", size, bottom), Image.new("RGB", size, top), mask)
+
+    result: dict[str, Path] = {}
+    for kind, (w, h) in SIZES.items():
+        im = background((w, h))
+        draw = ImageDraw.Draw(im)
+        if kind != "hero":  # Steam draws the logo (the name) over the hero
+            text_box = (w // 10, h // 10, w - w // 10, h - h // 10)
+            if icon is not None:
+                side = min(w, h) // 3
+                ic = icon.resize((side, side), Image.LANCZOS)
+                if kind == "portrait":
+                    im.paste(ic, ((w - side) // 2, h // 4 - side // 4), ic)
+                    text_box = (w // 10, h // 4 + side, w - w // 10, h - h // 10)
+                else:
+                    im.paste(ic, (w // 10, (h - side) // 2), ic)
+                    text_box = (w // 10 + side + w // 20, h // 10, w - w // 12, h - h // 10)
+            _title_block(draw, title, text_box, h // 7 if kind == "portrait" else h // 5, (255, 255, 255))
+        path = out_dir / f"{kind}.jpg"
+        im.save(path, "JPEG", quality=90, optimize=True)
+        result[kind] = path
+    logo = Image.new("RGBA", (1200, 400), (0, 0, 0, 0))
+    _title_block(ImageDraw.Draw(logo), title, (20, 20, 1180, 380), 150, (255, 255, 255, 255))
+    logo = logo.crop(logo.getbbox() or (0, 0, 1200, 400))
+    result["logo"] = out_dir / "logo.png"
+    logo.save(result["logo"], "PNG")
+    ic = background((256, 256))
+    if icon is not None:
+        inner = icon.resize((216, 216), Image.LANCZOS)
+        ic.paste(inner, (20, 20), inner)
+    else:
+        _title_block(ImageDraw.Draw(ic), title[:2].upper() if len(title) > 3 else title, (24, 24, 232, 232), 140,
+                     (255, 255, 255))
+    result["icon"] = out_dir / "icon.png"
+    ic.save(result["icon"], "PNG")
     return result
 
 

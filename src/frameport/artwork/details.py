@@ -61,6 +61,8 @@ def fetch_details(entry: dict, screenshots: bool = True) -> dict:
     """Collect details for a library entry (doesn't store them; see pipeline.fetch_details)."""
     title = entry.get("title") or entry["package"]
     out: dict = {"sources": [], "fetched": time.time()}
+    if ((entry.get("analysis") or {}).get("extra") or {}).get("vr_kind") == "none":
+        return out  # an Android app without VR isn't on a VR store; a title match would be another product
     try:
         app = oculusdb_app(entry)
     except Exception:  # noqa: BLE001 - offline
