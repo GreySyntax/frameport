@@ -190,6 +190,24 @@ Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattr
   an `expand` child in a `wrap=True` Row).
 - Stopping the GUI: `pkill -f` patterns match your own shell — use `pgrep -f "[b]in/frameport-gui|[f]let-desktop-light"`.
 
+## Round-2 polish (2026-10-02)
+- `errors.py`: `explain(exc)` (plain sentence for GUI + CLI), `is_connection_error`. Install/test jobs for the Frame
+  (`Job.needs_frame`) that lose the connection go back to the queue front and the queue pauses (`jobs.paused`);
+  `app._poll` retries every 10 s and resumes. Wake lock: agent v30 `keep_awake` (systemd-inhibit idle:sleep, idle-only
+  fallback because polkit `inhibit-block-sleep` is auth_admin for non-local sessions), held while Frame jobs exist.
+- **Already converted inputs** (`analysis.is_overport_output`, e.g. the owner's library points at `PATCHED/` copies)
+  are not converted again: a second OVRPort run replaced libovrplatformloader.so and dropped its DT_NEEDED on
+  libovrstubs.so (Wallace & Gromit / Espire 2 crashed: cannot locate symbol ovr_…). Alt builds come from the saved
+  `<pkg>.alt-noforcequit.apk`, else one OVRPort run (frame.ovrstubs relinks). `missing_ovr_symbols` only counts
+  linked stub/compat libs. Converted copies in `output/` are removed after a Frame install (`build.keep_copies`).
+- Art: `.picked` marker = user's pick, automatic fetches never overwrite it and only fill missing kinds; a Meta
+  result's picture is the OculusDB image shown in the picker (the ovrp image service served "dogfooding" placeholder
+  covers for some packages, e.g. Asgard's Wrath 2). `steam_art_stale` → game page reminder. No store art → generated
+  `cover.jpg`/`banner.jpg` (APK icon via `fetch.apk_icon`).
+- Game settings dialog (`ui/views/adapter_dialog.py`, metadata `patches/settings.UI`); plain patch summaries
+  (`patches/summaries.py`, `Patch.summary`, "Show technical details" = setting `ui.patch_details`); share nudge
+  (`views/game.should_ask_to_share`); saving a recipe keeps its status (was always "works").
+
 ## Hard-won facts (don't re-learn these)
 **Frame runtime (SteamOS 0.3.0, build 20260922):**
 - No AArch32: 32-bit-only APKs fail with `INSTALL_FAILED_NO_MATCHING_ABIS`. Unfixable; point to Rift + Revive.
