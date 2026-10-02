@@ -109,3 +109,17 @@ def test_install_browser_explains_known_folders():
 
     assert "shader cache" in folder_note("lepton-shaders") and folder_note("lepton-data")
     assert folder_note("lepton-app/obb") == ""  # only top-level entries
+
+
+def test_untested_games_invite_sharing_their_recipe():
+    from frameport.ui.views.game import should_ask_to_share
+
+    g = {"package": "com.x", "recipe": {"status": "unknown", "source": "heuristics"}}
+    assert not should_ask_to_share(g, False)  # never installed, tested or played
+    assert should_ask_to_share(g, True)
+    assert should_ask_to_share({**g, "last_test": {"verdict": "pass"}}, False)
+    assert not should_ask_to_share({**g, "recipe": {"status": "unknown", "source": "catalog (bundled)"}}, True)
+    assert not should_ask_to_share({**g, "recipe": {"status": "works", "source": "user"}}, True)
+    assert not should_ask_to_share({**g, "shared_config": 1.0}, True)
+    assert not should_ask_to_share({**g, "share_dismissed": True}, True)
+    assert not should_ask_to_share({**g, "kind": "rift"}, True)

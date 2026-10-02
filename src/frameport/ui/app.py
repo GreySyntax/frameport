@@ -392,6 +392,13 @@ class FramePortApp:
                 job.package in self._records():
             out.append(C.primary(tr("Resume"), ft.Icons.PLAY_ARROW_ROUNDED,
                                  lambda e: self._submit_install(job.package, getattr(job, "to", "frame"))))
+        if job.kind in ("install", "test") and job.package and (summary or {}).get("verdict") == "pass":
+            from .views.game import should_ask_to_share
+
+            g = library.game(job.package) or {}
+            if should_ask_to_share(g, True):
+                out.append(C.secondary(tr("Works in the headset? Share…"), ft.Icons.VOLUNTEER_ACTIVISM_OUTLINED,
+                                       lambda e: self.share_config_dialog(job.package)))
         if summary and summary.get("suggestions") and job.package:
             sugg = summary["suggestions"]
             out.append(C.primary(tr("Apply the suggested patches and reinstall"), ft.Icons.HEALING_ROUNDED,
@@ -1052,13 +1059,13 @@ class FramePortApp:
             actions=[C.ghost(tr("Cancel"), on_click=lambda e: self.page.pop_dialog()),
                      C.primary(tr("Collect and open GitHub"), ft.Icons.OPEN_IN_NEW_ROUNDED, on_click=go)]))
 
-    def share_config_dialog(self, pkg: str) -> None:
+    def share_config_dialog(self, pkg: str, preset: str | None = None) -> None:
         g = library.game(pkg) or {}
         last = g.get("last_test") or {}
         status = ft.RadioGroup(ft.Row([ft.Radio(value="works", label=tr("Works")),
                                        ft.Radio(value="issues", label=tr("Works with issues"))]),
-                                value="issues" if (library.game(pkg) or {}).get("recipe", {}).get("status") == "issues"
-                                else "works")
+                                value=preset or ("issues" if g.get("recipe", {}).get("status") == "issues"
+                                                 else "works"))
         notes = ft.TextField(label=tr("Notes (what you checked, known issues)"), multiline=True, min_lines=2,
                              max_lines=6, width=T.px(560), border_color=T.BORDER)
         played = ft.Checkbox(label=tr("I played it in the headset with this recipe"), value=False)
@@ -1076,6 +1083,7 @@ class FramePortApp:
 
             def work():
                 url = pipeline.share_working_config(pkg, status.value or "works", notes.value or "", info)
+                library.upsert_game(pkg, shared_config=time.time())  # the game page stops asking
                 self.open_url(url)
                 self.toast(tr("Saved as known-good. Check the issue on GitHub and submit it"))
             self.run_bg(work)

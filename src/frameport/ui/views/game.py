@@ -25,6 +25,16 @@ CATEGORY_TITLES = {"frame": tr("Steam Frame patches"), "overport": tr("OVRPort p
                    "pcvr": tr("PC VR (Revive / Proton)")}
 
 
+def should_ask_to_share(g: dict, installed: bool) -> bool:
+    """Invite the user to share a recipe the built-in catalog doesn't have yet: an untested Quest/Android game that
+    they have installed, launch-tested or played, and haven't shared (or dismissed) already."""
+    r = g.get("recipe") or {}
+    if g.get("kind") == "rift" or r.get("status", "unknown") != "unknown" or \
+            str(r.get("source", "")).startswith("catalog") or g.get("shared_config") or g.get("share_dismissed"):
+        return False
+    return installed or (g.get("last_test") or {}).get("verdict") == "pass" or bool(g.get("last_played"))
+
+
 def _ago(t: float | None) -> str:
     if not t:
         return ""
@@ -193,7 +203,25 @@ class GameView:
             out.append(C.callout(tr("Uses the Oculus Platform SDK: it checks your Oculus license. Normally that "
                                     "needs the Oculus app on this PC with a license you own, so it may quit right "
                                     "after starting on the headset. You can still try it."), "warn"))
-        if g.get("steam_art_stale") and C.install_state(g, self.app.frame_info) in ("installed", "outdated"):
+        installed = C.install_state(g, self.app.frame_info) in ("installed", "outdated")
+        if should_ask_to_share(g, installed):
+            def dismiss(e):
+                library.upsert_game(pkg, share_dismissed=True)
+                self.app.render()
+            out.append(C.callout(ft.Column([
+                C.body(tr("Tried it in the headset? Tell us how it runs: with your recipe it can join FramePort's "
+                          "built-in list, so it works out of the box for everyone."), T.TEXT),
+                ft.Row([
+                    C.secondary(tr("It works: share…"), ft.Icons.THUMB_UP_OUTLINED,
+                                lambda e: self.app.share_config_dialog(pkg, "works")),
+                    C.secondary(tr("It has issues: share…"), ft.Icons.BUILD_CIRCLE_OUTLINED,
+                                lambda e: self.app.share_config_dialog(pkg, "issues")),
+                    C.ghost(tr("It doesn't run: report…"), ft.Icons.BUG_REPORT_OUTLINED,
+                            lambda e: self.app.report_problem_dialog(pkg)),
+                    C.ghost(tr("Not now"), on_click=dismiss),
+                ], spacing=T.S2, run_spacing=T.S2, wrap=True),
+            ], spacing=T.S2), "info", ft.Icons.VOLUNTEER_ACTIVISM_OUTLINED))
+        if g.get("steam_art_stale") and installed:
             out.append(C.callout(ft.Row([
                 C.body(tr("The Frame's Steam library still shows the old artwork."), T.TEXT, expand=True),
                 C.secondary(tr("Update Steam art on Frame"), ft.Icons.IMAGE_OUTLINED,
