@@ -18,7 +18,7 @@ from pathlib import Path
 
 import paramiko
 
-from ..core.paths import agent_dir, ssh_dir, user_data_dir
+from ..core.paths import agent_dir, ssh_dir, user_data_dir, write_atomic
 
 REMOTE_AGENT_DIR = ".local/share/frameport/agent"
 
@@ -69,7 +69,7 @@ def saved_targets() -> list[FrameTarget]:
 def save_target(target: FrameTarget) -> None:
     items = [t for t in saved_targets() if t.host != target.host]
     items.insert(0, target)
-    (user_data_dir() / "frames.json").write_text(json.dumps([t.__dict__ for t in items], indent=2))
+    write_atomic(user_data_dir() / "frames.json", json.dumps([t.__dict__ for t in items], indent=2))
 
 
 # direct links to the Frame, fastest first (interface → what it is)
@@ -85,6 +85,9 @@ def bundled_agent_version() -> int | None:
         return None
 
 
+RUN_TIMEOUT = 120  # seconds: default bound for one remote command's output
+
+
 class AgentFailed(RuntimeError):
     pass
 
@@ -94,33 +97,39 @@ class Frame:
     target: FrameTarget
     password: str | None = None
     client: paramiko.SSHClient | None = None
-    _sftp: paramiko.SFTPClient | None = None
+    _sftp: threading.local = field(default_factory=threading.local)  # one SFTP channel per thread (see sftp)
+    _sftps: list = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock)
+    _agent_digest: str = ""  # the agent version known to be on the Frame (checked once per connection)
     home: str = ""
 
     # ------------------------------------------------------------------ connect
     def connect(self, timeout: float = 10) -> Frame:
-        client = paramiko.SSHClient()
         known = ssh_dir() / "known_hosts"
         known.touch(exist_ok=True)
-        client.load_host_keys(str(known))
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # trust on first use (pairing)
         kwargs = dict(hostname=self.target.host, port=self.target.port, username=self.target.user, timeout=timeout,
                       banner_timeout=timeout, auth_timeout=timeout)
         errors = []
         for attempt in ("app_key", "agent", "password"):
+            if attempt == "password" and not self.password:
+                continue
+            client = paramiko.SSHClient()  # a fresh client per attempt: a failed one keeps its transport otherwise
+            client.load_host_keys(str(known))
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # trust on first use (pairing)
             try:
                 if attempt == "app_key":
                     client.connect(pkey=app_key(), allow_agent=False, look_for_keys=False, **kwargs)
                 elif attempt == "agent":
                     client.connect(allow_agent=True, look_for_keys=True, **kwargs)
-                elif self.password:
-                    client.connect(password=self.password, allow_agent=False, look_for_keys=False, **kwargs)
                 else:
-                    continue
+                    client.connect(password=self.password, allow_agent=False, look_for_keys=False, **kwargs)
                 break
             except paramiko.AuthenticationException as exc:
+                client.close()
                 errors.append(f"{attempt}: {exc}")
+            except BaseException:
+                client.close()
+                raise
         else:
             raise ConnectionError("SSH authentication failed (" + "; ".join(errors) + "). Run the FramePort "
                                   "bootstrap on the Frame or enter the steamos password.")
@@ -161,19 +170,40 @@ class Frame:
         return self, ""
 
     def close(self) -> None:
-        if self._sftp:
-            self._sftp.close()
+        with self._lock:
+            sftps, self._sftps = self._sftps, []
+        for s in sftps:
+            try:
+                s.close()
+            except Exception:  # noqa: BLE001 - closing anyway
+                pass
         if self.client:
             self.client.close()
-        self.client = self._sftp = None
+        self.client = None
+        self._sftp = threading.local()
+        self._agent_digest = ""
+
+    def alive(self) -> bool:
+        """The SSH connection itself still works (a failed agent command doesn't mean the Frame is gone)."""
+        transport = self.client.get_transport() if self.client else None
+        return bool(transport and transport.is_active())
 
     @property
     def sftp(self) -> paramiko.SFTPClient:
-        if self._sftp is None:
-            self._sftp = self.client.open_sftp()
-        return self._sftp
+        """This thread's SFTP channel. paramiko's SFTPClient must not be shared between threads (replies get mixed up);
+        channels on one SSH connection can run side by side."""
+        client = getattr(self._sftp, "client", None)
+        if client is None or client.sock.closed:
+            client = self.client.open_sftp()
+            self._sftp.client = client
+            with self._lock:
+                self._sftps.append(client)
+        return client
 
-    def run(self, command: str, stdin: str | None = None, timeout: float | None = None) -> tuple[int, str, str]:
+    def run(self, command: str, stdin: str | None = None,
+            timeout: float | None = RUN_TIMEOUT) -> tuple[int, str, str]:
+        """Run a shell command. `timeout` (s) bounds waiting for output, so a dead link can't hang the caller;
+        None only for commands that legitimately run long (installs, launch tests)."""
         chan_in, out, err = self.client.exec_command(command, timeout=timeout)
         if stdin is not None:
             chan_in.write(stdin)
@@ -196,16 +226,23 @@ class Frame:
         digest = hashlib.sha256(text).hexdigest()[:16]
         remote_dir = posixpath.join(self.home, REMOTE_AGENT_DIR)
         remote = posixpath.join(remote_dir, "frameport_agent.py")
+        if self._agent_digest == digest:
+            return remote
         code, out, _ = self.run(f"sha256sum {sh_quote(remote)} 2>/dev/null | cut -c1-16")
         if out.strip() != digest:
             self.run(f"mkdir -p {sh_quote(remote_dir)}")
-            with self.sftp.open(remote + ".tmp", "wb") as f:
+            tmp = f"{remote}.{os.getpid()}.{threading.get_ident()}.tmp"  # two threads never share a temp file
+            with self.sftp.open(tmp, "wb") as f:
                 f.write(text)
-            self.run(f"mv {sh_quote(remote + '.tmp')} {sh_quote(remote)} && chmod 755 {sh_quote(remote)}")
+            code, _, err = self.run(f"mv {sh_quote(tmp)} {sh_quote(remote)} && chmod 755 {sh_quote(remote)}")
+            if code:
+                raise AgentFailed(f"couldn't install the FramePort agent on the Frame: {err.strip()[-300:]}")
+        self._agent_digest = digest
         return remote
 
-    def agent(self, command: str, timeout: float | None = 600, **args):
-        remote = self.ensure_agent()
+    def agent(self, command: str, timeout: float | None = 600, ensure: bool = True, **args):
+        """Run an agent command. ensure=False uses the agent already on the Frame (never re-uploads it)."""
+        remote = self.ensure_agent() if ensure else posixpath.join(self.home, REMOTE_AGENT_DIR, "frameport_agent.py")
         code, out, err = self.run(f"python3 {sh_quote(remote)} {command}", stdin=json.dumps(args), timeout=timeout)
         line = next((ln for ln in reversed(out.splitlines()) if ln.startswith("{")), "")
         try:

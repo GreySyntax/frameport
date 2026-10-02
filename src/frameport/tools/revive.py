@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..core import cache
-from ..core.paths import tools_dir
+from ..core.paths import tools_dir, write_atomic
 
 REVIVE_RELEASE = "https://api.github.com/repos/LibreVR/Revive/releases/latest"
 INSTALLER = "ReviveInstaller.exe"
@@ -243,7 +243,7 @@ def install(progress=None, force: bool = False) -> Path:
         extract(archive, tmp)
         tmp.replace(dest)
         archive.unlink(missing_ok=True)
-    _state_file().write_text(json.dumps({"version": version, "path": str(dest)}, indent=2))
+    write_atomic(_state_file(), json.dumps({"version": version, "path": str(dest)}, indent=2))
     return dest
 
 

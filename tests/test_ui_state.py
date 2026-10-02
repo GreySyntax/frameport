@@ -172,3 +172,57 @@ def test_install_state_tracks_patch_settings():
     old = {"installed": [{"package": "rift.g"}]}  # installed before recipes were recorded: no false alarm
     assert C.install_state(g, old) == "installed"
     assert C.install_state(g, {"installed": []}) == "missing"
+
+
+def test_library_writes_from_many_threads_are_not_lost():
+    """Every thread's change survives (library.json read-modify-write used to race between jobs and the UI)."""
+    import threading
+
+    from frameport.core import library
+
+    def work(i):
+        for j in range(20):
+            library.upsert_game(f"pkg.{i}", n=j)
+            library.update_setting("counter", lambda v: (v or 0) + 1)
+    threads = [threading.Thread(target=work, args=(i,)) for i in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert {g["package"] for g in library.games() if g["package"].startswith("pkg.")} == {f"pkg.{i}" for i in range(6)}
+    assert library.setting("counter") == 120
+
+
+def test_refresh_keeps_a_working_connection_when_a_status_query_fails():
+    """An agent error during the background refresh must not close the connection a running job is using."""
+    from types import SimpleNamespace
+
+    from frameport.frame.connection import AgentFailed
+    from frameport.ui.app import FramePortApp
+
+    closed = []
+
+    class Target:
+        def __init__(self, alive):
+            self.frame = SimpleNamespace(alive=lambda: alive)
+
+        def describe(self):
+            raise AgentFailed("agent info: boom")
+
+        def close(self):
+            closed.append(self)
+
+    def app_with(target):
+        app = object.__new__(FramePortApp)
+        app.target, app.frame_state, app.frame_info = target, "connected", {"installed": []}
+        app.route = ("settings",)
+        app._refresh_sidebar = lambda *a, **k: None
+        app.toast = lambda *a, **k: None
+        return app
+
+    up = app_with(Target(alive=True))
+    up.refresh_frame(quiet=True, background=False)
+    assert up.frame_state == "connected" and not closed
+    down = app_with(Target(alive=False))
+    down.refresh_frame(quiet=True, background=False)
+    assert down.frame_state == "offline" and closed == [down.target]

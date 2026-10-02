@@ -11,7 +11,7 @@ from ..artwork import fetch as artwork
 from ..build import sha256
 from ..core.events import Reporter
 from ..core.models import Recipe
-from ..frame.connection import Frame
+from ..frame.connection import Frame, sh_quote
 from ..patches import base
 from ..patches.settings import adapter_settings
 
@@ -330,7 +330,7 @@ def upload_steam_art(frame: Frame, package: str, base: str, reporter: Reporter) 
     reporter.stage("Artwork for the Steam library")
     art = steam_set(package)
     remote_art = posixpath.join(base, "incoming-artwork")
-    frame.run(f"rm -rf '{remote_art}' && mkdir -p '{remote_art}'")
+    frame.run(f"rm -rf {sh_quote(remote_art)} && mkdir -p {sh_quote(remote_art)}")
     for kind, f in art.items():
         frame.put(f, posixpath.join(remote_art, f"{kind}{f.suffix}"), resume=False)
     reporter.check("Steam artwork", bool(art) or None, ", ".join(sorted(art)) or "none found")
@@ -351,7 +351,7 @@ def update_steam_art(frame: Frame, package: str, reporter: Reporter) -> dict:
         raise RuntimeError("no artwork to send")
     reporter.stage("Artwork for the Steam library")
     remote = posixpath.join(dep["anchor"], "artwork")
-    frame.run(f"rm -rf '{remote}' && mkdir -p '{remote}'")
+    frame.run(f"rm -rf {sh_quote(remote)} && mkdir -p {sh_quote(remote)}")
     for kind, f in art.items():
         frame.put(f, posixpath.join(remote, f"{kind}{f.suffix}"), resume=False)
     reporter.check("Steam artwork", True, ", ".join(sorted(art)))

@@ -397,10 +397,13 @@ def install_game(package: str, target: Target, reporter: Reporter, apk_only: boo
     result = target.install(package, title, apk, data_dir, recipe, reporter, apk_only)
     if add_to_library:
         target.add_to_library([package], reporter)
-    installs = entry.get("installs", {})
-    installs[target.label] = {"apk": str(apk), "result": result, "time": time.time()}
-    library.upsert_game(package, installs=installs)
+    _record_install(package, target.label, {"apk": str(apk), "result": result, "time": time.time()})
     return result
+
+
+def _record_install(package: str, where: str, record: dict) -> None:
+    """Merge into the game's current install records (the entry read before a long install may be stale)."""
+    library.update_game(package, lambda g: g.setdefault("installs", {}).__setitem__(where, record))
 
 
 def install_rift(package: str, target: Target, reporter: Reporter, add_to_library: bool = True) -> dict:
@@ -418,9 +421,7 @@ def install_rift(package: str, target: Target, reporter: Reporter, add_to_librar
                                  exe_sha256=entry["build"].get("sha256"), art_lookup=entry.get("quest_package"))
     if add_to_library:
         target.add_to_library([package], reporter)
-    installs = entry.get("installs", {})
-    installs[target.label] = {"exe": entry["exe"], "result": result, "time": time.time()}
-    library.upsert_game(package, installs=installs)
+    _record_install(package, target.label, {"exe": entry["exe"], "result": result, "time": time.time()})
     return result
 
 

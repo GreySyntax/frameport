@@ -173,7 +173,7 @@ def delete(frame: Frame, root: str, paths: list[str]) -> int:
     if any(t == posixpath.normpath(root) for t in targets):
         raise ValueError("the location itself can't be deleted")
     if targets:
-        code, _, err = frame.run("rm -rf -- " + " ".join(sh_quote(t) for t in targets))
+        code, _, err = frame.run("rm -rf -- " + " ".join(sh_quote(t) for t in targets), timeout=900)
         if code:
             raise OSError(err.strip() or f"rm failed ({code})")
     return len(targets)

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ..core.events import Reporter
 from ..core.models import Recipe
-from ..frame.connection import Frame, FrameTarget
+from ..frame.connection import Frame, FrameTarget, sh_quote
 from ..install import installer
 from ..validate import device
 from .base import Target
@@ -76,10 +76,11 @@ class FrameLeptonTarget(Target):
         if opts.pop("layer", False):  # also load FramePort's timefix OpenXR layer (as installed games do)
             from ..core.paths import artifacts_dir
 
-            remote = "/home/" + self.target.user + "/.local/share/frameport/xrlayer"
-            self.frame.run(f"mkdir -p '{remote}'")
+            frame = self.connect().frame
+            remote = f"{frame.home}/.local/share/frameport/xrlayer"
+            frame.run(f"mkdir -p {sh_quote(remote)}")
             for f in sorted((artifacts_dir() / "linux-arm64").iterdir()):
-                self.frame.put(f, f"{remote}/{f.name}", resume=False)
+                frame.put(f, f"{remote}/{f.name}", resume=False)
             env = dict(opts.get("env") or {})
             env.update(XR_API_LAYER_PATH=remote, XR_ENABLE_API_LAYERS="XR_APILAYER_FRAMEPORT_timefix")
             opts["env"] = env

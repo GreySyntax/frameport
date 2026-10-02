@@ -4,13 +4,17 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
 
 from .models import Analysis, Recipe
-from .paths import user_data_dir
+from .paths import user_data_dir, write_atomic
 
-_lock = threading.Lock()
+# One lock for every read-modify-write of library.json: jobs, the poll thread and the UI all change it, and a change
+# made between another thread's load() and save() would be lost. Re-entrant so edit() can call load()/save().
+_lock = threading.RLock()
 
 
 def _path() -> Path:
@@ -18,13 +22,23 @@ def _path() -> Path:
 
 
 def load() -> dict:
-    try:
-        data = json.loads(_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"games": {}, "settings": {}}
-    if _migrate(data):
+    with _lock:
+        try:
+            data = json.loads(_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {"games": {}, "settings": {}}
+        if _migrate(data):
+            save(data)
+        return data
+
+
+@contextmanager
+def edit() -> Iterator[dict]:
+    """A read-modify-write of the whole library as one step: `with edit() as data: ...` (saved on exit)."""
+    with _lock:
+        data = load()
+        yield data
         save(data)
-    return data
 
 
 def _migrate(data: dict) -> bool:
@@ -171,16 +185,22 @@ def _migrate(data: dict) -> bool:
 
 def save(data: dict) -> None:
     with _lock:
-        tmp = _path().with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=1, default=str), encoding="utf-8")
-        tmp.replace(_path())
+        write_atomic(_path(), json.dumps(data, indent=1, default=str))
 
 
 def upsert_game(package: str, **fields) -> dict:
-    data = load()
-    entry = data["games"].setdefault(package, {"package": package, "added": time.time()})
-    entry.update(fields)
-    save(data)
+    with edit() as data:
+        entry = data["games"].setdefault(package, {"package": package, "added": time.time()})
+        entry.update(fields)
+    return entry
+
+
+def update_game(package: str, fn: Callable[[dict], None]) -> dict | None:
+    """Change one game's entry in place, atomically (fn mutates the entry). None if the game isn't there."""
+    with edit() as data:
+        entry = data["games"].get(package)
+        if entry is not None:
+            fn(entry)
     return entry
 
 
@@ -193,9 +213,8 @@ def games() -> list[dict]:
 
 
 def remove_game(package: str) -> None:
-    data = load()
-    data["games"].pop(package, None)
-    save(data)
+    with edit() as data:
+        data["games"].pop(package, None)
 
 
 def setting(key: str, default=None):
@@ -203,9 +222,16 @@ def setting(key: str, default=None):
 
 
 def set_setting(key: str, value) -> None:
-    data = load()
-    data.setdefault("settings", {})[key] = value
-    save(data)
+    with edit() as data:
+        data.setdefault("settings", {})[key] = value
+
+
+def update_setting(key: str, fn: Callable, default=None):
+    """Set a setting from its current value, atomically: value = fn(current or default). Returns the new value."""
+    with edit() as data:
+        settings = data.setdefault("settings", {})
+        settings[key] = value = fn(settings.get(key, default))
+    return value
 
 
 def recipe_to_dict(r: Recipe) -> dict:

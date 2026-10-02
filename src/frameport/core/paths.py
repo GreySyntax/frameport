@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from pathlib import Path
 
 _PKG = Path(__file__).resolve().parent.parent
@@ -65,3 +66,11 @@ def _sub(name: str) -> Path:
     path = user_data_dir() / name
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def write_atomic(path: Path, text: str) -> None:
+    """Replace a file in one step: a reader never sees it half written, and a crash leaves the old one."""
+    path = Path(path)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)

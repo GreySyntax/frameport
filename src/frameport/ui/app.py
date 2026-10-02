@@ -672,12 +672,14 @@ class FramePortApp:
         return dict(library.setting("ui.installs") or {})
 
     def _record(self, pkg: str, **fields) -> None:
-        recs = self._records()
-        if fields.get("remove"):
-            recs.pop(pkg, None)
-        else:
-            recs[pkg] = {**recs.get(pkg, {}), **fields, "time": time.time()}
-        library.set_setting("ui.installs", recs)
+        def change(recs):
+            recs = dict(recs or {})
+            if fields.get("remove"):
+                recs.pop(pkg, None)
+            else:
+                recs[pkg] = {**recs.get(pkg, {}), **fields, "time": time.time()}
+            return recs
+        library.update_setting("ui.installs", change, {})
 
     def unfinished_installs(self) -> dict:
         """Installs that were queued/running when the app closed, or were cancelled or failed."""
@@ -1120,7 +1122,12 @@ class FramePortApp:
                 target.name = info.get("hostname") or target.name
                 t.label = target.label
                 save_target(target)
-                self.target, self.frame_info, self.frame_state = t, info, "connected"
+                old, self.target, self.frame_info, self.frame_state = self.target, t, info, "connected"
+                if old is not None and old is not t and not self.jobs.current():
+                    try:  # the connection it replaces (a running job keeps using its own until it ends)
+                        old.close()
+                    except Exception:  # noqa: BLE001 - it's being dropped anyway
+                        pass
                 if not quiet:
                     self.toast(f"Connected to {target.label}")
             except Exception as exc:  # noqa: BLE001
@@ -1149,18 +1156,29 @@ class FramePortApp:
 
     def refresh_frame(self, quiet: bool = False, rerender: bool = True, background: bool = True):
         def work():
-            if not self.target:
+            target = self.target
+            if not target:
                 return
             try:
-                info = self.target.describe()
+                info = target.describe()
+                if self.target is not target:
+                    return  # reconnected meanwhile: that connection's state wins
                 changed = info.get("installed") != (self.frame_info or {}).get("installed") or \
                     self.frame_state != "connected"
                 self.frame_info, self.frame_state = info, "connected"
             except Exception as exc:  # noqa: BLE001
+                frame = getattr(target, "frame", None)
+                if frame is not None and frame.alive():
+                    # the connection works, only this status query failed (e.g. an agent error): stay connected and
+                    # keep the connection (a job may be using it)
+                    applog.log.warning("Frame status refresh failed: %s", exc)
+                    return
+                if self.target is not target:
+                    return
                 changed = self.frame_state == "connected"
                 self.frame_state, self.frame_info = "offline", None
                 try:
-                    self.target.close()
+                    target.close()
                 except Exception:  # noqa: BLE001
                     pass
                 if not quiet:

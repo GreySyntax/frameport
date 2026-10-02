@@ -12,7 +12,7 @@ from pathlib import Path
 import requests
 
 from .. import REPO_URL, __version__
-from .paths import user_data_dir
+from .paths import user_data_dir, write_atomic
 
 USER_AGENT = f"FramePort/{__version__} (+{REPO_URL})"
 _session = requests.Session()
@@ -37,7 +37,7 @@ def cached_text(name: str, url: str, max_age: float = 86400, fallback: str | Non
     if not fresh:
         try:
             text = http_get(url).text
-            path.write_text(text, encoding="utf-8")
+            write_atomic(path, text)
             return text
         except Exception:
             pass

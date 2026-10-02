@@ -19,7 +19,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 from ..core import cache
-from ..core.paths import tools_dir
+from ..core.paths import tools_dir, write_atomic
 
 ADOPTIUM = "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture={arch}&image_type=jre&os={os}"
 # overport's CLI: maintained in the downstream fork Android-XR-Bridge/OVRPort since 1.2.5 (stable channel = plain
@@ -60,7 +60,7 @@ def _state() -> dict:
 
 
 def _save_state(state: dict) -> None:
-    _state_file().write_text(json.dumps(state, indent=2))
+    write_atomic(_state_file(), json.dumps(state, indent=2))
 
 
 # ------------------------------------------------------------------------------------------ Java
