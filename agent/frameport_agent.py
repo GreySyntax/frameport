@@ -607,8 +607,10 @@ CHARGER_TYPES = ("Mains", "USB", "USB_C", "USB_PD", "USB_PD_DRP", "USB_DCP", "US
 
 
 def battery_state():
-    """The Frame's battery: {"percent", "status" (Charging/Discharging/Full/Not charging), "plugged"}; None without
-    one. "plugged" = a charger reports online (or the battery says it's charging/full)."""
+    """The Frame's battery: {"percent", "status" (Charging/Discharging/Full/Not charging), "plugged", "draining"};
+    None without one. "plugged" = a charger reports online (or the battery says it's charging/full); "draining" = the
+    battery's own gauge says Discharging (with a charger: it supplies less than the Frame uses, or just booted).
+    On the Frame (2026-10-03): max1720x_bat (Battery), pm8550b-charger (Unknown), tcpm …typec (USB, online=1)."""
     def read(path):
         try:
             with open(path) as f:
@@ -629,6 +631,7 @@ def battery_state():
             plugged = True
     if battery is not None:
         battery["plugged"] = plugged or battery["status"] in ("Charging", "Full")
+        battery["draining"] = battery["status"] == "Discharging"
     return battery
 
 

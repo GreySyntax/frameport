@@ -213,7 +213,7 @@ class FramePortApp:
         if bat:
             from .battery import label, low
 
-            self._conn_line.value += f" · 🔋 {label(bat)}"
+            self._conn_line.value += tr(" · battery {value}").format(value=label(bat))  # no 🔋 glyph in the font
             if low(bat):
                 self._conn_line.color = T.WARN
         if st == "connected" and self.frame_info:

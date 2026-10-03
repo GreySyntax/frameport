@@ -800,7 +800,7 @@
  "the Frame isn't connected": "",
  "The Frame isn't connected": "",
  "The Frame went offline: {exc}": "",
- "The Frame's battery is at {pct} % and not charging. Plug it in: long installs can drain it, and FramePort pauses them at {pause} %.": "",
+ "The Frame's battery is at {pct} % and not charging. Plug it in (a strong charger, not a PC port): long installs can drain it, and FramePort pauses them at {pause} %.": "",
  "The Frame's battery is at {pct} %: installs paused so it doesn't switch off mid-upload. Plug it in; the queue continues by itself.": "",
  "The Frame's desktop password, only needed the first time so FramePort can add its own key. After that it connects with the key.": "",
  "The Frame's Steam library still shows the old artwork.": "",

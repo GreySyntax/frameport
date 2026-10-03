@@ -747,7 +747,7 @@ def test_battery_state(monkeypatch, tmp_path):
     assert a.battery_state() is None  # no power_supply folder (or no battery): nothing to show
     supply("battery", type="Battery", capacity="42", status="Discharging")
     supply("usb", type="USB", online="0")
-    assert a.battery_state() == {"percent": 42, "status": "Discharging", "plugged": False}
+    assert a.battery_state() == {"percent": 42, "status": "Discharging", "plugged": False, "draining": True}
     (ps / "usb" / "online").write_text("1\n")  # cable in, battery not charging yet ("Not charging"): still plugged
     assert a.battery_state()["plugged"] is True
     assert a.cmd_battery({})["battery"]["percent"] == 42

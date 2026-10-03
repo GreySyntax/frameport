@@ -9,11 +9,17 @@ PAUSE_AT = 15    # % on battery power: pause the queue before the Frame shuts it
 RESUME_AT = 25   # % on battery power at which a paused queue continues by itself (or as soon as it's plugged in)
 
 
+def charging(battery: dict) -> bool:
+    """Gaining charge: a charger is connected and the battery isn't draining anyway (a weak charger, e.g. a PC port,
+    can supply less than the Frame uses while it installs)."""
+    return bool(battery.get("plugged")) and not battery.get("draining")
+
+
 def advice(battery: dict | None, frame_work: bool, paused: str | None, warned: bool) -> str | None:
     """"pause", "resume", "warn" or None. `paused` is the queue's pause reason ("battery" = paused by us)."""
     if not battery:
         return "resume" if paused == "battery" else None
-    pct, plugged = battery.get("percent", 100), bool(battery.get("plugged"))
+    pct, plugged = battery.get("percent", 100), charging(battery)
     if paused == "battery":
         return "resume" if plugged or pct >= RESUME_AT or not frame_work else None
     if not frame_work or plugged or paused:
@@ -29,11 +35,11 @@ def label(battery: dict | None) -> str:
     """ "76 %" / "76 % ⚡" (charging or plugged in); "" without a battery reading."""
     if not battery:
         return ""
-    return f"{battery.get('percent', 0)} %" + (" ⚡" if battery.get("plugged") else "")
+    return f"{battery.get('percent', 0)} %" + (" ⚡" if charging(battery) else "")
 
 
 def low(battery: dict | None) -> bool:
-    return bool(battery) and not battery.get("plugged") and battery.get("percent", 100) <= WARN_AT
+    return bool(battery) and not charging(battery) and battery.get("percent", 100) <= WARN_AT
 
 
 def message(kind: str, battery: dict) -> str:
@@ -42,6 +48,7 @@ def message(kind: str, battery: dict) -> str:
         return tr("The Frame's battery is at {pct} %: installs paused so it doesn't switch off mid-upload. Plug it "
                   "in; the queue continues by itself.").format(pct=pct)
     if kind == "warn":
-        return tr("The Frame's battery is at {pct} % and not charging. Plug it in: long installs can drain it, and "
-                  "FramePort pauses them at {pause} %.").format(pct=pct, pause=PAUSE_AT)
+        return tr("The Frame's battery is at {pct} % and not charging. Plug it in (a strong charger, not a PC "
+                  "port): long installs can drain it, and FramePort pauses them at {pause} %.").format(
+            pct=pct, pause=PAUSE_AT)
     return tr("The Frame is charging: continuing the installs.")
