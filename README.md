@@ -20,12 +20,12 @@ Install games that target the Meta Quest, Android, or general PCVR onto your **V
 
 - **Painless setup:** one short command on the Frame. No root, no `sudo`, no password.
   [What it changes](docs/FRAME_SETUP.md).
+- **Type on Frame:** use your computer's keyboard on the Frame: in VR apps, Android apps, Steam and the desktop.
+  [More](#type-on-frame).
 - **One click per game:** convert, patch, sign, upload, add to Steam with artwork, launch test.
 - **Per-game recipes:** a tested catalog plus detection rules; every patch explained in plain words.
 - **FrameBridge:** FramePort's OpenXR adapter emulates what the Frame natively lacks (passthrough, room, controller models,
   curved and 360° layers); game settings as simple switches.
-- **Type on Frame:** your computer's keyboard works as a keyboard on the Frame, in apps, Steam and the desktop. Unity
-  text fields that would close at once on the Frame are fixed per game.
 - **Beyond Quest:** Android apps as windows, PC VR via Proton or Revive, a Files tab with drag and drop.
 - **Self-updating** releases, redacted diagnostics, one-click problem reports and working-config sharing.
 
@@ -47,6 +47,17 @@ Install games that target the Meta Quest, Android, or general PCVR onto your **V
 4. Open a game → **Install on Frame**, then play it from the Frame's Steam library.
 
 Full guide, firewalls and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
+
+## Type on Frame
+
+Typing in VR is painful, so FramePort turns your computer's keyboard into a keyboard for the Frame. Open **Type on
+Frame** (keyboard icon on the sidebar's Frame card, the Steam Frame page, or a game's menu), select a text field in
+the headset and type: searches, logins, chat, in any app, in Steam or on the desktop. Paste longer text to type it in
+one go. Nothing to install: FramePort adds a virtual keyboard on the Frame while the window is open, without root.
+
+Unity apps whose text fields close the moment you select them on the Frame (no system keyboard there) get a per-game
+fix, so Steam's on-screen keyboard and Type on Frame work in them too.
+[Details](docs/INSTALL.md#typing-on-the-frame).
 
 ## Compatibility
 
