@@ -100,6 +100,35 @@ class FakeTarget:
         pass
 
 
+class FakeKeyboardSession:
+    """--fake-frame: Type on Frame connects at once (nothing is sent anywhere)."""
+
+    def __init__(self, frame):
+        self.closed = False
+
+    def key(self, name, action="down"):
+        return True
+
+    def text(self, text):
+        return ""
+
+    def close(self):
+        self.closed = True
+
+
+def open_type_dialog(app: FramePortApp) -> None:
+    """Type on Frame over the Steam Frame page, with one key 'pressed' so the screenshot shows it working."""
+    from types import SimpleNamespace
+
+    app.navigate(1)
+    time.sleep(1.5)
+    app.type_on_frame()
+    time.sleep(1.5)
+    dialog = [d for d in app.page._dialogs.controls if d.open][-1]
+    listener = dialog.content.controls[1]
+    listener.on_key_down(SimpleNamespace(key="Enter"))
+
+
 STEP_SECONDS = 4  # per screen (the screenshot is taken ~3 s in)
 
 
@@ -158,6 +187,7 @@ def main() -> int:
         steps.append(("files", lambda a: a.go("files")))
         steps.append(("files-select", lambda a: [a.files_view._toggle(e.path, True)
                                                  for e in a.files_view.entries[1:3]]))
+        steps.append(("type-on-frame", open_type_dialog))
     if args.install_questions:
         queued: list[str] = []
 
@@ -210,6 +240,9 @@ def main() -> int:
     ready, done = threading.Event(), []
 
     if args.fake_frame:  # never reach a real Frame (start-up auto-connect, discovery, the 30 s poll)
+        from frameport.frame import keyboard
+
+        keyboard.KeyboardSession = FakeKeyboardSession
         FramePortApp.connect = lambda self, *a, **k: None
         FramePortApp.refresh_frame = lambda self, *a, **k: None
 

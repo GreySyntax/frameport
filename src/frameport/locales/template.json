@@ -435,7 +435,7 @@
  "Lepton is installed": "",
  "Lepton is Valve's Android container on the Frame. Quest games run inside it, one container per game. It needs Developer Mode.": "",
  "Lepton only launches an activity with category LAUNCHER (Quest apps often use INFO). Symptom when missing: launch.log says 'APP_ACTIVITY is empty' and nothing starts.": "",
- "Lepton runs VR apps headless: their Android window is never shown, so it never gets keyboard focus and no key press (Steam's on-screen keyboard, a USB/Bluetooth keyboard, Type on Frame) reaches the app's text fields. With Lepton's lepton-show-flatscreen marker the window is shown (behind the VR view, which keeps working) and Steam's keyboard opens for a selected text field. Pairs with \"Make Unity text fields work without a system keyboard\".": "",
+ "Lepton runs VR apps headless: their Android window is never shown, so it never gets keyboard focus and no key press (Steam's on-screen keyboard, a USB/Bluetooth keyboard, Type on Frame) reaches the app's text fields. With Lepton's lepton-show-flatscreen marker the window is shown (behind the VR view, which keeps working) and Steam's keyboard opens for a selected text field. Steam lists the shown window as \"Gamescope\" (the Frame's compositor). Pairs with \"Make Unity text fields work without a system keyboard\".": "",
  "Lets games made for Oculus PCs run on SteamVR.": "",
  "Lets games written for newer OpenXR versions run on the Frame.": "",
  "Lets mixed-reality games start even though they insist on a camera view of your room.": "",

@@ -308,7 +308,8 @@ class TextInputWindow(Patch):
                    "focus and no key press (Steam's on-screen keyboard, a USB/Bluetooth keyboard, Type on Frame) "
                    "reaches the app's text fields. With Lepton's lepton-show-flatscreen marker the window is shown "
                    "(behind the VR view, which keeps working) and Steam's keyboard opens for a selected text field. "
-                   "Pairs with \"Make Unity text fields work without a system keyboard\".")
+                   "Steam lists the shown window as \"Gamescope\" (the Frame's compositor). Pairs with \"Make Unity "
+                   "text fields work without a system keyboard\".")
     category = "device"
     stage = "install"
 

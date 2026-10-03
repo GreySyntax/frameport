@@ -55,6 +55,8 @@ Frame** (keyboard icon on the sidebar's Frame card, the Steam Frame page, or a g
 the headset and type: searches, logins, chat, in any app, in Steam or on the desktop. Paste longer text to type it in
 one go. Nothing to install: FramePort adds a virtual keyboard on the Frame while the window is open, without root.
 
+![Type on Frame](docs/images/type-on-frame.png)
+
 Unity apps whose text fields close the moment you select them on the Frame (no system keyboard there) get a per-game
 fix, so Steam's on-screen keyboard and Type on Frame work in them too.
 [Details](docs/INSTALL.md#typing-on-the-frame).

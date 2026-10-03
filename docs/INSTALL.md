@@ -84,7 +84,8 @@ reality), showing only what matters for that game. Changes are kept with the gam
   headset (in an app, Steam or the desktop) and type; Esc and shortcuts go to the Frame too. Paste longer text into
   the box to type it in one go (US keyboard layout). Click **Done** to disconnect.
 - **Steam's on-screen keyboard** opens for text fields of apps shown as a window (2D apps, and VR apps with
-  **Show the app's Android window**).
+  **Show the app's Android window**). Steam lists that window as **Gamescope** (the Frame's display compositor);
+  leave it open: it's what receives the typing, the VR view isn't affected.
 - **Unity apps whose text fields close at once** (a caret flashes, nothing can be typed): FramePort suggests
   **Make Unity text fields work** for them. The first time, it downloads Cpp2IL (a tool that finds the right spot in the
   game's code, ~17 MB). Games added before this version: open the game's menu → **Analyze again**, then reinstall.

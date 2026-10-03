@@ -164,16 +164,18 @@ class FramePortApp:
         self._conn_bat = ft.Container(ft.Row([self._conn_bat_icon, self._conn_bat_text], spacing=T.px(2), tight=True,
                                              vertical_alignment=ft.CrossAxisAlignment.CENTER), visible=False)
         self._conn_extra = ft.Container(C.meta(""), visible=False, tooltip=C.tip(C.HELP["frame_summary"]))
-        self._conn_type = C.icon_btn(ft.Icons.KEYBOARD_ROUNDED, tr("Type on Frame: use this keyboard on the Frame"),
-                                     lambda e: self.type_on_frame())
-        self._conn_type.visible = False
+        # compact (no button padding) and next to the name: as a separate column it squeezed "Quest ✓  PC VR ✓"
+        self._conn_type = ft.IconButton(ft.Icons.KEYBOARD_ROUNDED, icon_size=T.px(16), icon_color=T.TEXT_2,
+                                        tooltip=tr("Type on Frame: use this keyboard on the Frame"), visible=False,
+                                        on_click=lambda e: self.type_on_frame(), padding=0,
+                                        width=T.px(22), height=T.px(22),
+                                        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=T.px(6))))
         self.conn_card.content = ft.Container(ft.Row([
             ft.Stack([ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(22), color=T.TEXT_2),
                       ft.Container(self._conn_dot, right=0, bottom=0)], width=T.px(24), height=T.px(24)),
-            ft.Column([ft.Row([ft.Container(self._conn_name, expand=True), self._conn_bat], spacing=T.S2,
-                              vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Column([ft.Row([ft.Container(self._conn_name, expand=True), self._conn_bat, self._conn_type],
+                              spacing=T.px(6), vertical_alignment=ft.CrossAxisAlignment.CENTER),
                        self._conn_line, self._conn_extra], spacing=1, expand=True),
-            self._conn_type,
         ], spacing=T.S3), padding=T.S3, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE, ink=True,
             border=ft.Border.all(1, T.BORDER), on_click=lambda e: self.go("frame"))
         self._nav = nav  # last: _refresh_sidebar (also called from job threads) treats it as "all built"
