@@ -1,6 +1,6 @@
 # Compatibility
 
-The built-in catalog has tested settings for 38 games (27 work, 5 work with known issues, 6 can't run on the Frame).
+The built-in catalog has tested settings for 39 games (27 work, 6 work with known issues, 6 can't run on the Frame).
 Other games get suggested patches from detection rules; each suggestion states its reason, and every patch can be
 switched on or off under **Customize**: described in plain words, with **Show technical details** for the exact
 effect of each patch.

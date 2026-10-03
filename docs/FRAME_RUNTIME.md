@@ -105,3 +105,14 @@
 - Processes started from Steam (Konsole, SSH sessions?) share steam.service's cgroup: use `systemd-run --user`.
 - SSH: `sshd` must be enabled (`sudo systemctl enable --now sshd`), which needs a user password (`passwd`).
 - mDNS: avahi-daemon runs by default; hostname `frame` → `frame.local`.
+
+## Text input
+
+- Lepton's Android has no on-screen keyboard (IME) and VR apps run headless, so no Android window has keyboard focus
+  and key presses (Steam's keyboard, USB/Bluetooth keyboards, `input text`) don't reach VR apps. The app folder's
+  `lepton-show-flatscreen` marker shows the window (VR keeps working) and gives it focus; Steam's on-screen keyboard
+  then opens for its text fields (FramePort patch `device.text_input_window`).
+- `/dev/uinput` is writable by the steamos user (ACL for Steam Input): a uinput virtual keyboard works like a real
+  one everywhere (FramePort's "Type on Frame", agent `_keyboard`).
+- Unity text fields close without a system keyboard; see `frame.unity_text_input` in PLAYBOOK.md.
+

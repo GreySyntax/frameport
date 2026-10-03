@@ -106,10 +106,11 @@ def test_catalog_device_toggles_round_trip():
 
 
 def test_reanalyze_refreshes_the_suggestion_and_keeps_a_users_recipe(monkeypatch, tmp_path):
+    from test_patches import _analysis
+
     from frameport import pipeline
     from frameport.core import library
     from frameport.core.models import Recipe
-    from test_patches import _analysis
 
     apk = tmp_path / "game.apk"
     apk.write_bytes(b"x")

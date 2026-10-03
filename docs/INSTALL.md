@@ -77,6 +77,18 @@ reality), showing only what matters for that game. Changes are kept with the gam
 
 ![Game settings](images/game-settings.png)
 
+## Typing on the Frame
+
+- **Type on Frame** (Steam Frame page, a game's menu, or the keyboard icon on the sidebar's Frame card): while the
+  window is open, this computer's keyboard works as a keyboard plugged into the Frame. Select a text field in the
+  headset (in an app, Steam or the desktop) and type; Esc and shortcuts go to the Frame too. Paste longer text into
+  the box to type it in one go (US keyboard layout). Click **Done** to disconnect.
+- **Steam's on-screen keyboard** opens for text fields of apps shown as a window (2D apps, and VR apps with
+  **Show the app's Android window**).
+- **Unity apps whose text fields close at once** (a caret flashes, nothing can be typed): FramePort suggests
+  **Make Unity text fields work** for them. The first time, it downloads Cpp2IL (a tool that finds the right spot in the
+  game's code, ~17 MB). Games added before this version: open the game's menu → **Analyze again**, then reinstall.
+
 ## Updating
 
 FramePort checks for a new release at start and every 6 hours (it only downloads the release information). When one
