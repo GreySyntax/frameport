@@ -40,6 +40,8 @@ jobs:
             archive: FramePort-macos-arm64.zip
           - os: ubuntu-22.04  # oldest supported: the bundle needs the build host's GLib/glibc or newer
             archive: FramePort-linux-x64.tar.gz
+          - os: ubuntu-22.04-arm  # Linux ARM64 (same base as x64)
+            archive: FramePort-linux-arm64.tar.gz
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -50,9 +52,9 @@ jobs:
       - run: uv sync --extra dev
       - id: flet
         run: uv run python scripts/package.py
-        continue-on-error: ${{ runner.os == 'macOS' }}
-      - name: macOS fallback (PyInstaller bundle)
-        if: runner.os == 'macOS' && steps.flet.outcome == 'failure'
+        continue-on-error: ${{ runner.os == 'macOS' || runner.arch == 'ARM64' }}
+      - name: macOS / Linux ARM64 fallback (PyInstaller bundle)
+        if: (runner.os == 'macOS' || runner.arch == 'ARM64') && steps.flet.outcome == 'failure'
         run: uv run --with pyinstaller python scripts/package.py --pyinstaller
 
       # ---- signing: self-signed certificate on Windows, ad-hoc on macOS ----
@@ -95,7 +97,9 @@ jobs:
         run: ditto -c -k --keepParent "$(find dist -maxdepth 3 -name '*.app' -type d | head -1)" ${{ matrix.archive }}
       - name: Package (Linux)
         if: runner.os == 'Linux'
-        run: tar czf ${{ matrix.archive }} -C dist --transform 's,^linux,FramePort,' linux
+        run: |  # flet build -> dist/linux; the PyInstaller fallback -> dist/FramePort (one folder)
+          if [ -d dist/linux ]; then tar czf ${{ matrix.archive }} -C dist --transform 's,^linux,FramePort,' linux
+          else tar czf ${{ matrix.archive }} -C dist FramePort; fi
       # self-update with this archive: unpack, verify the layout (+ the signer on Windows), run the real swap script
       - name: Update smoke test
         run: uv run python scripts/update_smoke.py ${{ matrix.archive }}
@@ -137,7 +141,7 @@ jobs:
           git fetch --force origin "refs/tags/${tag}:refs/tags/${tag}"
           whatsnew=$(git tag -l --format='%(contents:body)' "$tag")
           [ -n "$whatsnew" ] || whatsnew=$(git tag -l --format='%(contents:subject)' "$tag")
-          { echo "FramePort ${tag}: Windows (x64), macOS (Apple Silicon) and Linux (x64)."; echo;
+          { echo "FramePort ${tag}: Windows (x64), macOS (Apple Silicon) and Linux (x64, ARM64)."; echo;
             if [ -n "$whatsnew" ] && [ "$(git cat-file -t "$tag")" = tag ]; then
               echo "## What's new"; echo; echo "$whatsnew"; echo; fi
             echo "Already have FramePort? It offers this update itself (Library → **Update now**)."

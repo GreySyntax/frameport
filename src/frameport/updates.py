@@ -18,6 +18,7 @@ import hashlib
 import json
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -39,7 +40,7 @@ REPO = REPO_URL.removeprefix("https://github.com/").strip("/")
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 CHECK_EVERY = 6 * 3600          # seconds between automatic checks
 ASSETS = {"win32": "FramePort-windows-x64.zip", "darwin": "FramePort-macos-arm64.zip",
-          "linux": "FramePort-linux-x64.tar.gz"}
+          "linux": "FramePort-linux-x64.tar.gz", "linux-arm64": "FramePort-linux-arm64.tar.gz"}  # never rename
 SUMS = "SHA256SUMS.txt"
 
 
@@ -75,6 +76,8 @@ def is_newer(candidate: str, current: str = __version__) -> bool:
 
 def platform_asset() -> str | None:
     key = "linux" if sys.platform.startswith("linux") else sys.platform
+    if key == "linux" and platform.machine().lower() in ("aarch64", "arm64"):
+        key = "linux-arm64"  # the ARM64 bundle (from 0.6.0)
     return ASSETS.get(key)
 
 

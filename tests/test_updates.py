@@ -246,3 +246,11 @@ def test_apply_reports_a_script_that_never_starts(monkeypatch, tmp_path):
     monkeypatch.setattr(updates.subprocess, "Popen", lambda *a, **k: type("P", (), {"poll": lambda self: None})())
     with pytest.raises(updates.UpdateError):
         updates.apply(staged, installed, relaunch=False, pid=1, platform="linux")
+
+
+def test_platform_asset_picks_the_arm64_linux_bundle(monkeypatch):
+    monkeypatch.setattr(updates.sys, "platform", "linux")
+    monkeypatch.setattr(updates.platform, "machine", lambda: "aarch64")
+    assert updates.platform_asset() == "FramePort-linux-arm64.tar.gz"
+    monkeypatch.setattr(updates.platform, "machine", lambda: "x86_64")
+    assert updates.platform_asset() == "FramePort-linux-x64.tar.gz"

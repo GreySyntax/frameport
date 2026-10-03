@@ -66,6 +66,8 @@ fix, so Steam's on-screen keyboard and Type on Frame work in them too.
 If a game has already been tested with FramePort, it will automatically use the optimal game config. Otherwise, FramePort
 will attempt to guess key patches. If you find a new config that works for an app you are testing, please consider submitting it to the community!
 
+**[List of tested games](docs/GAMES.md)**
+
 ## Built on
 
 [OVRPort](https://github.com/Android-XR-Bridge/OVRPort) (Quest → OpenXR, originally
@@ -81,6 +83,7 @@ What FramePort adds itself: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | [INSTALL.md](docs/INSTALL.md) | Install, connect, update, PC VR, files, problem reports |
 | [FRAME_SETUP.md](docs/FRAME_SETUP.md) | What setup changes on the Frame, networks and firewalls, undoing it |
 | [COMPATIBILITY.md](docs/COMPATIBILITY.md) | What runs and how well |
+| [GAMES.md](docs/GAMES.md) | Tested games and how well they run |
 | [PLAYBOOK.md](docs/PLAYBOOK.md) | Symptoms and fixes per game |
 | [FRAME_RUNTIME.md](docs/FRAME_RUNTIME.md) | Steam Frame runtime facts |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organised |

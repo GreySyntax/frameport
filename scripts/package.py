@@ -70,6 +70,8 @@ def main() -> int:
                    # translations (data files PyInstaller doesn't pick up from the imports)
                    "--add-data", f"{ROOT / 'src/frameport/locales'}{sep}frameport/locales",
                    "--distpath", str(ROOT / "dist"), "--yes"]
+            if TARGET == "linux":
+                cmd.append("--onedir")  # a folder: the bundle check sees the agent source, the archive the app
         else:
             # --yes: install the Flutter SDK etc. without prompting; --no-rich-output: plain logs (CI, Windows consoles)
             cmd = ["flet", "build", TARGET, str(ROOT), "--project", "FramePort", "--product", "FramePort",

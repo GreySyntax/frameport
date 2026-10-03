@@ -1,7 +1,7 @@
 # Compatibility
 
 The built-in catalog has tested settings for games, each marked as working, working with known issues, or not
-running on the Frame (the recipes are in [catalog/games](../catalog/games)).
+running on the Frame: see the [list of tested games](GAMES.md) (recipes in [catalog/games](../catalog/games)).
 Other games get suggested patches from detection rules; each suggestion states its reason, and every patch can be
 switched on or off under **Customize**: described in plain words, with **Show technical details** for the exact
 effect of each patch.
