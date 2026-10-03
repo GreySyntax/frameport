@@ -7,14 +7,14 @@
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 ![Steam Frame](https://img.shields.io/badge/Steam%20Frame-supported-1b2838?logo=steam&logoColor=white)
 
-Install Meta Quest games, Android apps and PC VR games on the **Valve Steam Frame**: FramePort patches them for the
-Frame, copies them over Wi-Fi and adds them to the Frame's Steam library with artwork.
+Install games that target the Meta Quest, Android, or general PCVR onto your **Valve Steam Frame**. FramePort handles everything from uploading game files, setting up your Frame, injecting compatibility patches, and adding shortcuts to your Steam library. FramePort aims to be as simple as possible by taking advantage of the fact that the Steam Frame runs on Linux.
 
 ![Library](docs/images/library.png)
 
-> **Proof of concept, not a piracy tool.** FramePort doesn't download, share or unlock games and doesn't remove DRM,
-> licence or entitlement checks. Use it only with games you own. Most of the work is done by the projects it wraps
-> ([Built on](#built-on)).
+> **Notice:** FramePort explicitly does NOT download, share, or unlock games. You must provide legally obtained game
+> executables. Core features of FramePort simply download and wrap other published tools (see [Built on](#built-on))
+> with patches provided by FramePort adding a hardware compatibility layer. This enables users to use games/apps legally
+> purchased on sites like [SideQuest](https://sidequestvr.com/). 
 
 ## Features
 
@@ -22,10 +22,8 @@ Frame, copies them over Wi-Fi and adds them to the Frame's Steam library with ar
   [What it changes](docs/FRAME_SETUP.md).
 - **One click per game:** convert, patch, sign, upload, add to Steam with artwork, launch test.
 - **Per-game recipes:** a tested catalog plus detection rules; every patch explained in plain words.
-- **FrameBridge:** FramePort's OpenXR adapter emulates what the Frame lacks (passthrough, room, controller models,
+- **FrameBridge:** FramePort's OpenXR adapter emulates what the Frame natively lacks (passthrough, room, controller models,
   curved and 360° layers); game settings as simple switches.
-- **Long queues that finish:** wake lock, resumes after sleep or disconnects, resumable uploads, fast USB/hotspot link.
-- **Your files stay untouched:** converted copies are temporary; per-game signing keys keep saves across updates.
 - **Beyond Quest:** Android apps as windows, PC VR via Proton or Revive, a Files tab with drag and drop.
 - **Self-updating** releases, redacted diagnostics, one-click problem reports and working-config sharing.
 
@@ -39,7 +37,7 @@ Frame, copies them over Wi-Fi and adds them to the Frame's Steam library with ar
    2. On the Frame press the **Steam button → Power → Switch to Desktop**.
    3. Open the app menu (bottom-left corner), search for **Konsole** and open it.
    4. Type the command FramePort shows exactly as shown (on-screen keyboard or any USB/Bluetooth keyboard) and press
-      **Enter**.
+      **Enter**. This will run the following [bash setup script](bootstrap/bootstrap.sh).
    5. After a few seconds the desktop closes by itself and the Frame returns to its normal view; that's expected. If
       Steam asks to install **Lepton**, confirm it. FramePort shows the Frame as connected within a minute. No
       password needed.
@@ -50,8 +48,8 @@ Full guide, firewalls and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Compatibility
 
-38 games have tested recipes (27 work, 5 with known issues, 6 can't run); others get suggested patches.
-Details: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
+If a game has already been tested with FramePort, it will automatically use the optimal game config. Otherwise, FramePort
+will attempt to guess key patches. If you find a new config that works for an app you are testing, please consider submitting it to the community!
 
 ## Built on
 
