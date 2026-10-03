@@ -733,3 +733,21 @@ def test_purge_without_saves_removes_container_workdirs_and_stale_shortcuts(monk
     assert not Path(a.ANCHORS).exists()
     names = [s["appname"] for s in a.vdf_decode((users / "shortcuts.vdf").read_bytes())["shortcuts"].values()]
     assert names == ["Not ours"] and not (users / "grid" / f"{stale}p.jpg").exists()
+
+
+def test_battery_state(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    ps = tmp_path / "power_supply"
+
+    def supply(name, **files):
+        (ps / name).mkdir(parents=True)
+        for k, v in files.items():
+            (ps / name / k).write_text(v + "\n")
+    monkeypatch.setattr(a, "POWER_SUPPLY", str(ps))
+    assert a.battery_state() is None  # no power_supply folder (or no battery): nothing to show
+    supply("battery", type="Battery", capacity="42", status="Discharging")
+    supply("usb", type="USB", online="0")
+    assert a.battery_state() == {"percent": 42, "status": "Discharging", "plugged": False}
+    (ps / "usb" / "online").write_text("1\n")  # cable in, battery not charging yet ("Not charging"): still plugged
+    assert a.battery_state()["plugged"] is True
+    assert a.cmd_battery({})["battery"]["percent"] == 42

@@ -10,6 +10,7 @@ from ...core import library
 from ...i18n import tr
 from .. import components as C
 from .. import theme as T
+from ..battery import label as battery_label
 from ..help import HELP
 
 if TYPE_CHECKING:
@@ -35,7 +36,9 @@ class FrameView:
                        .format(user=t.target.user, host=t.target.host, get=info.get('os'),
                                get2=info.get('os_version'), get3=info.get('build_id'))),
                 C.meta(tr("{free:.0f} GiB free · {len} games installed")
-                       .format(free=free, len=len(info.get('installed') or []))),
+                       .format(free=free, len=len(info.get('installed') or []))
+                       + (tr(" · battery {value}").format(value=battery_label(info["battery"]))
+                          if info.get("battery") else "")),
             ], spacing=T.px(4), expand=True),
             ft.Column([
                 C.secondary(tr("Refresh"), ft.Icons.REFRESH_ROUNDED, lambda e: app.refresh_frame()),

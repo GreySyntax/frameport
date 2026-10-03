@@ -33,7 +33,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 31
+AGENT_VERSION = 32
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -602,6 +602,40 @@ def key_usage():
     return {}
 
 
+POWER_SUPPLY = "/sys/class/power_supply"
+CHARGER_TYPES = ("Mains", "USB", "USB_C", "USB_PD", "USB_PD_DRP", "USB_DCP", "USB_CDP", "USB_ACA", "Wireless")
+
+
+def battery_state():
+    """The Frame's battery: {"percent", "status" (Charging/Discharging/Full/Not charging), "plugged"}; None without
+    one. "plugged" = a charger reports online (or the battery says it's charging/full)."""
+    def read(path):
+        try:
+            with open(path) as f:
+                return f.read().strip()
+        except OSError:
+            return ""
+    battery, plugged = None, False
+    try:
+        names = sorted(os.listdir(POWER_SUPPLY))
+    except OSError:
+        return None
+    for name in names:
+        d = os.path.join(POWER_SUPPLY, name)
+        kind = read(os.path.join(d, "type"))
+        if kind == "Battery" and battery is None and read(os.path.join(d, "capacity")).isdigit():
+            battery = {"percent": int(read(os.path.join(d, "capacity"))), "status": read(os.path.join(d, "status"))}
+        elif kind in CHARGER_TYPES and read(os.path.join(d, "online")) == "1":
+            plugged = True
+    if battery is not None:
+        battery["plugged"] = plugged or battery["status"] in ("Charging", "Full")
+    return battery
+
+
+def cmd_battery(args):
+    return {"battery": battery_state()}
+
+
 def cmd_info(args):
     lepton, app = lepton_path()
     osr = {}
@@ -621,6 +655,7 @@ def cmd_info(args):
         "steam_running": run(["pgrep", "-x", "steam"]).returncode == 0,
         "host_fixes": ensure_host_fixes(), "kernel_keys": key_usage(),
         "proton": cmd_proton_status({}) if args.get("proton", True) else None,
+        "battery": battery_state(),
     }
 
 

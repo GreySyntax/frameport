@@ -192,6 +192,9 @@ class FramePortApp:
         elif self.jobs.paused == "frame":
             self._act_idle_text.value = tr("Paused: waiting for your Frame")
             self._act_idle_text.color = T.WARN
+        elif self.jobs.paused == "battery":
+            self._act_idle_text.value = tr("Paused: Frame battery low, plug it in")
+            self._act_idle_text.color = T.WARN
         else:
             recent = next((j for j in self.jobs.recent(1)), None)
             self._act_idle_text.value = tr("No activity") if not recent else \
@@ -206,6 +209,13 @@ class FramePortApp:
                                  "offline": tr("Offline")}.get(
             st, "Not set up")
         self._conn_line.color = color
+        bat = (self.frame_info or {}).get("battery") if st == "connected" else None
+        if bat:
+            from .battery import label, low
+
+            self._conn_line.value += f" · 🔋 {label(bat)}"
+            if low(bat):
+                self._conn_line.color = T.WARN
         if st == "connected" and self.frame_info:
             pr = (self.frame_info.get("proton") or {}).get("ready")
             quest = tr("Quest ✓") if self.frame_info.get("lepton") else tr("Quest ✗")
@@ -1277,15 +1287,53 @@ class FramePortApp:
             if self.jobs.paused == "frame":
                 self.retry_frame(quiet=True)
                 continue
-            if self.jobs.current():
-                continue  # the job is using the connection
+            if self.jobs.current() or self.jobs.paused == "battery":
+                self._battery_check(fetch=True)  # the job is using the connection: only ask for the battery
+                continue
             try:
                 if self.frame_state == "connected":
                     self.refresh_frame(quiet=True, background=False)
+                    self._battery_check(fetch=False)
                 elif self.frame_state == "offline" and saved_targets():
                     self.connect(saved_targets()[0], quiet=True)
             except Exception:  # noqa: BLE001
                 traceback.print_exc()
+
+    def _battery_check(self, fetch: bool) -> None:
+        """Battery level for the sidebar, and the queue on battery power: warn once, pause before the Frame would
+        switch itself off mid-upload, continue when it charges (ui/battery.py)."""
+        from . import battery
+
+        target = self.target
+        if self.frame_state != "connected" or target is None:
+            return
+        b = (self.frame_info or {}).get("battery")
+        if fetch:
+            try:
+                b = target.frame.agent("battery", timeout=20, ensure=False).get("battery")
+            except Exception:  # noqa: BLE001 - losing the Frame is the job's business; an old agent has no reading
+                frame = getattr(target, "frame", None)
+                if self.jobs.paused == "battery" and not (frame is not None and frame.alive()):
+                    self.jobs.pause("frame")  # it switched off after all: reconnect and continue when it's back
+                return
+            if self.frame_info is not None:
+                self.frame_info["battery"] = b
+        act = battery.advice(b, self.jobs.has_frame_work(), self.jobs.paused, getattr(self, "_battery_warned", False))
+        if act in ("warn", "pause"):
+            self._battery_warned = True
+            if act == "pause":
+                self.jobs.pause("battery")
+            applog.log.info("Frame battery %s: %s", act, b)
+            self.toast(battery.message(act, b), error=True)
+        elif act == "resume":
+            had_work = self.jobs.has_frame_work()
+            self.jobs.resume()
+            applog.log.info("Frame battery: continuing (%s)", b)
+            if had_work:
+                self.toast(battery.message("resume", b or {}))
+        if not battery.low(b):
+            self._battery_warned = False  # warn again the next time it runs low
+        self._refresh_sidebar()
 
     def retry_frame(self, quiet: bool = False) -> bool:
         """The queue waits for the Frame: reconnect, and continue the queue if it answers."""
@@ -1326,7 +1374,7 @@ class FramePortApp:
         """Hold a wake lock on the Frame while jobs that use it run or wait (renewed every 30 min; it expires on its
         own after an hour if FramePort goes away), release it when they're done."""
         want = self.jobs.has_frame_work() and self.target is not None and self.frame_state == "connected" \
-            and not self.jobs.paused
+            and self.jobs.paused != "frame"  # paused for the battery: stay awake to see it charging
         now = time.time()
         held = getattr(self, "_awake_at", 0.0)
         if want == bool(held) and (not want or now - held < 1800) or getattr(self, "_awake_busy", False):
