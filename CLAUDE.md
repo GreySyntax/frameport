@@ -405,7 +405,8 @@ Maintainer-only notes (accounts, credentials, key locations) live in the git-ign
 Public repo `github.com/spoopyghosty0/frameport` (branch `main`). Push a `v*` tag → CI (`.github/workflows/build.yml`)
 tests, builds Windows x64 / macOS arm64 / Linux x64 bundles, signs, attests and publishes a GitHub Release
 (`FramePort-*.zip/.tar.gz`, the CLI wheel `frameport-<ver>-py3-none-any.whl`, `SHA256SUMS.txt`,
-`FramePort-selfsigned.cer`; notes = "What's new" from the annotated tag message + `docs/INSTALL.md` from "First launch").
+`FramePort-selfsigned.cer`; notes = "What's new" from the annotated tag message + the short `packaging/release-footer.md`; owner: keep release
+notes short — a few "What's new" bullets, nothing long after them).
 Installed apps find the release themselves (self-update), so the notes are what users see in the update dialog.
 - **Release checklist:** bump `src/frameport/_version.py` (the only version; `scripts/package.py` fails a tag build
   whose tag ≠ `v<_version>`), commit, `git tag -a vX.Y.Z -m "FramePort X.Y.Z" -m "<What's new, Markdown bullets>"`,

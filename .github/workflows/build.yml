@@ -140,7 +140,7 @@ jobs:
           { echo "FramePort ${tag}: Windows (x64), macOS (Apple Silicon) and Linux (x64)."; echo;
             if [ -n "$whatsnew" ] && [ "$(git cat-file -t "$tag")" = tag ]; then
               echo "## What's new"; echo; echo "$whatsnew"; echo; fi
-            echo "Already have FramePort? It offers this update itself (Library → **Update now**, or \`frameport update\`)."
-            echo; sed -n '/^## First launch/,$p' docs/INSTALL.md; } > "$notes"
+            echo "Already have FramePort? It offers this update itself (Library → **Update now**)."
+            echo; cat packaging/release-footer.md; } > "$notes"  # short: the update dialog shows these notes
           gh release delete "$tag" --yes 2>/dev/null || true
           gh release create "$tag" out/* packaging/FramePort-selfsigned.cer --title "FramePort ${tag}" --notes-file "$notes"
