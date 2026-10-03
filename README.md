@@ -80,6 +80,9 @@ uv run frameport --help     # command line
 uv run pytest               # tests
 ```
 
+## AI Usage Notice
+While I would like to program everything manually, I no longer have much free time for personal projects. As a result I make use of AI tools to make it significantly quicker to debug compatibility issues.
+
 ## License
 
 GPL-3.0-only (includes GPL-3.0 code from OVRPort). Not affiliated with Valve or Meta.
