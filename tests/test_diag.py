@@ -260,7 +260,9 @@ def test_agent_collect_diag(monkeypatch, tmp_path):
     (xr / "XRService-12-31-50.log").write_text("xr")
     host = a.cmd_collect_diag({})
     assert host["agent_version"] == a.AGENT_VERSION and "openxr_layers" in host["host"]
-    assert host["files"] == {"XRService-12-31-50.log": "xr"}
+    # (plus the previous boot's journal excerpts when this machine has a journal)
+    assert {k: v for k, v in host["files"].items() if not k.startswith("previous-boot")} == \
+        {"XRService-12-31-50.log": "xr"}
     res = a.cmd_collect_diag({"package": "com.x.y", "max_bytes": 1000})
     f = res["files"]
     assert res["installed"] and {"deployment.json", "launch.sh", "settings.conf", "launch.log", "logcat-main.log",

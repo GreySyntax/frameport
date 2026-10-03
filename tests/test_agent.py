@@ -793,3 +793,30 @@ def test_keyboard_session_reports_a_refused_device(monkeypatch, tmp_path):
     out = io.StringIO()
     assert a.keyboard_session(io.StringIO(""), out) == 1
     assert json.loads(out.getvalue())["ready"] is False
+
+
+def test_boot_state_finds_unclean_previous_boot_and_last_launch(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    base = tmp_path / "game"
+    base.mkdir()
+    (base / "launch.log").write_text("x")
+    os.utime(base / "launch.log", (1000, 1000))
+    monkeypatch.setattr(a, "cmd_list_installed", lambda args: {"games": [{"package": "com.x", "title": "X",
+                                                                           "base": str(base)}]})
+    real_open = open
+
+    def fake_open(path, *args, **kw):
+        if path == "/proc/sys/kernel/random/boot_id":
+            from io import StringIO
+            return StringIO("abc\n")
+        if path == "/proc/stat":
+            from io import StringIO
+            return StringIO("cpu 1 2 3\nbtime 2000\n")
+        return real_open(path, *args, **kw)
+    monkeypatch.setattr(a, "open", fake_open, raising=False)
+    monkeypatch.setattr(a, "run", lambda cmd, **kw: SimpleNamespace(stdout="kernel: msm_dpu ... fault\n"))
+    st = a.boot_state()
+    assert st == {"boot_id": "abc", "boot_time": 2000, "prev_clean": False,
+                  "last_launch": {"package": "com.x", "title": "X", "time": 1000.0}}
+    monkeypatch.setattr(a, "run", lambda cmd, **kw: SimpleNamespace(stdout="Reached target System Power Off\n"))
+    assert a.boot_state()["prev_clean"] is False  # cached for this boot: worked out once

@@ -1340,6 +1340,30 @@ class FramePortApp:
             except Exception:  # noqa: BLE001
                 traceback.print_exc()
 
+    def _check_frame_restart(self, info: dict | None) -> None:
+        """The Frame restarted without shutting down (a crash, a GPU reset) soon after a FramePort game started: say
+        so, with Report a problem (Reddit 2026-10-03: "Resident Evil 4 crashes the Frame after the opening cutscene").
+        Uses the last boot seen (kept in settings, so a crash while FramePort was closed counts too)."""
+        from . import restart
+
+        boot = (info or {}).get("boot") or {}
+        if not boot.get("boot_id"):
+            return
+        seen = library.setting("frame.boot_id")
+        if seen == boot["boot_id"]:
+            return
+        library.set_setting("frame.boot_id", boot["boot_id"])
+        game = restart.crashed_game(boot, seen)
+        if game is None:
+            return
+        applog.log.info("Frame restarted unexpectedly after %s was started: %s", game["package"], boot)
+        library.upsert_game(game["package"], frame_restart=boot.get("boot_time")) if library.game(game["package"]) \
+            else None
+        pkg = game["package"]
+        self.toast(tr("Your Frame restarted unexpectedly while {title} was running (or soon after). If that game "
+                      "crashed it, please report it.").format(title=game.get("title") or pkg), error=True,
+                   action=tr("Report a problem"), on_action=lambda e: self.report_problem_dialog(pkg))
+
     def _battery_check(self, fetch: bool) -> None:
         """Battery level for the sidebar, and the queue on battery power: warn once, pause before the Frame would
         switch itself off mid-upload, continue when it charges (ui/battery.py)."""
@@ -1389,6 +1413,7 @@ class FramePortApp:
                 self.toast(explain(exc), error=True)
             return False
         self.frame_info, self.frame_state = info, "connected"
+        self._check_frame_restart(info)
         self._awake_at = 0.0  # the lock went away with the old connection's Frame session: take it again
         self.jobs.resume()
         self.toast(tr("Your Frame is back: continuing"))
@@ -1464,6 +1489,7 @@ class FramePortApp:
                 t.label = target.label
                 save_target(target)
                 old, self.target, self.frame_info, self.frame_state = self.target, t, info, "connected"
+                self._check_frame_restart(info)
                 if old is not None and old is not t and not self.jobs.current():
                     try:  # the connection it replaces (a running job keeps using its own until it ends)
                         old.close()
@@ -1512,6 +1538,7 @@ class FramePortApp:
                 changed = info.get("installed") != (self.frame_info or {}).get("installed") or \
                     self.frame_state != "connected"
                 self.frame_info, self.frame_state = info, "connected"
+                self._check_frame_restart(info)
             except Exception as exc:  # noqa: BLE001
                 frame = getattr(target, "frame", None)
                 if frame is not None and frame.alive():

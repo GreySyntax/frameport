@@ -972,6 +972,7 @@
  "your Frame": "",
  "Your Frame is back: continuing": "",
  "Your Frame isn't set up for FramePort yet. Run the first-time setup once (step 1).": "",
+ "Your Frame restarted unexpectedly while {title} was running (or soon after). If that game crashed it, please report it.": "",
  "Your headset, what it's ready for and what's installed": "",
  "Your own game files aren't touched.": "",
  "Your own tags (filled) can be anything you like. Outlined tags are added automatically from the engine, VR API and store genres. Filter the library by either.": "",

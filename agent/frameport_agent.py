@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 33
+AGENT_VERSION = 34
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -637,6 +637,58 @@ def battery_state():
     return battery
 
 
+BOOT_STATE = os.path.join(HOME, ".cache/frameport-boot.json")
+# what the last lines of a boot's journal say when it was shut down or rebooted on purpose (a crash, a GPU hang that
+# reset the Frame or a pulled battery leaves none of these)
+CLEAN_SHUTDOWN = ("Reached target System Power Off", "Reached target System Reboot", "Reached target Shutdown",
+                  "System is powering down", "System is rebooting", "systemd-shutdown", "Power-Off", "Rebooting.")
+
+
+def boot_state():
+    """This boot and how the previous one ended: {"boot_id", "boot_time", "prev_clean" (True/False/None = unknown),
+    "last_launch" ({"package", "title", "time"}: the FramePort game started last before this boot)}. Worked out once
+    per boot (cached), so the app can say "your Frame restarted while <game> was running"."""
+    try:
+        boot_id = open("/proc/sys/kernel/random/boot_id").read().strip()
+    except OSError:
+        return None
+    try:
+        cached = json.load(open(BOOT_STATE))
+        if cached.get("boot_id") == boot_id:
+            return cached
+    except (OSError, ValueError):
+        pass
+    boot_time = None
+    try:
+        for line in open("/proc/stat"):
+            if line.startswith("btime "):
+                boot_time = int(line.split()[1])
+    except OSError:
+        pass
+    try:
+        tail = run(["journalctl", "-b", "-1", "-n", "120", "-q", "--no-pager", "-o", "cat"]).stdout
+    except OSError:
+        tail = ""
+    prev_clean = any(m in tail for m in CLEAN_SHUTDOWN) if tail.strip() else None
+    last = None
+    for d in cmd_list_installed({})["games"]:
+        log = os.path.join(d["base"], "launch.log")
+        try:
+            t = os.path.getmtime(log)
+        except OSError:
+            continue
+        if (boot_time is None or t < boot_time) and (last is None or t > last["time"]):
+            last = {"package": d["package"], "title": d.get("title") or d["package"], "time": t}
+    state = {"boot_id": boot_id, "boot_time": boot_time, "prev_clean": prev_clean, "last_launch": last}
+    try:
+        os.makedirs(os.path.dirname(BOOT_STATE), exist_ok=True)
+        with open(BOOT_STATE, "w") as f:
+            json.dump(state, f)
+    except OSError:
+        pass
+    return state
+
+
 def cmd_battery(args):
     return {"battery": battery_state()}
 
@@ -660,6 +712,7 @@ def cmd_info(args):
         "steam_running": run(["pgrep", "-x", "steam"]).returncode == 0,
         "host_fixes": ensure_host_fixes(), "kernel_keys": key_usage(),
         "proton": cmd_proton_status({}) if args.get("proton", True) else None,
+        "boot": boot_state(),
         "battery": battery_state(),
     }
 
@@ -2144,6 +2197,16 @@ def cmd_collect_diag(args):
                           "{{.Names}} {{.Status}}"]).stdout[-20000:]
     host["steam_running"] = run(["pgrep", "-x", "steam"]).returncode == 0
     host["uptime"] = _tail("/proc/uptime", 200)
+    host["boot"] = boot_state()
+    # how the previous boot ended: errors and kernel (GPU/msm/kgsl, OOM, panic) warnings before a crash or reset
+    for name, extra in (("previous-boot-errors.txt", ["-p", "err"]),
+                        ("previous-boot-kernel.txt", ["-k", "-p", "warning"])):
+        try:
+            text = run(["journalctl", "-b", "-1", *extra, "-n", "400", "-q", "--no-pager"]).stdout[-max_bytes:]
+        except OSError:
+            text = ""
+        if text.strip():
+            files[name] = text
     host["installed"] = [{k: g.get(k) for k in ("package", "title", "kind", "appid", "version", "agent_version")}
                          for g in cmd_list_installed({})["games"]]
     out = {"agent_version": AGENT_VERSION, "host": host, "files": files}
