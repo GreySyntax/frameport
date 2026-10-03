@@ -5,7 +5,7 @@
 [![Downloads](https://img.shields.io/github/downloads/spoopyghosty0/frameport/total)](https://github.com/spoopyghosty0/frameport/releases)
 [![License](https://img.shields.io/github/license/spoopyghosty0/frameport)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue)
-![Status](https://img.shields.io/badge/status-proof%20of%20concept-orange)
+![Steam Frame](https://img.shields.io/badge/Steam%20Frame-supported-1b2838?logo=steam&logoColor=white)
 
 Install Meta Quest games, Android apps and PC VR games on the **Valve Steam Frame**: FramePort patches them for the
 Frame, copies them over Wi-Fi and adds them to the Frame's Steam library with artwork.
@@ -33,7 +33,16 @@ Frame, copies them over Wi-Fi and adds them to the Frame's Steam library with ar
 
 1. [Download](https://github.com/spoopyghosty0/frameport/releases/latest) and unzip the build for Windows, macOS
    (Apple Silicon) or Linux, then start FramePort.
-2. **Steam Frame → Show setup command**, then run it in the Frame's Konsole (Desktop mode).
+2. **Connect the Frame** (once):
+   1. In FramePort click **Steam Frame → Show setup command**. Keep FramePort open; the Frame and your computer must
+      be on the same Wi-Fi.
+   2. On the Frame press the **Steam button → Power → Switch to Desktop**.
+   3. Open the app menu (bottom-left corner), search for **Konsole** and open it.
+   4. Type the command FramePort shows exactly as shown (on-screen keyboard or any USB/Bluetooth keyboard) and press
+      **Enter**.
+   5. After a few seconds the desktop closes by itself and the Frame returns to its normal view; that's expected. If
+      Steam asks to install **Lepton**, confirm it. FramePort shows the Frame as connected within a minute. No
+      password needed.
 3. **Add games → Scan a folder** with your game backups (APK + OBB, or PC VR game folders).
 4. Open a game → **Install on Frame**, then play it from the Frame's Steam library.
 

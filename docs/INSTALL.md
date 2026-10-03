@@ -29,18 +29,24 @@ start shows a warning:
 The Frame and the computer must be on the same network.
 
 1. In FramePort open **Steam Frame** and click **Show setup command**.
-2. First time only: on the Frame switch to Desktop mode (Steam button → Power → Switch to Desktop), open Konsole and
-   run the command FramePort shows. It authorises this computer, turns on **Developer Mode** (which includes
-   SSH) and asks Steam to install Valve's Android runtime (Lepton) if needed: confirm that download. Turning on
-   Developer Mode restarts Steam, which closes Desktop Mode and returns to the normal view; the setup finishes on its
-   own. No password is needed. The app connects by itself when it's done. The full list of changes is in the
-   [FRAME_SETUP.md](FRAME_SETUP.md).
+2. First time only, on the Frame:
+   1. Press the **Steam button → Power → Switch to Desktop**.
+   2. Open the app menu (bottom-left corner), search for **Konsole** and open it.
+   3. Type the command FramePort shows exactly as shown (on-screen keyboard or any USB/Bluetooth keyboard) and press
+      **Enter**. It looks like `curl -fsS 192.168.1.20:8765/1a2b3c4d | bash`: your computer's address, then a
+      one-time code.
+   4. After a few seconds the desktop closes by itself and the Frame returns to its normal view; that's expected. If
+      Steam asks to install **Lepton** (Valve's Android runtime), confirm it.
+
+   FramePort connects by itself within a minute. No password is needed. The command lets FramePort in and turns on
+   **Developer Mode** (which includes SSH); everything it changes is listed in [FRAME_SETUP.md](FRAME_SETUP.md).
 3. Later starts: a Frame in Developer Mode appears in the list and FramePort connects to it automatically. (If you
    turn Developer Mode off in Settings → System → Developer, turn it on again there.)
 
 **Without Konsole:** turn on Developer Mode yourself (Settings → System → Developer). The Frame then appears under
 **On your network**. On the Frame open Settings → Developer → **Pair new host**, then click **Connect** in FramePort
-and approve it on the Frame (Valve's own devkit pairing; it only sends this computer's key to the Frame). Install Lepton from the Steam Frame page afterwards if it's missing.
+and approve it on the Frame (Valve's own devkit pairing; it only sends this computer's key to the Frame). Install
+Lepton from the Steam Frame page afterwards if it's missing.
 
 ### Firewalls
 
