@@ -1,0 +1,86 @@
+"""Find methods in an IL2CPP Unity game: Cpp2IL lists every method with its address ([Address(... Offset = "0x...")]
+in its "diffable C#" output with the attribute injector). Offset is the method's position in the libil2cpp.so FILE
+(not the virtual address: those differ, e.g. by 0x4000 in Stremio VR's library), which is what a byte patch needs.
+
+Results are cached per libil2cpp.so (sha256), so a rebuild of the same game doesn't run Cpp2IL again."""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import subprocess
+import tempfile
+from pathlib import Path
+
+from ..core.cache import cache_dir
+
+_ADDRESS = re.compile(r'Offset = "0x([0-9A-Fa-f]+)", Length = "0x([0-9A-Fa-f]+)"')
+
+
+def parse_methods(cs_text: str, names: list[str]) -> dict[str, tuple[int, int]]:
+    """{method name: (file offset, length)} for the named methods of one Cpp2IL diffable-C# class file."""
+    lines = cs_text.splitlines()
+    found: dict[str, tuple[int, int]] = {}
+    for i, line in enumerate(lines):
+        for name in names:
+            if name in found or not re.search(rf"\s{re.escape(name)}\s*\(", line) or "Token" in line:
+                continue
+            for back in range(i - 1, max(i - 4, -1), -1):
+                m = _ADDRESS.search(lines[back])
+                if m:
+                    found[name] = (int(m.group(1), 16), int(m.group(2), 16))
+                    break
+    return found
+
+
+def _plain_version(version: str) -> str:
+    """6000.2.7f2 -> 6000.2.7 (what Cpp2IL's --force-unity-version takes)."""
+    m = re.match(r"\d+\.\d+\.\d+", version)
+    return m.group(0) if m else version
+
+
+def _cache_file(lib: bytes) -> Path:
+    return cache_dir() / "il2cpp" / (hashlib.sha256(lib).hexdigest()[:32] + ".json")
+
+
+def find_methods(lib: bytes, metadata: bytes, unity_version: str, wanted: dict[str, list[str]],
+                 cpp2il: Path | None = None, timeout: float = 900) -> dict[str, dict[str, tuple[int, int]]]:
+    """wanted: {class file (relative to Cpp2IL's DiffableCs folder, e.g. "Unity.TextMeshPro/TMPro/TMP_InputField.cs"):
+    [method names]} -> {class file: {method: (file offset, length)}}; classes or methods not in the game are left
+    out."""
+    cache_file = _cache_file(lib)
+    try:
+        cached = json.loads(cache_file.read_text())
+        if all(cls in cached.get("classes", {}) or cls in cached.get("missing", []) for cls in wanted):
+            return {cls: {m: tuple(v) for m, v in cached["classes"][cls].items() if m in names}
+                    for cls, names in wanted.items() if cls in cached.get("classes", {})}
+    except (OSError, ValueError, KeyError):
+        pass
+    if cpp2il is None:
+        from ..tools import cpp2il as tool
+
+        cpp2il = tool.ensure()
+    with tempfile.TemporaryDirectory(prefix="frameport-il2cpp-") as tmp:
+        t = Path(tmp)
+        (t / "libil2cpp.so").write_bytes(lib)
+        (t / "global-metadata.dat").write_bytes(metadata)
+        proc = subprocess.run([str(cpp2il), "--force-binary-path", str(t / "libil2cpp.so"),
+                               "--force-metadata-path", str(t / "global-metadata.dat"),
+                               "--force-unity-version", _plain_version(unity_version),
+                               "--use-processor", "attributeinjector", "--output-as", "diffable-cs",
+                               "--output-to", str(t / "out")], capture_output=True, text=True, errors="replace",
+                              timeout=timeout, cwd=tmp)
+        root = t / "out" / "DiffableCs"
+        if not root.is_dir():
+            raise RuntimeError("Cpp2IL couldn't read this game's code: " + (proc.stdout + proc.stderr)[-400:].strip())
+        out, missing = {}, []
+        for cls, names in wanted.items():
+            f = root / cls
+            if f.exists():
+                out[cls] = parse_methods(f.read_text(encoding="utf-8", errors="replace"), names)
+            else:
+                missing.append(cls)
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(json.dumps({"unity_version": unity_version, "missing": missing,
+                                      "classes": {c: {m: list(v) for m, v in ms.items()} for c, ms in out.items()}}))
+    return out

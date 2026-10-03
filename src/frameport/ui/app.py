@@ -571,6 +571,8 @@ class FramePortApp:
                                 lambda e: self.go("files", pkg)))
                 if on_frame:
                     out.append((tr("Type on Frame…"), ft.Icons.KEYBOARD_ROUNDED, lambda e: self.type_on_frame()))
+                if not rift:
+                    out.append((tr("Analyze again"), ft.Icons.MANAGE_SEARCH_ROUNDED, lambda e: self.reanalyze(pkg)))
                 if on_frame:
                     out.append((tr("Uninstall from Frame"), ft.Icons.DELETE_OUTLINE_ROUNDED,
                                 lambda e: self.uninstall(pkg, "frame")))
@@ -1240,6 +1242,12 @@ class FramePortApp:
             if g and g.get("exe_confirmed") is False:
                 show_exe_dialog(self, pkg, remaining=len(self.exe_queue), on_done=self.next_exe_choice)
                 return
+
+    def reanalyze(self, pkg: str) -> None:
+        def run(job: Job):
+            pipeline.reanalyze(pkg, job.reporter)
+            return tr("{title}: analyzed again").format(title=self._title(pkg))
+        self.submit(tr("Analyze {title} again").format(title=self._title(pkg)), run, pkg, "task")
 
     def type_on_frame(self) -> None:
         from .views.type_dialog import show_type_dialog

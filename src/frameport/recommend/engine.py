@@ -7,6 +7,7 @@ from __future__ import annotations
 from ..core.models import Analysis, Recipe
 from ..patches import base
 from . import catalog
+from .catalog import TOGGLED_DEVICE
 
 
 def suggest(analysis: Analysis, use_catalog: bool = True) -> Recipe:
@@ -32,16 +33,17 @@ def suggest(analysis: Analysis, use_catalog: bool = True) -> Recipe:
         why = f"Known-good recipe for {entry.title} (tested {entry.verified.get('date', '?')})."
         for pid in entry.overport_remove:
             recipe.patches.pop(pid, None)
-        for pid in entry.overport_extra + entry.frame:
+        for pid in entry.overport_extra + entry.frame + entry.device:
             if getattr(base.get(pid), "strict", False) and not base.get(pid).applies(analysis):
                 continue  # e.g. a patch for one exact game build: another build of the game would fail to patch
             recipe.patches.setdefault(pid, {})
             recipe.reasons[pid] = why
         # heuristic-only suggestions the catalog didn't choose are dropped for exact reproducibility
-        chosen = set(entry.overport_extra) | set(entry.frame)
+        chosen = set(entry.overport_extra) | set(entry.frame) | set(entry.device)
         for pid in list(recipe.patches):
             p = base.get(pid)
-            if pid not in chosen and not p.default_on and p.category in ("overport", "frame"):
+            if pid not in chosen and not p.default_on and (p.category in ("overport", "frame")
+                                                           or pid in TOGGLED_DEVICE):
                 recipe.patches.pop(pid)
                 recipe.reasons.pop(pid, None)
         for pid in entry.frame_remove:

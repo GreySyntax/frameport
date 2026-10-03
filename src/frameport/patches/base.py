@@ -57,6 +57,7 @@ class InstallContext:
     files: dict[str, bytes]  # path relative to Android/data/<pkg>/files -> content
     env: dict[str, str]  # extra Lepton env exports
     adapter_settings: dict[str, Any]
+    flatscreen: bool = False  # show the app's Android window (Lepton's lepton-show-flatscreen) even for a VR app
 
 
 class Patch:

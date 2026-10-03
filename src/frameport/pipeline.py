@@ -282,6 +282,23 @@ def add_game(src: SourceGame, reporter: Reporter | None = None) -> dict:
     )
 
 
+def reanalyze(package: str, reporter: Reporter | None = None) -> dict:
+    """Read a Quest/Android game's APK again (e.g. after FramePort learned to detect something new). The suggestion is
+    refreshed; the recipe too unless the user changed it (then their choices stay)."""
+    entry = library.game(package)
+    if entry is None or is_rift(entry):
+        raise ValueError("only Quest/Android games can be analyzed again")
+    src = source_of(entry)
+    if reporter:
+        reporter.log(f"analyzing {src.apk.name}")
+    a = analyze(src.apk, data_bytes=src.data_bytes())
+    suggested = engine.suggest(a)
+    keep = library.recipe_from_dict(entry["recipe"]).source == "user"
+    return library.upsert_game(package, analysis=a.to_dict(), suggested=library.recipe_to_dict(suggested),
+                               **({} if keep else {"recipe": library.recipe_to_dict(suggested),
+                                                   "status": suggested.status}))
+
+
 def source_of(entry: dict) -> SourceGame:
     return SourceGame(entry.get("name") or entry["package"], Path(entry["apk"]),
                       Path(entry["data_dir"]) if entry.get("data_dir") else None,

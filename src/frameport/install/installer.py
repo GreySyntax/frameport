@@ -112,7 +112,7 @@ def install(frame: Frame, plan: InstallPlan, reporter: Reporter) -> dict:
         tags=_tags(plan.package),
         apk_name=plan.apk.name, settings=ctx.adapter_settings,
         files={k: v.decode() if isinstance(v, bytes) else v for k, v in ctx.files.items()}, env=ctx.env,
-        obb_manifest=manifest or None, flatscreen=_flatscreen(plan.package),
+        obb_manifest=manifest or None, flatscreen=_flatscreen(plan.package) or ctx.flatscreen,
         recipe={"patches": sorted(plan.recipe.patches), "source": plan.recipe.source, "alt": plan.recipe.use_alt},
     )
     reporter.log(f"installed at {result['base']} (Steam shortcut id {result['appid']})")

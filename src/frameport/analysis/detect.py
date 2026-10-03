@@ -13,6 +13,7 @@ from . import elf
 logging.getLogger("pyaxmlparser").setLevel(logging.ERROR)
 
 UNITY_GGM = "assets/bin/Data/globalgamemanagers"
+IL2CPP_METADATA = "assets/bin/Data/Managed/Metadata/global-metadata.dat"
 
 
 def _read_manifest_info(path: Path) -> tuple[str, str, str, str | None]:
@@ -106,6 +107,7 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
         boot = (z.read("assets/bin/Data/boot.config").decode("utf-8", "replace")
                 if "assets/bin/Data/boot.config" in names else "")
         ggm = z.read(UNITY_GGM) if deep and UNITY_GGM in names else None
+        il2cpp_meta = z.read(IL2CPP_METADATA) if deep and IL2CPP_METADATA in names and "libil2cpp.so" in libs else None
 
     package, version, label, activity = _read_manifest_info(path)
     libset = set(libs)
@@ -189,8 +191,39 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
             "vr_kind": vr_kind(libset, manifest_strings),
             # the base of a split APK set (Play "app bundle" installs): the code/libraries live in split APKs
             "split_apk": bool({"isSplitRequired", "requiredSplitTypes"} & set(manifest_strings)),
+            # Unity (IL2CPP) text fields: they close at once on the Frame (frame.unity_text_input)
+            "text_fields": unity_text_fields(il2cpp_meta) if il2cpp_meta else [],
+            "unity_version": unity_version(ggm, lib_bytes.get("libunity.so")) if engine == "Unity" else None,
         },
     )
+
+
+def unity_text_fields(metadata: bytes) -> list[str]:
+    """The Unity text field classes an IL2CPP game contains (names from its global-metadata.dat string table)."""
+    out = []
+    if b"\0TMP_InputField\0" in metadata:
+        out.append("TMP_InputField")
+    if b"\0InputField\0" in metadata and b"\0UnityEngine.UI\0" in metadata:  # not the tail of TMP_InputField
+        out.append("InputField")
+    return out
+
+
+UNITY_VERSION = re.compile(rb"(?<![\d.])(\d{4}\.\d+\.\d+[abfpx]\d+)")
+
+
+def unity_version(ggm: bytes | None = None, libunity: bytes | None = None) -> str | None:
+    """Unity version (e.g. 6000.2.7f2): from the header of globalgamemanagers, else the version string libunity.so
+    repeats most (games packed into data.unity3d have no loose globalgamemanagers)."""
+    m = UNITY_VERSION.search(ggm[:512]) if ggm else None
+    if m:
+        return m.group(1).decode()
+    if libunity:
+        from collections import Counter
+
+        found = Counter(x.group(1) for x in UNITY_VERSION.finditer(libunity))
+        if found:
+            return found.most_common(1)[0][0].decode()
+    return None
 
 
 def _uses_feature(manifest: bytes, feature: str) -> bool:

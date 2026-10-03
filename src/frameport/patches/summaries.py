@@ -48,10 +48,13 @@ SUMMARIES = {
     "frame.gl_shim": "Fixes graphics code that the Frame's drivers reject (black screen with sound).",
     "frame.metaxr_telemetry": "Skips a Quest-only reporting step in Meta's audio library that crashes some games.",
     "frame.oculusos": "Provides stand-ins for Quest system reporting some games call at start.",
+    "frame.unity_text_input": "Lets you type into this app's text fields on the Frame (they'd close at once).",
     "frame.vk_sanitize": "Cleans up graphics data that crashes some Unreal games on the Frame.",
     # Files and environment on the Frame
     "device.files": "Puts settings files next to the game on the Frame (e.g. to turn off an unsupported effect).",
     "device.hide_navbar": "Hides Android's back/home/recents buttons, which cover the app's own buttons.",
+    "device.text_input_window": "Lets typing reach this app: Steam's on-screen keyboard or your computer's keyboard "
+                                "(VR is unaffected).",
     "device.lepton_env": "Extra settings for the Android container (for testing).",
     # PC VR
     "pcvr.repack_launcher": "Starts the game with the launcher that came with your copy.",

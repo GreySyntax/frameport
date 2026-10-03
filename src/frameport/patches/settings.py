@@ -301,8 +301,32 @@ class HideNavBar(Patch):
         ctx.env.update(self.ENV)
 
 
+class TextInputWindow(Patch):
+    id = "device.text_input_window"
+    title = "Show the app's Android window (for typing)"
+    description = ("Lepton runs VR apps headless: their Android window is never shown, so it never gets keyboard "
+                   "focus and no key press (Steam's on-screen keyboard, a USB/Bluetooth keyboard, Type on Frame) "
+                   "reaches the app's text fields. With Lepton's lepton-show-flatscreen marker the window is shown "
+                   "(behind the VR view, which keeps working) and Steam's keyboard opens for a selected text field. "
+                   "Pairs with \"Make Unity text fields work without a system keyboard\".")
+    category = "device"
+    stage = "install"
+
+    def applies(self, a):
+        return a.vr_kind != "none" and bool((a.extra or {}).get("text_fields"))
+
+    def detect(self, a):
+        if self.applies(a):
+            return Suggestion(True, "App with text fields: key presses only reach a shown Android window.")
+        return None
+
+    def install(self, ctx: InstallContext) -> None:
+        ctx.flatscreen = True
+
+
 for _spec in SETTINGS:
     register(AdapterSetting(*_spec))
 register(DeviceFiles)
 register(LeptonEnv)
 register(HideNavBar)
+register(TextInputWindow)

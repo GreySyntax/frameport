@@ -35,6 +35,7 @@ class CatalogEntry:
     use_alt: bool = False
     frame: list[str] = field(default_factory=list)
     frame_remove: list[str] = field(default_factory=list)
+    device: list[str] = field(default_factory=list)  # device.* toggles, e.g. device.text_input_window
     adapter: dict = field(default_factory=dict)
     device_files: dict = field(default_factory=dict)
     lepton_env: dict = field(default_factory=dict)
@@ -129,6 +130,10 @@ def save_user_entry(entry: CatalogEntry) -> Path:
     return path
 
 
+# device.* patches a recipe switches on by id (device.files / device.lepton_env carry their own catalog fields)
+TOGGLED_DEVICE = ("device.text_input_window",)
+
+
 def entry_from_library(g: dict, status: str | None = None, notes: str | None = None,
                        verified: dict | None = None) -> CatalogEntry:
     """A catalog recipe from a library entry (what "Save as known-good" and "Share working config" publish)."""
@@ -171,6 +176,7 @@ def entry_from_library(g: dict, status: str | None = None, notes: str | None = N
         overport_remove=[p for p in DEFAULT_OVERPORT if p not in r.patches],
         alt_overport=r.alt_patches, use_alt=r.use_alt,
         frame=[p for p in r.patches if (c := cat(p)) and c.category == "frame" and not c.default_on],
+        device=[p for p in r.patches if p in TOGGLED_DEVICE],
         adapter={p.split(".", 1)[1]: v.get("value") for p, v in r.patches.items() if p.startswith("adapter.")},
         device_files=r.params("device.files").get("files", {}))
 
