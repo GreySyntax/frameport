@@ -45,6 +45,8 @@ def platform(g: dict) -> tuple[str, str, str]:
     """(short label, long label, help key) for a game's platform: what it was made for, not how it runs here."""
     if g.get("kind") == "rift":
         extra = ((g.get("analysis") or {}).get("extra") or {})
+        if extra.get("flat"):
+            return tr("Windows"), tr("Windows game (Proton)"), "platform_windows"
         oculus = extra.get("needs_revive") or extra.get("libovr")
         return tr("PC VR"), tr("PC VR · Oculus") if oculus else tr("PC VR"), "platform_pcvr"
     kind = (((g.get("analysis") or {}).get("extra") or {}).get("vr_kind")) or "quest"

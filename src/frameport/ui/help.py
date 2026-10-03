@@ -28,6 +28,8 @@ HELP: dict[str, str] = _Translated({
                  "game (or right-click → Change executable) to pick it.",
     "platform_quest": "A Meta Quest game (APK). It's rebuilt for the Frame and runs in Lepton, Valve's Android "
                       "container.",
+    "platform_windows": "A Windows game without VR, added with \"Add one game folder…\". On the Frame, Proton runs it "
+                        "as a window (like Steam's own Windows games); it's in the Frame's Steam library.",
     "platform_pcvr": "A Windows PC VR game (OpenXR, SteamVR or Oculus). It runs on this PC with SteamVR, or on the "
                      "Frame with Proton. Oculus-only games also need Revive (Oculus → OpenXR).",
     "platform_android": "An ordinary Android app or game (no VR). It's installed unchanged and runs in Lepton, Valve's "

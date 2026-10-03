@@ -26,7 +26,8 @@ Install games that target the Meta Quest, Android, or general PCVR onto your **V
 - **Per-game recipes:** a tested catalog plus detection rules; every patch explained in plain words.
 - **FrameBridge:** FramePort's OpenXR adapter emulates what the Frame natively lacks (passthrough, room, controller models,
   curved and 360° layers); game settings as simple switches.
-- **Beyond Quest:** Android apps as windows, PC VR via Proton or Revive, a Files tab with drag and drop.
+- **Beyond Quest:** Android apps as windows, PC VR via Proton or Revive, Windows (non-VR) games via Proton, a Files
+  tab with drag and drop.
 - **Self-updating** releases, redacted diagnostics, one-click problem reports and working-config sharing.
 
 ## Quick start

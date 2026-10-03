@@ -788,7 +788,8 @@ def vdf_encode(obj):
     return bytes(out) + bytes([TYPE_END])
 
 
-def upsert_shortcut(vdf_path, exe, title, start_dir, icon="", tag="Quest on Frame", launch_options="", tags=None):
+def upsert_shortcut(vdf_path, exe, title, start_dir, icon="", tag="Quest on Frame", launch_options="", tags=None,
+                    openvr=True):
     """Add/update a non-Steam shortcut (matched by Exe, so its appid never changes). `tags` (genres, the user's tags)
     are merged with tags already on the shortcut, so ones set in Steam are kept."""
     data = open(vdf_path, "rb").read() if os.path.exists(vdf_path) else b""
@@ -804,8 +805,8 @@ def upsert_shortcut(vdf_path, exe, title, start_dir, icon="", tag="Quest on Fram
         merged = list(dict.fromkeys(have + [t for t in [tag] + list(tags) if t]))
         entry["tags"] = {str(i): t for i, t in enumerate(merged)}
     entry.update(appname=title, Exe=exe, StartDir=start_dir, icon=icon or entry.get("icon", ""), ShortcutPath="",
-                 LaunchOptions=launch_options, IsHidden=0, AllowDesktopConfig=1, AllowOverlay=1, OpenVR=1, Devkit=0,
-                 DevkitGameID="", DevkitOverrideAppID=0, FlatpakAppID="")
+                 LaunchOptions=launch_options, IsHidden=0, AllowDesktopConfig=1, AllowOverlay=1,
+                 OpenVR=1 if openvr else 0, Devkit=0, DevkitGameID="", DevkitOverrideAppID=0, FlatpakAppID="")
     if data:
         backup_vdf(vdf_path)
     os.makedirs(os.path.dirname(vdf_path), exist_ok=True)
@@ -951,9 +952,11 @@ def shortcuts_worker(payload):
                 anchor = os.path.join(ANCHORS, pkg)
                 dep = json.load(open(os.path.join(anchor, "deployment.json")))
                 icon = next(iter(glob.glob(os.path.join(anchor, "artwork/icon.*"))), "")
-                tag = "PC VR on Frame" if dep.get("kind") == "pcvr" else "Quest on Frame"
+                flat = dep.get("vr") is False
+                tag = ("Windows game on Frame" if flat else "PC VR on Frame") if dep.get("kind") == "pcvr" \
+                    else "Quest on Frame"
                 got = upsert_shortcut(vdf, f'"{anchor}/launch.sh"', dep["title"], anchor, icon, tag,
-                                      tags=dep.get("tags") or [])
+                                      tags=dep.get("tags") or [], openvr=not flat)
                 for kind, suffix in (("portrait", "p"), ("landscape", ""), ("hero", "_hero"), ("logo", "_logo")):
                     img = next(iter(glob.glob(os.path.join(anchor, f"artwork/{kind}.*"))), None)
                     if not img:
@@ -1718,8 +1721,7 @@ set -euo pipefail
 base={base_q}
 [[ -d "$base/game" ]] || {{ echo "Game files missing at $base (storage not mounted?)" >&2; exit 1; }}
 export SteamAppId={appid}
-export SteamGameId={appid}
-export STEAM_COMPAT_APP_ID={appid}
+{steam_game_id}export STEAM_COMPAT_APP_ID={appid}
 export STEAM_COMPAT_DATA_PATH="$base/compatdata"
 export STEAM_COMPAT_CLIENT_INSTALL_PATH={steam_q}
 export STEAM_COMPAT_INSTALL_PATH="$base/game"
@@ -1786,7 +1788,7 @@ OCULUS_HMD_HELPER = "fp_oculushmd.exe"
 
 
 def write_proton_launcher(anchor, base, pkg, title, appid, tool, exe_rel, revive, env, xr_layer=False, game_args=(),
-                          oculus_hmd=False):
+                          oculus_hmd=False, vr=True):
     exe = os.path.join(base, "game", exe_rel)
     prefix = compat_command(tool["dir"])
     injector = os.path.join(base, "revive", "ReviveInjector.exe")
@@ -1807,6 +1809,8 @@ def write_proton_launcher(anchor, base, pkg, title, appid, tool, exe_rel, revive
     text = LAUNCH_PROTON_SH.format(
         title=title.replace("\n", " "), pkg=pkg, base_q=shlex.quote(base), appid=appid, steam_q=shlex.quote(STEAM),
         tool=tool["name"], extra_env=extra, workdir=("/" + shlex.quote(workdir)) if workdir else "",
+        # Proton sets up VR (vrclient, wineopenxr) only when SteamGameId is set: a flat Windows game goes without
+        steam_game_id=f"export SteamGameId={appid}\n" if vr else "",
         xr_layer=XR_LAYER_ENV if xr_layer else "",
         command=" ".join(shlex.quote(a) for a in argv))
     path = os.path.join(anchor, "launch.sh")
@@ -1916,8 +1920,9 @@ def cmd_finalize_pcvr(args):
         raise AgentError(f"{OCULUS_HMD_HELPER} missing")
     set_crash_reporter(base, enabled=not args.get("no_crash_reporter"))
     set_libovr_redirect(base, exe_rel, enabled=bool(args.get("libovr_redirect")), bundled=not revive)
+    vr = args.get("vr", True) is not False  # False: a flat Windows game (no VR at all)
     write_proton_launcher(anchor, base, pkg, title, appid, tool, exe_rel, revive, args.get("env"), xr_layer,
-                          args.get("game_args") or [], oculus_hmd)
+                          args.get("game_args") or [], oculus_hmd, vr=vr)
     art_in = os.path.join(base, "incoming-artwork")
     if os.path.isdir(art_in):
         shutil.rmtree(os.path.join(anchor, "artwork"), ignore_errors=True)
@@ -1925,7 +1930,7 @@ def cmd_finalize_pcvr(args):
     dep = {"package": pkg, "kind": "pcvr", "appid": int(appid), "base": base, "title": title, "exe": exe_rel,
            "tags": args.get("tags") or [],
            "sha256": args.get("exe_sha256"), "revive": revive, "revive_version": args.get("revive_version"),
-           "proton": tool["name"], "xr_layer": xr_layer, "oculus_hmd": oculus_hmd,
+           "proton": tool["name"], "xr_layer": xr_layer, "oculus_hmd": oculus_hmd, "vr": vr,
            "libovr_redirect": bool(args.get("libovr_redirect")),
            "recipe": args.get("recipe"),
            "installed_by": "frameport",

@@ -9,6 +9,9 @@ from ..patches import base
 from . import catalog
 from .catalog import TOGGLED_DEVICE
 
+# what a flat (non-VR) Windows game keeps of the PC VR patches
+FLAT_WINDOWS_PATCHES = ("pcvr.proton_tool", "pcvr.proton_env", "pcvr.proton_log", "pcvr.no_crash_reporter")
+
 
 def suggest(analysis: Analysis, use_catalog: bool = True) -> Recipe:
     entry = catalog.lookup(analysis.package) if use_catalog else None
@@ -27,6 +30,10 @@ def suggest(analysis: Analysis, use_catalog: bool = True) -> Recipe:
     # 2. known-good catalog recipe overrides heuristics
     if rift:
         _rift_recipe(analysis, recipe, entry)
+        if (analysis.extra or {}).get("flat"):  # a Windows game without VR: Proton only, no VR parts
+            for pid in [p for p in recipe.patches if p not in FLAT_WINDOWS_PATCHES]:
+                recipe.patches.pop(pid)
+                recipe.reasons.pop(pid, None)
     elif entry:
         recipe.source = f"catalog ({entry.origin})"
         recipe.status, recipe.notes, recipe.title = entry.status, entry.notes, entry.title or recipe.title

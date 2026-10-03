@@ -119,6 +119,11 @@ an installed Revive, or downloads a portable copy.
   on the game page.
 - Games that use the Oculus Platform SDK check the licence through the Oculus app, so they run on the PC only.
 
+**Windows games without VR:** **Add games → Add one game folder…** with the game's folder (pick the program that
+starts it if asked). FramePort installs it on the Frame and Proton runs it as a window, like Steam's own Windows games;
+it shows up in the Frame's Steam library tagged "Windows game on Frame". Whether a game runs depends on Proton on ARM
+(x86 games run through emulation).
+
 ## Files on the Frame (videos, documents, mods, saves)
 
 The **Files** tab manages files on the Frame over the same connection as installs; no other transfer app is needed.

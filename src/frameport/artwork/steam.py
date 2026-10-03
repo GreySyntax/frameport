@@ -299,6 +299,8 @@ def original_platform(entry: dict) -> str:
     """What the game was made for (a Steam tag)."""
     extra = (entry.get("analysis") or {}).get("extra") or {}
     if entry.get("kind") == "rift":
+        if extra.get("flat"):
+            return "Windows"
         return "Oculus Rift" if extra.get("needs_revive") else "PC VR"
     kind = extra.get("vr_kind") or "quest"
     return {"quest": "Meta Quest", "none": "Android"}.get(kind, "Android VR")
@@ -310,7 +312,9 @@ def steam_tags(entry: dict, where: str = "frame") -> list[str]:
     from ..targets.pc_revive import TAG
 
     kind = ((entry.get("analysis") or {}).get("extra") or {}).get("vr_kind") or "quest"
-    runs = TAG if where != "frame" else "PC VR on Frame" if entry.get("kind") == "rift" else \
+    flat = bool(((entry.get("analysis") or {}).get("extra") or {}).get("flat"))
+    runs = TAG if where != "frame" else ("Windows game on Frame" if flat else "PC VR on Frame") \
+        if entry.get("kind") == "rift" else \
         "Quest on Frame" if kind == "quest" else "Android on Frame"
     base = [runs, original_platform(entry)]
     genres = ((entry.get("details") or {}).get("genres") or [])[:4]

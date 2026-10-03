@@ -820,3 +820,21 @@ def test_boot_state_finds_unclean_previous_boot_and_last_launch(monkeypatch, tmp
                   "last_launch": {"package": "com.x", "title": "X", "time": 1000.0}}
     monkeypatch.setattr(a, "run", lambda cmd, **kw: SimpleNamespace(stdout="Reached target System Power Off\n"))
     assert a.boot_state()["prev_clean"] is False  # cached for this boot: worked out once
+
+
+def test_flat_windows_game_launcher_and_shortcut(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    monkeypatch.setattr(a, "compat_command", lambda d: ["/proton", "waitforexitandrun"])
+    anchor, base = tmp_path / "anchor", tmp_path / "base"
+    anchor.mkdir()
+    tool = {"dir": "/tools/proton", "name": "Proton 11"}
+    a.write_proton_launcher(str(anchor), str(base), "rift.game", "Game", 123, tool, "Game.exe", False, {}, vr=False)
+    flat = (anchor / "launch.sh").read_text()
+    a.write_proton_launcher(str(anchor), str(base), "rift.game", "Game", 123, tool, "Game.exe", False, {})
+    vr = (anchor / "launch.sh").read_text()
+    assert "SteamGameId" not in flat and "export SteamGameId=123" in vr  # Proton sets up VR only with it
+    assert "STEAM_COMPAT_APP_ID=123" in flat
+    vdf = str(tmp_path / "shortcuts.vdf")
+    a.upsert_shortcut(vdf, '"/x/launch.sh"', "Game", "/x", tag="Windows game on Frame", openvr=False)
+    entry = a.vdf_decode(open(vdf, "rb").read())["shortcuts"]["0"]
+    assert entry["OpenVR"] == 0 and entry["tags"]["0"] == "Windows game on Frame"

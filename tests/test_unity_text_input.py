@@ -130,3 +130,19 @@ def test_reanalyze_refreshes_the_suggestion_and_keeps_a_users_recipe(monkeypatch
     g = library.game("com.x")
     assert "frame.unity_text_input" not in g["recipe"]["patches"]  # the user's own choices stay
     assert "frame.unity_text_input" in g["suggested"]["patches"]
+
+
+def test_flat_windows_game_keeps_only_proton_patches():
+    from frameport.patches import base
+    from frameport.recommend import engine
+    from test_patches import _analysis
+
+    base.load_all()
+    a = _analysis(package="rift.somegame", engine="Unity", xr="?", libs=[],
+                  extra={"kind": "rift", "flat": True, "vr_found": False, "exe": "Game.exe"})
+    vr = engine.suggest(_analysis(package="rift.somegame", engine="Unity", xr="OpenXR", libs=[],
+                                  extra={"kind": "rift", "vr_found": True, "openxr": True, "exe": "Game.exe"}),
+                        use_catalog=False)
+    r = engine.suggest(a, use_catalog=False)
+    assert set(r.patches) <= set(engine.FLAT_WINDOWS_PATCHES)
+    assert set(vr.patches) - set(engine.FLAT_WINDOWS_PATCHES)  # the same game with VR gets VR patches

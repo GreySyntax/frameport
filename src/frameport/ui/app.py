@@ -499,7 +499,8 @@ class FramePortApp:
         if self.frame_state == "connected" and C.install_state(g, self.frame_info) in ("installed", "outdated"):
             out.append((tr("Play on Frame"), ft.Icons.PLAY_ARROW_ROUNDED, lambda e: self.play(pkg, "frame"), False,
                         tr("Starts the game through the Frame's Steam — put the headset on")))
-        if g.get("kind") == "rift" and pkg in self.pc_installs():
+        if g.get("kind") == "rift" and pkg in self.pc_installs() and \
+                not ((g.get("analysis") or {}).get("extra") or {}).get("flat"):
             out.append((tr("Play on this PC"), ft.Icons.PLAY_ARROW_ROUNDED, lambda e: self.play(pkg, "pc"), False,
                         tr("Starts the game through Steam on this PC (SteamVR + Revive)")))
         return out

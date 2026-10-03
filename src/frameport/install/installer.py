@@ -210,7 +210,7 @@ def install_pcvr(frame: Frame, plan: PcvrPlan, reporter: Reporter) -> dict:
         env=launch_env(plan.recipe),
         game_args=game_args(plan.recipe), no_crash_reporter="pcvr.no_crash_reporter" in plan.recipe.patches,
         libovr_redirect="pcvr.libovr_redirect" in plan.recipe.patches,
-        exe_sha256=plan.exe_sha256, revive_version=plan.revive_version,
+        exe_sha256=plan.exe_sha256, revive_version=plan.revive_version, vr=not is_flat_windows(plan.package),
         recipe={"patches": sorted(plan.recipe.patches), "source": plan.recipe.source},
     )
     reporter.log(f"installed at {result['base']} (Proton {result['proton']}, Steam shortcut id {result['appid']})")
@@ -323,6 +323,14 @@ def _tags(package: str) -> list[str]:
 
     entry = library.game(package)
     return steam_tags(entry) if entry else []
+
+
+def is_flat_windows(package: str) -> bool:
+    """A Windows game without VR (added with "Add one game folder…"): Proton runs it as a window, no VR setup."""
+    from ..core import library
+
+    g = library.game(package) or {}
+    return bool(((g.get("analysis") or {}).get("extra") or {}).get("flat"))
 
 
 def _flatscreen(package: str) -> bool:

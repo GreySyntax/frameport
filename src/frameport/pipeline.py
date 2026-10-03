@@ -153,7 +153,9 @@ def add_rift_game(folder: Path, reporter: Reporter | None = None, tree=None, exe
     if reporter:
         reporter.log(f"analyzing {folder.name}")
     a = rift.analyze(folder, exe=exe, tree=tree)
-    if not a.extra.get("vr_found") and not force and not old:
+    # no VR runtime in it: added on purpose ("Add one game folder…") = a flat Windows game run by Proton
+    a.extra["flat"] = not a.extra.get("vr_found")
+    if a.extra["flat"] and not force and not old:
         if reporter:
             reporter.log(f"skipped {folder.name}: no VR support (OpenXR, SteamVR or Oculus) found in {a.extra['exe']}")
         return None
