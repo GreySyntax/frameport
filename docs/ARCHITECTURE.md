@@ -84,3 +84,21 @@ update [--check] [--yes]`. CI runs `scripts/update_smoke.py` on every OS with th
 overport CLI release (Android-XR-Bridge/OVRPort, fallback ovrport/app) + patch list + titles, Temurin JRE (Adoptium API), apksigner (Google repository index),
 store artwork/titles (overport image API), catalog (optional remote), Lepton location/appid (Frame appmanifests),
 Steam user (Frame userdata).
+
+## Built on
+
+FramePort is a front end for other projects; most of the functionality comes from them:
+
+| Project | Used for |
+|---|---|
+| [OVRPort](https://github.com/Android-XR-Bridge/OVRPort) (overport, originally [ovrport/app](https://github.com/ovrport/app)) | Converts Quest games to OpenXR: its CLI applies the game patches and supplies the OpenXR loader; FramePort also includes its VrApi→OpenXR adapter |
+| Valve Lepton, Proton and SteamVR | Run Android games, Windows games and OpenXR on the Frame |
+| [Revive](https://github.com/LibreVR/Revive) (LibreVR) | Runs Oculus Rift games on OpenXR / SteamVR |
+| Mesa (Zink) | OpenGL ES on Vulkan on the Frame |
+| [Khronos OpenXR SDK](https://github.com/KhronosGroup/OpenXR-SDK) | OpenXR headers for the native layers |
+| Eclipse Temurin, Android apksigner, Android NDK | Java runtime, APK signing, building the native layers |
+| [Flet](https://flet.dev) | The desktop app |
+| OculusDB, Steam store | Game descriptions, genres and artwork |
+
+FramePort's own parts: game detection and recipes, the Steam Frame OpenXR adapter (FrameBridge) and the other native
+fixes in `native/`, the installer agent that runs on the Frame, and the desktop/command-line app.

@@ -34,7 +34,7 @@ The Frame and the computer must be on the same network.
    SSH) and asks Steam to install Valve's Android runtime (Lepton) if needed: confirm that download. Turning on
    Developer Mode restarts Steam, which closes Desktop Mode and returns to the normal view; the setup finishes on its
    own. No password is needed. The app connects by itself when it's done. The full list of changes is in the
-   [README](../README.md#what-frameport-changes-on-the-frame).
+   [FRAME_SETUP.md](FRAME_SETUP.md).
 3. Later starts: a Frame in Developer Mode appears in the list and FramePort connects to it automatically. (If you
    turn Developer Mode off in Settings → System → Developer, turn it on again there.)
 
@@ -44,22 +44,8 @@ and approve it on the Frame (Valve's own devkit pairing; it only sends this comp
 
 ### Firewalls
 
-The setup command is the only time the Frame connects to your computer: it downloads the script from FramePort on
-TCP port 8765 (8766/8767 if taken), only while the setup command is shown and for at most 30 minutes. Everything
-else goes from the computer to the Frame. If the command just says "timed out", the setup page shows what is likely
-blocking it after about 45 seconds:
-
-- **Windows:** allow FramePort (or Python, when running from source) when Windows asks. On a network Windows treats as
-  **Public** it stays blocked unless you allow public networks; set your home network to Private in Windows'
-  network settings instead.
-- **macOS:** with the firewall on (System Settings → Network → Firewall), allow incoming connections for FramePort
-  when asked.
-- **Linux:** firewalld: `sudo firewall-cmd --add-port=8765/tcp` (until the next restart). ufw:
-  `sudo ufw allow 8765/tcp`, afterwards `sudo ufw delete allow 8765/tcp`.
-- **WSL:** Windows' Hyper-V firewall blocks connections into WSL without asking. FramePort adds a temporary rule for
-  the setup ports (one admin prompt) and removes it again when setup is done or after 35 minutes. WSL must use
-  mirrored networking: `networkingMode=mirrored` under `[wsl2]` in `%UserProfile%\.wslconfig`, then `wsl --shutdown`.
-- Or skip the setup command and use the devkit pairing above: it needs no connection into your computer.
+If the setup command only says "timed out", a firewall on your computer blocks the Frame; the setup page
+says which after about 45 seconds. Details per system: [FRAME_SETUP.md](FRAME_SETUP.md#network-and-firewalls).
 
 ## Installing games
 
@@ -77,6 +63,13 @@ blocking it after about 45 seconds:
   when it's installed, used the next time it starts.
 - Ordinary Android apps (no VR) are installed unchanged and shown as a flat window in the headset. Android's
   back/home/recents buttons are hidden by default (patch **Hide Android's navigation bar**).
+
+![Game page](images/game.png)
+
+Each game has **Game settings** in plain words (sharpness, refresh rate, controllers, menus, 360° video, mixed
+reality), showing only what matters for that game. Changes are kept with the game and reach the Frame right away.
+
+![Game settings](images/game-settings.png)
 
 ## Updating
 
