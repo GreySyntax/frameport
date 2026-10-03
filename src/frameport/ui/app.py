@@ -1346,7 +1346,9 @@ class FramePortApp:
                 self._awake_busy = False
         threading.Thread(target=work, daemon=True).start()
 
-    def connect(self, target, password=None, quiet=False):
+    def connect(self, target, password=None, quiet=False, devkit=False):
+        """devkit: the Frame was found in Developer Mode; if FramePort's keys aren't on it yet, pair through Valve's
+        devkit service (approve in the headset) instead of failing."""
         from ..frame.connection import save_target
         from ..targets.frame_lepton import FrameLeptonTarget
 
@@ -1355,7 +1357,17 @@ class FramePortApp:
 
         def work():
             try:
-                t = FrameLeptonTarget(target, password).connect()
+                try:
+                    t = FrameLeptonTarget(target, password).connect()
+                except ConnectionError as exc:
+                    if not devkit or "authentication failed" not in str(exc).lower():
+                        raise
+                    from ..frame import devkit as dk
+
+                    self.toast(tr("Pairing: on the Frame open Settings → Developer → Pair new host, then approve "
+                                  "FramePort."))
+                    dk.register(target.host)
+                    t = FrameLeptonTarget(target, password).connect()
                 if password:
                     t.frame.install_key()
                 info = t.describe()
@@ -1612,8 +1624,27 @@ def assets_dir() -> str:
     return str(user_data_dir())
 
 
+def serialize_flet_updates() -> None:
+    """Send page updates one at a time. Flet 1.0 diffs and sends a control's patch without a lock, and FramePort
+    updates the page from several threads (jobs, connection checks, the library loader, dialogs): two patches computed
+    at once desynchronised the window ("dropped a patch for unknown control … needs a reload"), e.g. a dialog shown
+    while a finished scan redrew the view never closed again."""
+    from flet.messaging.session import Session
+
+    if getattr(Session.patch_control, "_serialized", False):
+        return
+    original, lock = Session.patch_control, threading.RLock()  # re-entrant: did_mount() may update again
+
+    def patch_control(self, *args, **kwargs):
+        with lock:
+            return original(self, *args, **kwargs)
+    patch_control._serialized = True
+    Session.patch_control = patch_control
+
+
 def main(argv=None):
     applog.setup("gui")
+    serialize_flet_updates()
     from ..core import library
     from .updater import apply_pending_at_start
 

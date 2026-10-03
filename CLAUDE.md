@@ -225,6 +225,23 @@ Repo is on an NTFS drive (`core.fileMode=false`); line endings are LF (`.gitattr
 - **Tracking only works with the headset worn.** SSH/headless launches never reach VISIBLE/FOCUSED and poses have
   flags 0x3. So automated tests prove startup (process alive, instance/session created, frames paced), never visuals.
 
+**Setup / pairing (2026-10-02, verified on the device):** Developer Mode = `"DevModeEnabled"` in
+`~/.local/share/Steam/config/config.vdf` (InstallConfigStore/developer), applied by Valve's
+`/usr/bin/steamos-polkit-helpers/steamos-devkit-mode --enable|--disable` (polkit allow_any: no password; enables/
+disables sshd, xrdp, steamos-devkit-service, debug port forwards; sentinel `/etc/steamos-devkit-enabled`). Steam
+re-asserts the config value at every start and rewrites config.vdf on exit → stop Steam, edit, helper, start.
+**Desktop Mode is a nested Plasma inside steam.service** (own XDG_RUNTIME_DIR `/run/user/1000/nested_plasma` + private
+D-Bus): `systemd-run --user` from Konsole fails ("Failed to connect to user scope bus") unless XDG_RUNTIME_DIR/
+DBUS_SESSION_BUS_ADDRESS point at `/run/user/$UID`, and stopping Steam ends the desktop and everything started in
+it → bootstrap.sh runs the Dev Mode job + Lepton request + `/paired` as a user unit (log `~/.cache/frameport-setup.log`);
+no sudo/password anywhere (verified: naive Frame → connected, password never set). Valve's devkit pairing (fallback,
+PC → Frame only): `POST :32000/register` with an **ssh-rsa** key (`connection.devkit_key`, `frame/devkit.py`) works only
+while Steam is in pairing mode (Settings → Developer → Pair new host), else 403 at once; approve hook waits 30 s.
+The Frame runs firewalld (22 and 32000 open). PC side: the setup server needs inbound TCP 8765–8767 — WSL's Hyper-V
+firewall blocks it silently (`DefaultInboundAction Block`): `pairing.ensure_reachable` adds a temporary rule via one
+UAC prompt, removed when the server stops (flag file in %TEMP%, max 35 min); hints per OS after 45 s without a request
+(`pairing.firewall_hint`). Flet 1.0 patches aren't thread-safe → `app.serialize_flet_updates()` (a dialog shown while a
+scan redraw ran never closed: "dropped a patch for unknown control").
 **Lepton:** needs an activity with category **LAUNCHER** (Quest apps often only have INFO → "APP_ACTIVITY is empty").
 **2D apps:** Lepton runs every app headless (`lepton.headless=true`, only OpenXR output reaches the headset) unless the app folder (`<base>/lepton-app/`) has a `lepton-show-flatscreen` file (liblepton/app_metadata.sh) → Waydroid window on gamescope; agent v28 `set_flatscreen` at finalize for `vr_kind == "none"`. Android 11's navbar covered the
 app's controls → patch `device.hide_navbar` (default on for vr_kind none, migration `flat_hide_navbar`) exports

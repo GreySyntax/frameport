@@ -1,6 +1,7 @@
 """The Frame-side agent (stdlib only) — pieces that don't need a Frame."""
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -702,3 +703,33 @@ def test_keep_awake_falls_back_to_idle_when_sleep_is_refused(monkeypatch, tmp_pa
     calls.clear()
     assert a.cmd_keep_awake({"on": False}) == {"awake": False}
     assert calls and all(c[0] == "systemctl" for c in calls)  # only stops the unit
+
+
+def test_purge_without_saves_removes_container_workdirs_and_stale_shortcuts(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    fake_steam_tools(a, tmp_path)
+    monkeypatch.setattr(a, "pcvr_pids", lambda base: [])
+    monkeypatch.setattr(a, "stop_steam", lambda: True)
+    monkeypatch.setattr(a, "start_steam", lambda s: None)
+    users = tmp_path / ".local/share/Steam/userdata/42/config"
+    (users / "grid").mkdir(parents=True)
+    q = Path(a.ANCHORS) / "com.x.y"
+    work = q / "lepton-data" / "baked" / "data_workdir" / "work"  # overlayfs leaves these with mode 000
+    (work / "inner").mkdir(parents=True)
+    (work / "inner" / "f").write_text("x")
+    (q / "launch.sh").write_text("#!/bin/sh")
+    (q / "deployment.json").write_text(json.dumps({"package": "com.x.y", "appid": 7, "base": str(q), "title": "Q"}))
+    os.chmod(work / "inner", 0)
+    os.chmod(work, 0)
+    vdf = str(users / "shortcuts.vdf")
+    a.upsert_shortcut(vdf, f'"{q}/launch.sh"', "Q", str(q))
+    stale_exe = f'"{a.ANCHORS}/com.gone/launch.sh"'  # no install record any more
+    stale = a.upsert_shortcut(vdf, stale_exe, "Gone", "/x")
+    a.upsert_shortcut(vdf, '"/usr/bin/other"', "Not ours", "/x")
+    (users / "grid" / f"{stale}p.jpg").write_bytes(b"x")
+    a.purge_worker(json.dumps({"keep_saves": False, "status": str(tmp_path / "st.json")}))
+    st = json.loads((tmp_path / "st.json").read_text())
+    assert st["state"] == "done" and not st["errors"], st
+    assert not Path(a.ANCHORS).exists()
+    names = [s["appname"] for s in a.vdf_decode((users / "shortcuts.vdf").read_bytes())["shortcuts"].values()]
+    assert names == ["Not ours"] and not (users / "grid" / f"{stale}p.jpg").exists()

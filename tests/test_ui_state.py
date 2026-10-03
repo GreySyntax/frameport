@@ -229,9 +229,11 @@ def test_refresh_keeps_a_working_connection_when_a_status_query_fails():
 
 
 def test_pairing_server_needs_the_code_and_stops_after_pairing_or_guessing(monkeypatch):
+    import tempfile
     import time
     import urllib.error
     import urllib.request
+    from pathlib import Path
 
     from frameport.frame import pairing
 
@@ -248,7 +250,16 @@ def test_pairing_server_needs_the_code_and_stops_after_pairing_or_guessing(monke
 
     seen = []
     s = pairing.PairingServer(on_paired=seen.append).start()
-    assert len(s.code) == 16
+    other = pairing.PairingServer().start()  # a second server (port taken) falls back to another port
+    assert other.port != s.port
+    other.stop()
+    assert len(s.code) == 8
+    assert s.one_liner == f"curl -fsS 127.0.0.1:{s.port}/{s.code} | bash"  # typed by hand on the Frame: short
+    assert s.requests == 0
+    assert get(s, f"/{s.code}") == 200 and get(s, "/deadbeef") == 403  # the short form serves the script
+    assert s.requests == 2  # any request (even a wrong code) proves the Frame can reach us: no firewall hint
+    script = urllib.request.urlopen(f"http://127.0.0.1:{s.port}/{s.code}", timeout=5).read().decode()
+    assert f"http://127.0.0.1:{s.port}" in script and s.code in script and "__PAIR_CODE__" not in script
     assert get(s, "/key?code=000000") == 403
     assert get(s, f"/paired?code={s.code}&user=steamos&host=frame") == 200 and seen
     for _ in range(50):
@@ -256,6 +267,12 @@ def test_pairing_server_needs_the_code_and_stops_after_pairing_or_guessing(monke
             break
         time.sleep(0.05)
     assert not s.running
+    flag = Path(tempfile.mkdtemp()) / "pairing.flag"  # WSL: the temporary firewall rule lives while this exists
+    flag.write_text("x")
+    f = pairing.PairingServer().start()
+    f.flag = flag
+    f.stop()
+    assert not flag.exists()
     g = pairing.PairingServer().start()
     for _ in range(3):
         get(g, "/key?code=guess")
@@ -440,3 +457,35 @@ def test_activity_progress_ticks_only_touch_the_progress_controls(monkeypatch):
     bar = panel._live[run.id][0]
     assert bar.value == 0.5 and panel.root not in updated[-1] and bar in updated[-1]
     assert panel.list.controls == first_list  # nothing rebuilt
+
+
+def test_flet_updates_are_serialized():
+    import threading
+
+    from flet.messaging.session import Session
+
+    from frameport.ui.app import serialize_flet_updates
+
+    original = Session.patch_control
+    try:
+        active, peak = [0], [0]
+        guard = threading.Lock()
+
+        def fake(self, *a, **k):
+            with guard:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            threading.Event().wait(0.01)
+            with guard:
+                active[0] -= 1
+        Session.patch_control = fake
+        serialize_flet_updates()
+        serialize_flet_updates()  # idempotent
+        threads = [threading.Thread(target=Session.patch_control, args=(None,)) for _ in range(8)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+        assert peak[0] == 1
+    finally:
+        Session.patch_control = original

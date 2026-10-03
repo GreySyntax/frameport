@@ -26,12 +26,40 @@ start shows a warning:
 
 ## Connecting the Steam Frame
 
-1. On the Frame: Settings → System → Developer → turn on **Developer Mode**. The Frame and the computer must be on the
-   same network.
-2. In FramePort open **Steam Frame**. A Frame in Developer Mode appears in the list.
-3. First time only: on the Frame switch to Desktop mode (Steam button → Power → Switch to Desktop), open Konsole and
-   run the command FramePort shows. It enables SSH, authorises this computer and installs Valve's Android runtime
-   (Lepton) if needed.
+The Frame and the computer must be on the same network.
+
+1. In FramePort open **Steam Frame** and click **Show setup command**.
+2. First time only: on the Frame switch to Desktop mode (Steam button → Power → Switch to Desktop), open Konsole and
+   run the command FramePort shows. It authorises this computer, turns on **Developer Mode** (which includes
+   SSH) and asks Steam to install Valve's Android runtime (Lepton) if needed: confirm that download. Turning on
+   Developer Mode restarts Steam, which closes Desktop Mode and returns to the normal view; the setup finishes on its
+   own. No password is needed. The app connects by itself when it's done. The full list of changes is in the
+   [README](../README.md#what-frameport-changes-on-the-frame).
+3. Later starts: a Frame in Developer Mode appears in the list and FramePort connects to it automatically. (If you
+   turn Developer Mode off in Settings → System → Developer, turn it on again there.)
+
+**Without Konsole:** turn on Developer Mode yourself (Settings → System → Developer). The Frame then appears under
+**On your network**. On the Frame open Settings → Developer → **Pair new host**, then click **Connect** in FramePort
+and approve it on the Frame (Valve's own devkit pairing; it only sends this computer's key to the Frame). Install Lepton from the Steam Frame page afterwards if it's missing.
+
+### Firewalls
+
+The setup command is the only time the Frame connects to your computer: it downloads the script from FramePort on
+TCP port 8765 (8766/8767 if taken), only while the setup command is shown and for at most 30 minutes. Everything
+else goes from the computer to the Frame. If the command just says "timed out", the setup page shows what is likely
+blocking it after about 45 seconds:
+
+- **Windows:** allow FramePort (or Python, when running from source) when Windows asks. On a network Windows treats as
+  **Public** it stays blocked unless you allow public networks; set your home network to Private in Windows'
+  network settings instead.
+- **macOS:** with the firewall on (System Settings → Network → Firewall), allow incoming connections for FramePort
+  when asked.
+- **Linux:** firewalld: `sudo firewall-cmd --add-port=8765/tcp` (until the next restart). ufw:
+  `sudo ufw allow 8765/tcp`, afterwards `sudo ufw delete allow 8765/tcp`.
+- **WSL:** Windows' Hyper-V firewall blocks connections into WSL without asking. FramePort adds a temporary rule for
+  the setup ports (one admin prompt) and removes it again when setup is done or after 35 minutes. WSL must use
+  mirrored networking: `networkingMode=mirrored` under `[wsl2]` in `%UserProfile%\.wslconfig`, then `wsl --shutdown`.
+- Or skip the setup command and use the devkit pairing above: it needs no connection into your computer.
 
 ## Installing games
 

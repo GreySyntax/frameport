@@ -287,3 +287,93 @@ def oculus_platform_dir() -> Path | None:
             if (d / "LibOVRPlatform64_1.dll").is_file():
                 return d
     return None
+
+
+# ------------------------------------------------------------------------------------------ firewall (pairing)
+WSL_VM_CREATOR = "{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}"  # Hyper-V firewall id of WSL's VM
+
+
+def powershell(command: str, timeout: float = 30) -> subprocess.CompletedProcess:
+    """Run Windows PowerShell 5.1 (from Windows or WSL). PSModulePath is dropped: inherited from PowerShell 7 it keeps
+    5.1 from loading its own modules (see updates._powershell)."""
+    if is_windows():
+        exe = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe")
+        cwd = None
+    else:
+        exe = system32("WindowsPowerShell/v1.0/powershell.exe")
+        cwd = "/mnt/c" if Path("/mnt/c").is_dir() else None  # a \\wsl$ working dir makes Windows programs complain
+    env = {k: v for k, v in os.environ.items() if k.upper() != "PSMODULEPATH"}
+    return subprocess.run([exe, "-NoProfile", "-NonInteractive", "-Command", command], capture_output=True, text=True,
+                          errors="replace", timeout=timeout, cwd=cwd, env=env, **_no_window())
+
+
+def wsl_networking_mode() -> str | None:
+    """"mirrored" or "nat" (WSL's default, where nothing on the network can reach WSL at all); None if unknown."""
+    if not is_wsl():
+        return None
+    try:
+        out = subprocess.run(["wslinfo", "--networking-mode"], capture_output=True, text=True, timeout=10).stdout
+        if out.strip():
+            return out.strip().lower()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def wsl_inbound_blocked(rule: str) -> bool:
+    """WSL with mirrored networking: Windows' Hyper-V firewall blocks connections from the network to WSL by default
+    (no "Allow access?" prompt as for Windows programs), so a Frame's request to our pairing server just times out.
+    True when that block is on and our allow rule `rule` isn't there."""
+    if not is_wsl():
+        return False
+    try:
+        out = powershell(
+            f"$s = Get-NetFirewallHyperVVMSetting -PolicyStore ActiveStore -Name '{WSL_VM_CREATOR}';"
+            f"$r = Get-NetFirewallHyperVRule -PolicyStore ActiveStore -Name '{rule}' -ErrorAction SilentlyContinue;"
+            "\"$($s.Enabled) $($s.DefaultInboundAction) $([bool]$r)\"").stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out[:3] == ["True", "Block", "False"]
+
+
+def open_wsl_inbound(rule: str, title: str, ports: str, flag: Path, minutes: int = 35) -> bool:
+    """Let the network reach WSL on TCP `ports` only while `flag` exists (at most `minutes`): one admin prompt (UAC)
+    starts a hidden elevated PowerShell that adds a Hyper-V firewall rule, waits, and removes the rule again (only if
+    it added it). Returns True once the rule is in place."""
+    import base64
+
+    script = f"""
+$name = '{rule}'
+$added = $false
+if (-not (Get-NetFirewallHyperVRule -PolicyStore ActiveStore -Name $name -ErrorAction SilentlyContinue)) {{
+    New-NetFirewallHyperVRule -Name $name -DisplayName '{title}' -Direction Inbound -VMCreatorId '{WSL_VM_CREATOR}' `
+        -Protocol TCP -LocalPorts {ports} -Action Allow | Out-Null
+    $added = $true
+}}
+$end = (Get-Date).AddMinutes({minutes})
+while ((Test-Path -LiteralPath '{to_windows(flag)}') -and ((Get-Date) -lt $end)) {{ Start-Sleep -Seconds 2 }}
+if ($added) {{ Remove-NetFirewallHyperVRule -Name $name -ErrorAction SilentlyContinue }}
+"""
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode()
+    try:
+        powershell("Start-Process powershell -Verb RunAs -WindowStyle Hidden "
+                   f"-ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','{encoded}'", timeout=300)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    for _ in range(20):  # the elevated script needs a moment to add the rule
+        if not wsl_inbound_blocked(rule):
+            return True
+        time.sleep(1)
+    return False
+
+
+def network_category(ip: str) -> str | None:
+    """Windows: the firewall profile of the network that has `ip` ("Public", "Private", "DomainAuthenticated")."""
+    if not is_windows():
+        return None
+    try:
+        out = powershell(f"(Get-NetConnectionProfile -InterfaceIndex (Get-NetIPAddress -IPAddress '{ip}' "
+                         "-ErrorAction Stop).InterfaceIndex).NetworkCategory").stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out or None

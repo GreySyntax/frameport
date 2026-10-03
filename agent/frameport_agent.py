@@ -33,7 +33,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 30
+AGENT_VERSION = 31
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -759,6 +759,28 @@ def backup_vdf(vdf_path):
             os.remove(old)
         except OSError:
             pass
+
+
+def remove_tree(path):
+    """Remove a file or folder tree, including what Lepton's containers leave in a game's data: overlayfs work dirs
+    with mode 000 (and whiteout device files in them), which shutil.rmtree(ignore_errors=True) silently skipped, so
+    "remove saves" left lepton-data behind. Last resort: podman unshare (files owned by the container's user ids)."""
+    if not os.path.lexists(path):
+        return
+    if os.path.islink(path) or not os.path.isdir(path):
+        os.remove(path)
+        return
+    for root, dirs, _files in os.walk(path):  # top-down: fix a folder's mode before walking into it
+        for d in dirs:
+            p = os.path.join(root, d)
+            if not os.path.islink(p):
+                try:
+                    os.chmod(p, 0o700)
+                except OSError:
+                    pass
+    shutil.rmtree(path, ignore_errors=True)
+    if os.path.lexists(path) and shutil.which("podman"):
+        run(["podman", "unshare", "rm", "-rf", path])
 
 
 def grid_files(grid, appid):
@@ -1887,22 +1909,22 @@ def cmd_uninstall(args):
     for name in names:
         p = os.path.join(base, name)
         if os.path.isdir(p):
-            shutil.rmtree(p, ignore_errors=True)
+            remove_tree(p)
         elif os.path.exists(p):
             os.remove(p)
     if not keep_data:
-        shutil.rmtree(base, ignore_errors=True)
+        remove_tree(base)
     anchor = os.path.join(ANCHORS, pkg)
     removed_sc = False
     if args.get("remove_shortcut") and len(steam_users()) == 1:
         # Steam keeps its own copy of shortcuts.vdf and writes it back: change it only with Steam closed (worker)
         removed_sc = cmd_shortcuts({"remove": [{"exe": f'"{anchor}/launch.sh"', "appid": dep.get("appid")}]})["started"]
     if not keep_data or base != anchor:
-        shutil.rmtree(anchor, ignore_errors=True)
+        remove_tree(anchor)
     else:  # saves live next to the launcher (Quest games): keep them, drop what marks the game as installed
         for name in ("deployment.json", "launch.sh", "artwork", "launch.log", "launch-test.log"):
             p = os.path.join(anchor, name)
-            shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else (os.path.exists(p) and os.remove(p))
+            remove_tree(p)
     return {"removed": True, "kept_saves": keep_data, "shortcut_removed": removed_sc}
 
 
@@ -2183,6 +2205,16 @@ def purge_worker(payload):
                         os.remove(art)
                 except Exception as exc:  # noqa: BLE001
                     result["errors"].append(f"{d.get('title')}: {exc}")
+            try:  # shortcuts left from games without an install record (older versions, interrupted removals)
+                root = vdf_decode(open(vdf, "rb").read()) if os.path.exists(vdf) else {}
+                for sc in list(root.get("shortcuts", {}).values()):
+                    exe = sc.get("Exe", "") if isinstance(sc, dict) else ""
+                    if exe.startswith(f'"{ANCHORS}/') and remove_shortcut(vdf, exe):
+                        result["removed"].append(f"Steam shortcut: {sc.get('AppName') or sc.get('appname')}")
+                        for art in grid_files(grid, sc.get("appid", 0) & 0xFFFFFFFF):
+                            os.remove(art)
+            except Exception as exc:  # noqa: BLE001
+                result["errors"].append(f"shortcuts: {exc}")
         for d in games:
             base = d["base"]
             saves = [os.path.join(base, n) for n in ("lepton-data", "compatdata")]
@@ -2190,23 +2222,30 @@ def purge_worker(payload):
                 for name in os.listdir(base) if os.path.isdir(base) else []:
                     p = os.path.join(base, name)
                     if p not in saves:
-                        shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
+                        remove_tree(p)
                 result["kept"].append(base)
             else:
-                shutil.rmtree(base, ignore_errors=True)
+                remove_tree(base)
+            if not keep and os.path.lexists(base):
+                result["errors"].append(f"couldn't remove {base}")
             result["removed"].append(d.get("title") or d["package"])
         if not keep or not result["kept"]:
-            shutil.rmtree(ANCHORS, ignore_errors=True)
+            remove_tree(ANCHORS)
         else:  # anchors hold only launchers/artwork; saves live in the bases
             for d in games:
                 anchor = os.path.join(ANCHORS, d["package"])
                 if os.path.realpath(anchor) not in [os.path.realpath(k) for k in result["kept"]]:
-                    shutil.rmtree(anchor, ignore_errors=True)
-        shutil.rmtree(AGENT_HOME, ignore_errors=True)
+                    remove_tree(anchor)
+        remove_tree(AGENT_HOME)
         result["removed"].append(AGENT_HOME)
         if os.path.exists(XR_LAYER_MANIFEST):
             os.remove(XR_LAYER_MANIFEST)
             result["removed"].append(XR_LAYER_MANIFEST)
+        for name in ("frameport-setup.sh", "frameport-setup.log"):  # left by bootstrap.sh
+            p = os.path.join(HOME, ".cache", name)
+            if os.path.exists(p):
+                os.remove(p)
+                result["removed"].append(p)
     except Exception as exc:  # noqa: BLE001
         result["state"] = "failed"
         result["errors"].append(str(exc))
@@ -2235,7 +2274,7 @@ def cmd_cleanup(args):
             p = os.path.join(base, name)
             if os.path.isdir(p):
                 freed += sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(p) for f in fs)
-                shutil.rmtree(p, ignore_errors=True)
+                remove_tree(p)
                 removed.append(p)
             elif os.path.exists(p):
                 freed += os.path.getsize(p)
@@ -2250,7 +2289,7 @@ def cmd_cleanup(args):
         if os.path.exists(p):
             freed += (sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(p) for f in fs)
                       if os.path.isdir(p) else os.path.getsize(p))
-            shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
+            remove_tree(p)
             removed.append(p)
     return {"removed": removed, "freed_bytes": freed}
 

@@ -77,9 +77,10 @@ HELP: dict[str, str] = _Translated({
     "cat_device": "Files and environment variables placed next to the game on the Frame.",
     # ---- Frame
     "developer_mode": "Developer Mode (on the Frame: Settings → System → Developer) lets FramePort find the Frame on "
-                      "your network and connect to it over SSH.",
+                      "your network and connect to it over SSH. The first-time setup command turns it on for you.",
     "first_time_setup": "The command fetches a small setup script from this app over your local network. It turns on "
-                        "SSH, lets this app's key in, makes the Frame findable and installs Lepton if needed.",
+                        "Developer Mode (which includes SSH), lets this app's key in and installs Lepton if needed. "
+                        "No password needed.",
     "password": "The Frame's desktop password, only needed the first time so FramePort can add its own key. After "
                 "that it connects with the key.",
     "lepton": "Lepton is Valve's Android container on the Frame. Quest games run inside it, one container per game. "

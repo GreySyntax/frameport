@@ -1,6 +1,7 @@
 """Frame page: the connected device with a readiness checklist and installed games, or a connect wizard."""
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 import flet as ft
@@ -163,12 +164,13 @@ class FrameView:
                             color=T.ACCENT),
                     ft.Column([C.body(f.name if f.source != "scan" else f.host, T.TEXT, weight=ft.FontWeight.W_500),
                                C.meta(f"{f.host} · {label}")], spacing=T.px(2), expand=True),
-                    C.primary(tr("Connect"), on_click=lambda e, f=f: app.connect(parse_target(f"{f.user}@{f.host}"))),
+                    C.primary(tr("Connect"), on_click=lambda e, f=f: app.connect(parse_target(f"{f.user}@{f.host}"),
+                                                                                   devkit=f.source == "devkit")),
                 ], spacing=T.S3), padding=ft.Padding(T.S3, T.px(8), T.S2, T.px(8)), bgcolor=T.SURFACE_2,
                     border_radius=T.RADIUS_SM))
-            found.controls = items or [C.body(tr("No Frames found. Turn on Developer Mode on the Frame (Settings → "
-                                              "System → Developer) and make sure it's on the same network, or use "
-                                              "first-time setup below."))]
+            found.controls = items or [C.body(tr("No Frames found. New Frame? Use first-time setup below. Otherwise "
+                                              "make sure Developer Mode is on (Settings → System → Developer) and "
+                                              "the Frame is on the same network."))]
             found.controls.append(C.ghost(tr("Search again"), ft.Icons.REFRESH_ROUNDED, lambda e: app.run_bg(discover)))
             C.update(found)
 
@@ -183,7 +185,29 @@ class FrameView:
 
             def on_paired(info):
                 app.connect(FrameTarget(info["host"], info["user"], 22, info["name"]))
-            app.pairing = PairingServer(on_paired=on_paired).start()
+            server = app.pairing = PairingServer(on_paired=on_paired).start()
+            show_command()
+
+            def check_network():
+                from ...core import winhost
+                from ...frame.pairing import HINT_AFTER, ensure_reachable, firewall_hint
+
+                if winhost.is_wsl() and ensure_reachable(server) == "failed":
+                    app.toast(tr("Windows' firewall for WSL blocks the Frame from reaching FramePort. Open the setup "
+                                 "command again and allow the change when Windows asks (admin)."), error=True)
+                for _ in range(HINT_AFTER):
+                    time.sleep(1)
+                    if server.requests or not server.running or app.pairing is not server:
+                        return
+                server.hint = firewall_hint(server.port) or tr(
+                    "Check that the Frame and this computer are on the same network.")
+                if app.route[0] == "frame" and app.pairing is server:
+                    show_command()
+            app.run_bg(check_network)
+
+        def show_command(update=True):
+            """The setup command of the running pairing server: also when the page is redrawn (connection checks,
+            discovery), which used to close it."""
             line = app.pairing.one_liner
             pair_box.controls = [
                 C.body(tr("On the Frame: Steam button → Power → Switch to Desktop, open Konsole and run:"), T.TEXT),
@@ -195,10 +219,25 @@ class FrameView:
                 ft.Row([ft.ProgressRing(width=T.px(14), height=T.px(14), stroke_width=T.px(2), color=T.ACCENT),
                         C.meta(tr("Waiting for your Frame… (code {code})").format(code=app.pairing.code))],
                        spacing=T.S2),
-                C.meta(tr("It turns on SSH, trusts this app, makes the Frame findable on your network and installs "
-                       "Lepton if needed. You only do this once.")),
+                C.meta(tr("It trusts this app, turns on Developer Mode and installs Lepton if needed. Turning on "
+                       "Developer Mode closes Desktop Mode; the setup finishes on its own and FramePort connects "
+                       "by itself. You only do this once.")),
             ]
-            pair_box.update()
+            hint = getattr(app.pairing, "hint", "")
+            if hint and not app.pairing.requests:  # nothing reached us yet: what may block it, and the other way in
+                pair_box.controls.append(C.callout(ft.Column([
+                    C.body(tr("Nothing has reached FramePort from the Frame yet (curl says “timed out”)?"), T.TEXT,
+                           weight=ft.FontWeight.W_600),
+                    C.body(hint, T.TEXT),
+                    C.meta(tr("Or turn on Developer Mode on the Frame (Settings → System → Developer): it then shows "
+                              "up above. Open Settings → Developer → Pair new host on the Frame, click Connect here "
+                              "and approve FramePort. That way needs no connection into this computer.")),
+                ], spacing=T.S2), "warn"))
+            if update:
+                pair_box.update()
+
+        if app.pairing and app.pairing.running:
+            show_command(update=False)
 
         style = dict(dense=True, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE_3, border_color=ft.Colors.TRANSPARENT,
                      focused_border_color=T.ACCENT, content_padding=ft.Padding(T.px(12), T.px(10), T.px(12), T.px(10)),

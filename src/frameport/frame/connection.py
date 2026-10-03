@@ -1,7 +1,8 @@
 """SSH connection to a Steam Frame and the remote agent protocol.
 
-Authentication: FramePort's own key (<user data>/ssh/id_ed25519, installed by the bootstrap script) first, then
-the user's SSH agent/keys, then a password if given.
+Authentication: FramePort's own keys first (<user data>/ssh/id_ed25519, installed by the bootstrap script, and
+id_rsa, registered through Valve's devkit pairing, which only takes RSA keys), then the user's SSH agent/keys, then a
+password if given.
 """
 from __future__ import annotations
 
@@ -43,6 +44,37 @@ def app_key() -> paramiko.Ed25519Key:
 def app_public_key() -> str:
     app_key()
     return (ssh_dir() / "id_ed25519.pub").read_text().strip()
+
+
+def devkit_key() -> paramiko.RSAKey:
+    """FramePort's RSA key for Valve's devkit pairing (frame/devkit.py): its service accepts only ssh-rsa keys."""
+    path = ssh_dir() / "id_rsa"
+    if not path.exists():
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=3072)
+        data = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.OpenSSH,
+                                 serialization.NoEncryption())
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        pub = key.public_key().public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH)
+        (ssh_dir() / "id_rsa.pub").write_text(pub.decode() + " frameport\n")
+    return paramiko.RSAKey.from_private_key_file(str(path))
+
+
+def devkit_public_key() -> str:
+    devkit_key()
+    return (ssh_dir() / "id_rsa.pub").read_text().strip()
+
+
+def app_keys() -> list[paramiko.PKey]:
+    """The keys FramePort logs in with: the Ed25519 key, plus the RSA key once devkit pairing created it."""
+    keys: list[paramiko.PKey] = [app_key()]
+    if (ssh_dir() / "id_rsa").exists():
+        keys.append(devkit_key())
+    return keys
 
 
 @dataclass
@@ -233,7 +265,8 @@ class Frame:
         kwargs = dict(hostname=self.target.host, port=self.target.port, username=self.target.user, timeout=timeout,
                       banner_timeout=timeout, auth_timeout=timeout)
         errors = []
-        for attempt in ("app_key", "agent", "password"):
+        attempts = [("app_key", k) for k in app_keys()] + [("agent", None), ("password", None)]
+        for attempt, pkey in attempts:
             if attempt == "password" and not self.password:
                 continue
             client = paramiko.SSHClient()  # a fresh client per attempt: a failed one keeps its transport otherwise
@@ -241,7 +274,7 @@ class Frame:
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # trust on first use (pairing)
             try:
                 if attempt == "app_key":
-                    client.connect(pkey=app_key(), allow_agent=False, look_for_keys=False, **kwargs)
+                    client.connect(pkey=pkey, allow_agent=False, look_for_keys=False, **kwargs)
                 elif attempt == "agent":
                     client.connect(allow_agent=True, look_for_keys=True, **kwargs)
                 else:
