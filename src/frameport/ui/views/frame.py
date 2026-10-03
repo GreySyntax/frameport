@@ -173,7 +173,7 @@ class FrameView:
                                                                                    devkit=f.source == "devkit")),
                 ], spacing=T.S3), padding=ft.Padding(T.S3, T.px(8), T.S2, T.px(8)), bgcolor=T.SURFACE_2,
                     border_radius=T.RADIUS_SM))
-            found.controls = items or [C.body(tr("No Frames found. New Frame? Use first-time setup below. Otherwise "
+            found.controls = items or [C.body(tr("No Frames found. New Frame? Use first-time setup (step 1). Otherwise "
                                               "make sure Developer Mode is on (Settings → System → Developer) and "
                                               "the Frame is on the same network."))]
             found.controls.append(C.ghost(tr("Search again"), ft.Icons.REFRESH_ROUNDED, lambda e: app.run_bg(discover)))
@@ -236,8 +236,8 @@ class FrameView:
                            weight=ft.FontWeight.W_600),
                     C.body(hint, T.TEXT),
                     C.meta(tr("Or turn on Developer Mode on the Frame (Settings → System → Developer): it then shows "
-                              "up above. Open Settings → Developer → Pair new host on the Frame, click Connect here "
-                              "and approve FramePort. That way needs no connection into this computer.")),
+                              "up under step 2. Open Settings → Developer → Pair new host on the Frame, click Connect "
+                              "there and approve FramePort. That way needs no connection into this computer.")),
                 ], spacing=T.S2), "warn"))
             if update:
                 pair_box.update()
@@ -253,7 +253,12 @@ class FrameView:
                           width=T.px(240), tooltip=C.tip(HELP["password"]), **style)
         saved = saved_targets()
         offline = None
-        if saved and app.frame_state == "offline":
+        if getattr(app, "_not_paired", False):  # it answered, but doesn't know FramePort yet
+            offline = C.callout(ft.Row([
+                C.body(tr("Your Frame isn't set up for FramePort yet. Run the first-time setup once (step 1)."), T.TEXT,
+                       expand=True),
+                C.primary(tr("Show setup command"), ft.Icons.TERMINAL_ROUNDED, pair)]), "warn")
+        elif saved and app.frame_state == "offline":
             unreachable = tr("{label} ({host}) isn't reachable. Make sure it's switched on and on the same "
                              "network.").format(label=saved[0].label, host=saved[0].host)
             offline = C.callout(ft.Row([C.body(unreachable, T.TEXT, expand=True),
@@ -281,10 +286,12 @@ class FrameView:
         return ft.Column([
             app.top_bar(tr("Connect your Steam Frame"), tr("FramePort installs games on the Frame over your network")),
             *([offline] if offline else []),
-            step(1, tr("On your network"), tr("Frames in Developer Mode show up here."), found, help="developer_mode"),
-            step(2, tr("First-time setup"), tr("New Frame? Run one command on it and FramePort does the rest."),
-                 C.secondary(tr("Show setup command"), ft.Icons.TERMINAL_ROUNDED, pair), pair_box,
+            step(1, tr("First-time setup"), tr("New Frame? Run one command on it and FramePort does the rest. Did this "
+                                               "once already? Your Frame appears under step 2."),
+                 C.primary(tr("Show setup command"), ft.Icons.TERMINAL_ROUNDED, pair), pair_box,
                  help="first_time_setup"),
+            step(2, tr("Already set up: on your network"), tr("Frames in Developer Mode show up here."), found,
+                 help="developer_mode"),
             step(3, tr("Enter the address"), tr("If you know the Frame's address."),
                  ft.Row([addr, pw, C.primary(tr("Connect"),
                                              on_click=lambda e: app.connect_manual(addr.value, pw.value))],

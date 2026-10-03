@@ -24,6 +24,25 @@ from ..core.paths import agent_file, ssh_dir, user_data_dir, write_atomic
 REMOTE_AGENT_DIR = ".local/share/frameport/agent"
 
 
+class FrameNotPaired(ConnectionError):
+    """SSH works but none of FramePort's ways in was accepted: the Frame hasn't run the first-time setup (or the
+    password was wrong). The message keeps "authentication failed" for older callers."""
+
+    def __init__(self, tried_password: bool, details: list[str]):
+        self.tried_password = tried_password
+        self.details = details
+        reason = ("the password was refused" if tried_password
+                  else "this Frame doesn't know FramePort yet")
+        super().__init__(f"SSH authentication failed: {reason}. Run the first-time setup on the Frame (Steam Frame → "
+                         "Show setup command)." + (f" ({'; '.join(details)})" if details else ""))
+
+
+def _no_auth_methods(exc: BaseException) -> bool:
+    """paramiko ends a key/agent attempt that had nothing to offer (no SSH keys on this PC, no agent) with a plain
+    SSHException, not an AuthenticationException: it's a failed login all the same, not a network problem."""
+    return isinstance(exc, paramiko.SSHException) and "no authentication methods available" in str(exc).lower()
+
+
 def app_key() -> paramiko.Ed25519Key:
     path = ssh_dir() / "id_ed25519"
     if not path.exists():
@@ -283,12 +302,17 @@ class Frame:
             except paramiko.AuthenticationException as exc:
                 client.close()
                 errors.append(f"{attempt}: {exc}")
+            except paramiko.SSHException as exc:
+                client.close()
+                if not _no_auth_methods(exc):
+                    raise
+                # (Reddit, 2026-10-03: this ended the loop before the password was tried)
+                errors.append(f"{attempt}: {exc}")
             except BaseException:
                 client.close()
                 raise
         else:
-            raise ConnectionError("SSH authentication failed (" + "; ".join(errors) + "). Run the FramePort "
-                                  "bootstrap on the Frame or enter the steamos password.")
+            raise FrameNotPaired(bool(self.password), errors)
         client.save_host_keys(str(known))
         transport = client.get_transport()
         transport.set_keepalive(15)

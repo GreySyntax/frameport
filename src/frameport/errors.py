@@ -46,8 +46,12 @@ def explain(exc: BaseException) -> str:
     low = msg.lower()
     if paramiko and isinstance(exc, paramiko.ChannelException):
         return tr("The connection to the Frame is busy. Try again in a moment.")
-    if "authentication failed" in low:
-        return msg  # already says what to do (run the bootstrap / enter the password)
+    if "authentication failed" in low or "no authentication methods available" in low:
+        if "password was refused" in low:
+            return tr("The Frame refused that password. Check it, or run the first-time setup instead: Steam Frame → "
+                      "Show setup command.")
+        return tr("This Frame isn't set up for FramePort yet. Run the first-time setup: Steam Frame → Show setup "
+                  "command.")
     if is_connection_error(exc):
         return tr("Can't reach your Frame. Make sure it's on, awake and on the same network, then try again.")
     if isinstance(exc, OSError) and exc.errno == errno.ENOSPC:

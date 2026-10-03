@@ -393,8 +393,13 @@ class FramePortApp:
                            else (lambda e: self.show_activity(True)))
             elif job.state == "failed":
                 msg = tr("{title} failed: {error}").format(title=job.title, error=job.error)
-                self.toast(msg, error=True, action=tr("Details"),
-                           on_action=lambda e: self.show_activity(True))
+                pkg = job.package
+                if job.kind in ("install", "test") and pkg:  # one click to the diagnostics + prefilled issue
+                    self.toast(msg, error=True, action=tr("Report a problem"),
+                               on_action=lambda e: self.report_problem_dialog(pkg))
+                else:
+                    self.toast(msg, error=True, action=tr("Details"),
+                               on_action=lambda e: self.show_activity(True))
             self.refresh_view()
             if job.kind == "scan" and self.exe_queue:
                 self.page.run_thread(self.next_exe_choice)
@@ -1466,9 +1471,14 @@ class FramePortApp:
                         pass
                 if not quiet:
                     self.toast(tr("Connected to {label}").format(label=target.label))
+                self._not_paired = False
             except Exception as exc:  # noqa: BLE001
+                from ..frame.connection import FrameNotPaired
+
                 self.frame_state = "offline"
                 self.frame_info = None
+                # reachable, but it doesn't let FramePort in: the Frame page points at the first-time setup
+                self._not_paired = isinstance(exc, FrameNotPaired)
                 if not quiet:
                     self.toast(tr("Couldn't connect: {exc}").format(exc=explain(exc)), error=True)
             if self.route[0] in ("frame", "library", "game", "welcome"):

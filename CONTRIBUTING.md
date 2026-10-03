@@ -23,6 +23,14 @@ uv run ruff check .          # lint
   row and a unit test.
 - Native binaries in `artifacts/` are rebuilt with `python native/build.py` (downloads the NDK).
 
+## Adding a tested game
+
+Tested a game on the Steam Frame? The easiest way is in FramePort: open the game → **…** → **Share working config…**.
+It opens a prefilled GitHub issue with the exact recipe; after review a workflow turns it into
+`catalog/games/<package>.yaml`. Without the app: [working config form](https://github.com/spoopyghosty0/frameport/issues/new?template=working-config.yml). Something doesn't run: the game's
+**Report a problem…** (diagnostics zip, personal data removed) or the [problem report form](https://github.com/spoopyghosty0/frameport/issues/new?template=bug-report.yml).
+After catalog changes, regenerate the games list: `python scripts/compat_list.py`.
+
 ## Translating FramePort
 The app's texts (screens, help, patch and setting descriptions) can be translated; the command line, logs and
 diagnostics stay English. No programming needed:

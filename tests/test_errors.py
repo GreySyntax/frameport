@@ -37,6 +37,7 @@ def test_known_failures(exc, start):
 
 def test_other_errors_keep_their_message():
     auth = ConnectionError("SSH authentication failed (bad key). Run the FramePort bootstrap on the Frame.")
-    assert explain(auth) == str(auth) and not is_connection_error(auth)  # already says what to do
+    # login refused: points at the first-time setup, and isn't a "Frame went away" (the queue mustn't wait for it)
+    assert explain(auth).startswith("This Frame isn't set up") and not is_connection_error(auth)
     assert explain(AgentFailed("Lepton is not installed (Developer Mode → …)")).startswith("Lepton is not installed")
     assert explain(RuntimeError()) == "RuntimeError"
