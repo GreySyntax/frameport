@@ -19,7 +19,7 @@ from pathlib import Path
 
 import paramiko
 
-from ..core.paths import agent_dir, ssh_dir, user_data_dir, write_atomic
+from ..core.paths import agent_file, ssh_dir, user_data_dir, write_atomic
 
 REMOTE_AGENT_DIR = ".local/share/frameport/agent"
 
@@ -124,7 +124,7 @@ FAST_LINKS = {"usb0": "USB cable", "wlanap": "the Frame's own Wi-Fi hotspot"}
 def bundled_agent_version() -> int | None:
     """AGENT_VERSION of the agent this app ships (it's uploaded to the Frame whenever it differs)."""
     try:
-        m = re.search(r"^AGENT_VERSION = (\d+)", (agent_dir() / "frameport_agent.py").read_text(), re.M)
+        m = re.search(r"^AGENT_VERSION = (\d+)", agent_file().read_text(), re.M)
         return int(m.group(1)) if m else None
     except OSError:
         return None
@@ -369,7 +369,7 @@ class Frame:
 
     # ------------------------------------------------------------------ agent
     def ensure_agent(self) -> str:
-        local = agent_dir() / "frameport_agent.py"
+        local = agent_file()
         text = local.read_bytes()
         digest = hashlib.sha256(text).hexdigest()[:16]
         remote_dir = posixpath.join(self.home, REMOTE_AGENT_DIR)

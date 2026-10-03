@@ -24,6 +24,17 @@ def agent_dir() -> Path:
     return DATA_ROOT / "agent"
 
 
+AGENT_SOURCE_COPY = "frameport_agent.py.txt"  # scripts/package.py stages this next to the .py
+
+
+def agent_file() -> Path:
+    """The Frame agent's source (uploaded to the Frame and run there with python3). `flet build` compiles every .py
+    of the app to .pyc and drops the source, bundled data included (issue #2: no connection from the release
+    bundles), so bundles also carry a copy under a non-.py name."""
+    path = agent_dir() / "frameport_agent.py"
+    return path if path.exists() else agent_dir() / AGENT_SOURCE_COPY
+
+
 def bootstrap_dir() -> Path:
     return DATA_ROOT / "bootstrap"
 

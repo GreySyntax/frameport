@@ -40,7 +40,17 @@ def stage_data():
     shutil.rmtree(DATA, ignore_errors=True)
     for name in ("catalog", "artifacts", "agent", "bootstrap"):
         shutil.copytree(ROOT / name, DATA / name)
+    # the Frame agent is uploaded as source; `flet build` turns every .py into .pyc (issue #2): keep a non-.py copy
+    shutil.copy2(ROOT / "agent/frameport_agent.py", DATA / "agent/frameport_agent.py.txt")
     print(f"staged data in {DATA}")
+
+
+def check_bundle(out: Path) -> None:
+    """The finished bundle must contain the agent's source (the app uploads it to the Frame)."""
+    found = [p for p in out.rglob("frameport_agent.py*") if p.suffix != ".pyc"]
+    if not found:
+        raise SystemExit(f"{out}: the Frame agent's source is missing from the bundle (only compiled?)")
+    print("agent source in bundle:", ", ".join(str(p.relative_to(out)) for p in found))
 
 
 def main() -> int:
@@ -67,7 +77,10 @@ def main() -> int:
             if TARGET == "macos":  # flet's default bundled Python lacks prebuilt cryptography wheels for both Mac archs
                 cmd += ["--python-version", "3.12", "--arch", "arm64"]  # Apple Silicon; x86_64 cross-build fails
         print(" ".join(cmd))
-        return subprocess.call(cmd, cwd=ROOT)
+        rc = subprocess.call(cmd, cwd=ROOT)
+        if rc == 0:
+            check_bundle(ROOT / "dist" if args.pyinstaller else ROOT / "dist" / TARGET)
+        return rc
     finally:
         if not args.keep_data:
             shutil.rmtree(DATA, ignore_errors=True)

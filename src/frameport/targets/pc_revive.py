@@ -6,6 +6,7 @@ Works on native Windows and from WSL (Windows programs via interop). Revive is F
 """
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
 import json
 import shutil
@@ -15,7 +16,7 @@ from pathlib import Path
 from ..core import winhost
 from ..core.events import Reporter
 from ..core.models import Recipe
-from ..core.paths import agent_dir, user_data_dir
+from ..core.paths import agent_file, user_data_dir
 from ..patches.pcvr import game_args
 from ..validate.triage import triage
 from .base import Target
@@ -27,7 +28,9 @@ REVIVE_LOG = "Revive/ReviveInjector.txt"  # under %LOCALAPPDATA%
 
 def _vdf():
     """The agent's binary-VDF/shortcut code (stdlib only), reused so there's a single implementation."""
-    spec = importlib.util.spec_from_file_location("frameport_agent_vdf", agent_dir() / "frameport_agent.py")
+    path = str(agent_file())  # an explicit loader: in release bundles the source has a .txt name (paths.agent_file)
+    spec = importlib.util.spec_from_loader("frameport_agent_vdf",
+                                           importlib.machinery.SourceFileLoader("frameport_agent_vdf", path))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
