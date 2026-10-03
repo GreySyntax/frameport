@@ -751,3 +751,45 @@ def test_battery_state(monkeypatch, tmp_path):
     (ps / "usb" / "online").write_text("1\n")  # cable in, battery not charging yet ("Not charging"): still plugged
     assert a.battery_state()["plugged"] is True
     assert a.cmd_battery({})["battery"]["percent"] == 42
+
+
+def test_virtual_keyboard_events_text_and_release(monkeypatch, tmp_path):
+    import io
+    import struct as st
+
+    a = load_agent(monkeypatch, tmp_path)
+    monkeypatch.setattr(a.time, "sleep", lambda s: None)
+    written = []
+    kb = a.VirtualKeyboard(fd="fake", write=lambda fd, data: written.append(st.unpack("llHHi", data)[2:]))
+    kb.key(30, 1)  # 'a' down: EV_KEY then SYN_REPORT
+    assert written == [(1, 30, 1), (0, 0, 0)] and kb.held == {30}
+    written.clear()
+    assert kb.type_text("A!\N{SNOWMAN}") == "\N{SNOWMAN}"  # US layout; what it can't type is reported
+    keys = [(c, v) for t, c, v in written if t == 1]
+    assert keys == [(42, 1), (30, 1), (30, 0), (42, 0), (42, 1), (2, 1), (2, 0), (42, 0)]
+    kb.key(57, 1)  # space held down when the PC goes away
+    written.clear()
+    kb.close()  # released before the device goes away
+    assert (1, 57, 0) in written and kb.held == set()
+    # session protocol: ready line, keys and text from JSON lines, keyboard closed at EOF
+    out = io.StringIO()
+    kb2 = a.VirtualKeyboard(fd="fake", write=lambda fd, data: None)
+    closed = []
+    kb2.close = lambda: closed.append(1)
+    lines = io.StringIO('{"k": 28, "v": 1}\n{"k": 28, "v": 0}\nnot json\n{"text": "hi"}\n')
+    assert a.keyboard_session(lines, out, keyboard=kb2) == 0
+    replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert replies[0] == {"ready": True} and replies[1] == {"typed": True, "skipped": ""} and closed
+
+
+def test_keyboard_session_reports_a_refused_device(monkeypatch, tmp_path):
+    import io
+
+    a = load_agent(monkeypatch, tmp_path)
+
+    def refuse(*args, **kw):
+        raise PermissionError(13, "Permission denied", "/dev/uinput")
+    monkeypatch.setattr(a, "VirtualKeyboard", refuse)
+    out = io.StringIO()
+    assert a.keyboard_session(io.StringIO(""), out) == 1
+    assert json.loads(out.getvalue())["ready"] is False

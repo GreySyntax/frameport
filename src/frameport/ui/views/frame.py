@@ -42,6 +42,8 @@ class FrameView:
             ], spacing=T.px(4), expand=True),
             ft.Column([
                 C.secondary(tr("Refresh"), ft.Icons.REFRESH_ROUNDED, lambda e: app.refresh_frame()),
+                C.secondary(tr("Type on Frame"), ft.Icons.KEYBOARD_ROUNDED, lambda e: app.type_on_frame(),
+                            tooltip=tr("Use this computer's keyboard on the Frame")),
                 C.ghost(tr("Switch Frame…"), ft.Icons.SWAP_HORIZ_ROUNDED, lambda e: app.disconnect()),
             ], spacing=T.S2, horizontal_alignment=ft.CrossAxisAlignment.END),
         ], spacing=T.S4), padding=T.S5)

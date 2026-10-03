@@ -164,12 +164,16 @@ class FramePortApp:
         self._conn_bat = ft.Container(ft.Row([self._conn_bat_icon, self._conn_bat_text], spacing=T.px(2), tight=True,
                                              vertical_alignment=ft.CrossAxisAlignment.CENTER), visible=False)
         self._conn_extra = ft.Container(C.meta(""), visible=False, tooltip=C.tip(C.HELP["frame_summary"]))
+        self._conn_type = C.icon_btn(ft.Icons.KEYBOARD_ROUNDED, tr("Type on Frame: use this keyboard on the Frame"),
+                                     lambda e: self.type_on_frame())
+        self._conn_type.visible = False
         self.conn_card.content = ft.Container(ft.Row([
             ft.Stack([ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(22), color=T.TEXT_2),
                       ft.Container(self._conn_dot, right=0, bottom=0)], width=T.px(24), height=T.px(24)),
             ft.Column([ft.Row([ft.Container(self._conn_name, expand=True), self._conn_bat], spacing=T.S2,
                               vertical_alignment=ft.CrossAxisAlignment.CENTER),
                        self._conn_line, self._conn_extra], spacing=1, expand=True),
+            self._conn_type,
         ], spacing=T.S3), padding=T.S3, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE, ink=True,
             border=ft.Border.all(1, T.BORDER), on_click=lambda e: self.go("frame"))
         self._nav = nav  # last: _refresh_sidebar (also called from job threads) treats it as "all built"
@@ -218,6 +222,7 @@ class FramePortApp:
         self._conn_line.color = color
         bat = (self.frame_info or {}).get("battery") if st == "connected" else None
         self._conn_bat.visible = bool(bat)
+        self._conn_type.visible = st == "connected"
         if bat:
             from .battery import charging, icon, low
 
@@ -343,6 +348,8 @@ class FramePortApp:
             self.toast(tr("Copy failed; select the text instead"), error=True)
 
     def _on_key(self, e: ft.KeyboardEvent) -> None:
+        if getattr(self, "_typing_on_frame", False):
+            return  # Type on Frame is open: Esc and shortcuts belong to the Frame
         if e.key == "Escape" and self.activity.open:
             self.show_activity(False)
         elif e.key.upper() == "F" and (e.ctrl or e.meta) and self.route[0] == "library" and self.search_field:
@@ -562,6 +569,8 @@ class FramePortApp:
                 if on_frame and not rift:
                     out.append((tr("Add videos and files…"), ft.Icons.VIDEO_LIBRARY_OUTLINED,
                                 lambda e: self.go("files", pkg)))
+                if on_frame:
+                    out.append((tr("Type on Frame…"), ft.Icons.KEYBOARD_ROUNDED, lambda e: self.type_on_frame()))
                 if on_frame:
                     out.append((tr("Uninstall from Frame"), ft.Icons.DELETE_OUTLINE_ROUNDED,
                                 lambda e: self.uninstall(pkg, "frame")))
@@ -1231,6 +1240,11 @@ class FramePortApp:
             if g and g.get("exe_confirmed") is False:
                 show_exe_dialog(self, pkg, remaining=len(self.exe_queue), on_done=self.next_exe_choice)
                 return
+
+    def type_on_frame(self) -> None:
+        from .views.type_dialog import show_type_dialog
+
+        show_type_dialog(self)
 
     def choose_exe(self, pkg: str) -> None:
         from .views.exe_dialog import show_exe_dialog

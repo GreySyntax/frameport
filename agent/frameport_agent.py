@@ -7,6 +7,7 @@ The PC app uploads this file to ~/.local/share/frameport/agent/ and calls:
 Commands: info, prepare, finalize, shortcuts, shortcut_status, launch_test, stop, set_settings, uninstall,
           install_lepton, list_installed, proton_status, install_proton, prepare_pcvr, finalize_pcvr,
           controller_models.
+Streaming: python3 frameport_agent.py _keyboard   (a virtual keyboard: JSON lines on stdin, see keyboard_session)
 
 Install layout (one Lepton container per game; same as the manual installs from 2026-09):
     ~/Applications/quest-frame/<pkg>/            anchor: launch.sh, deployment.json, artwork/ (always internal storage)
@@ -20,6 +21,7 @@ PC VR (Oculus Rift) games packed for the Frame (id "rift.<slug>"), run by Proton
     <dest>/<id>/revive/                          Revive (ReviveInjector.exe + DLLs)
     <dest>/<id>/compatdata/                      Proton prefix = saves (kept across reinstalls), launch.log
 """
+import fcntl
 import glob
 import hashlib
 import json
@@ -33,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 32
+AGENT_VERSION = 33
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -2332,10 +2334,124 @@ def cmd_cleanup(args):
     return {"removed": removed, "freed_bytes": freed}
 
 
+# ------------------------------------------------------------------------------------------ virtual keyboard
+# "Type on Frame": the PC's key presses become a real keyboard on the Frame (Linux uinput; the steamos user may open
+# /dev/uinput, an ACL entry made for Steam Input, no root). A real input device reaches everything that has focus:
+# Android windows (Lepton's wayland_keyboard), the Steam UI, the desktop, Proton games.
+UINPUT = "/dev/uinput"
+UI_SET_EVBIT, UI_SET_KEYBIT, UI_DEV_SETUP, UI_DEV_CREATE, UI_DEV_DESTROY = (0x40045564, 0x40045565, 0x405C5503,
+                                                                         0x5501, 0x5502)
+EV_SYN, EV_KEY, SYN_REPORT = 0, 1, 0
+KEY_LAST = 248  # KEY_ESC (1) .. KEY_MICMUTE (248): every key a PC keyboard sends
+KEY_LEFTSHIFT = 42
+
+
+def text_keys():
+    """US layout: character -> (Linux key code, shift)."""
+    keys = {"\n": (28, False), "\t": (15, False), " ": (57, False), "\b": (14, False)}
+    for plain, shifted, first in (("1234567890-=", "!@#$%^&*()_+", 2), ("qwertyuiop[]", "QWERTYUIOP{}", 16),
+                                  ("asdfghjkl;'`", 'ASDFGHJKL:"~', 30), ("\\zxcvbnm,./", "|ZXCVBNM<>?", 43)):
+        for i, (a, b) in enumerate(zip(plain, shifted, strict=True)):
+            keys[a] = (first + i, False)
+            keys[b] = (first + i, True)
+    return keys
+
+
+TEXT_KEYS = text_keys()
+
+
+class VirtualKeyboard:
+    """A uinput keyboard. `fd`/`write` can be replaced in tests; the device goes away with close()."""
+
+    def __init__(self, fd=None, write=os.write, settle=0.8):
+        self.write, self.held = write, set()
+        self.fd = fd
+        if fd is None:
+            self.fd = os.open(UINPUT, os.O_WRONLY | os.O_NONBLOCK)
+            fcntl.ioctl(self.fd, UI_SET_EVBIT, EV_KEY)
+            for code in range(1, KEY_LAST + 1):
+                fcntl.ioctl(self.fd, UI_SET_KEYBIT, code)
+            fcntl.ioctl(self.fd, UI_DEV_SETUP, struct.pack("HHHH80sI", 0x03, 0x1209, 0x4650, 1,
+                                                            b"FramePort keyboard", 0))
+            fcntl.ioctl(self.fd, UI_DEV_CREATE)
+            time.sleep(settle)  # let gamescope/libinput pick the new keyboard up before the first key
+
+    def _event(self, kind, code, value):
+        self.write(self.fd, struct.pack("llHHi", 0, 0, kind, code, value))
+
+    def key(self, code, value):
+        """value 1 = down, 0 = up, 2 = autorepeat."""
+        if not 0 < int(code) <= KEY_LAST or value not in (0, 1, 2):
+            return
+        self._event(EV_KEY, int(code), value)
+        self._event(EV_SYN, SYN_REPORT, 0)
+        (self.held.add if value else self.held.discard)(int(code))
+
+    def type_text(self, text, delay=0.008):
+        """Type characters of the US layout; returns the characters it couldn't type."""
+        skipped = ""
+        for ch in text.replace("\r\n", "\n"):
+            if ch not in TEXT_KEYS:
+                skipped += ch
+                continue
+            code, shift = TEXT_KEYS[ch]
+            if shift:
+                self.key(KEY_LEFTSHIFT, 1)
+            self.key(code, 1)
+            self.key(code, 0)
+            if shift:
+                self.key(KEY_LEFTSHIFT, 0)
+            time.sleep(delay)
+        return skipped
+
+    def close(self):
+        for code in list(self.held):  # never leave a key stuck when the PC goes away mid-press
+            self.key(code, 0)
+        if self.fd is not None and isinstance(self.fd, int):
+            try:
+                fcntl.ioctl(self.fd, UI_DEV_DESTROY)
+            except OSError:
+                pass
+            os.close(self.fd)
+        self.fd = None
+
+
+def keyboard_session(stdin, stdout, keyboard=None):
+    """Long-lived: prints {"ready": true} once the virtual keyboard exists, then reads one JSON object per line:
+    {"k": code, "v": 1|0|2} (key down/up/repeat) or {"text": "..."}; ends (keyboard removed) at EOF."""
+    try:
+        kb = keyboard or VirtualKeyboard()
+    except OSError as exc:
+        stdout.write(json.dumps({"ready": False, "error": f"can't create a virtual keyboard: {exc}"}) + "\n")
+        stdout.flush()
+        return 1
+    stdout.write(json.dumps({"ready": True}) + "\n")
+    stdout.flush()
+    try:
+        for line in stdin:
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                continue
+            if "k" in msg:
+                kb.key(msg["k"], msg.get("v", 1))
+            elif "text" in msg:
+                skipped = kb.type_text(str(msg["text"]))
+                stdout.write(json.dumps({"typed": True, "skipped": skipped}) + "\n")
+                stdout.flush()
+    except (OSError, ValueError):
+        pass
+    finally:
+        kb.close()
+    return 0
+
+
 COMMANDS = {n[4:]: f for n, f in globals().items() if n.startswith("cmd_")}
 
 
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "_keyboard":
+        return keyboard_session(sys.stdin, sys.stdout)
     if len(sys.argv) >= 3 and sys.argv[1] == "_shortcuts_worker":
         shortcuts_worker(sys.argv[2])
         return 0
