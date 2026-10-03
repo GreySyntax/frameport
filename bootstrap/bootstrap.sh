@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# FramePort one-time Steam Frame setup. Run in the Frame's Desktop Mode terminal (Konsole):
+# FramePort one-time Steam Frame setup. Run in the Frame's desktop terminal (SteamVR dashboard -> Launch a program
+# -> Desktop, then System -> Konsole):
 #   curl -fsS <pc-ip>:<port>/<code> | bash
 # (the FramePort app shows the exact line and serves this script while its Setup page is open).
 #
@@ -128,6 +129,6 @@ if [[ ! -x "$DEVKIT_HELPER" || ! -f "$STEAM_CONFIG" ]] || \
     echo "Couldn't turn it on automatically. Turn it on in Settings > System > Developer, then run this command again."
     exit 1
 fi
-echo "Steam restarts to turn it on. That closes Desktop Mode in a few seconds and the Frame returns to its"
+echo "Steam restarts to turn it on. That closes the desktop in a few seconds and the Frame returns to its"
 echo "normal view; setup finishes on its own. If Steam asks to install Lepton, confirm it."
 echo "Then return to FramePort on your PC: the Frame appears as connected within a minute."

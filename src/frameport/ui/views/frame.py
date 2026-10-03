@@ -215,7 +215,8 @@ class FrameView:
             discovery), which used to close it."""
             line = app.pairing.one_liner
             pair_box.controls = [
-                C.body(tr("On the Frame: Steam button → Power → Switch to Desktop, open Konsole and run:"), T.TEXT),
+                C.body(tr("On the Frame: SteamVR dashboard → Launch a program → Desktop, then app menu → System → "
+                          "Konsole, and run:"), T.TEXT),
                 ft.Container(ft.Row([ft.Text(line, font_family="monospace", selectable=True, size=T.px(12),
                                              color=T.TEXT, expand=True),
                                      C.icon_btn(ft.Icons.CONTENT_COPY_ROUNDED, tr("Copy"), lambda e: app.copy(line))]),
@@ -225,7 +226,7 @@ class FrameView:
                         C.meta(tr("Waiting for your Frame… (code {code})").format(code=app.pairing.code))],
                        spacing=T.S2),
                 C.meta(tr("It trusts this app, turns on Developer Mode and installs Lepton if needed. Turning on "
-                       "Developer Mode closes Desktop Mode; the setup finishes on its own and FramePort connects "
+                       "Developer Mode closes the desktop; the setup finishes on its own and FramePort connects "
                        "by itself. You only do this once.")),
             ]
             hint = getattr(app.pairing, "hint", "")

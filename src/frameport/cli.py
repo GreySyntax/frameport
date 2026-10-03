@@ -405,7 +405,8 @@ def frame_pair(timeout: float = typer.Option(600, help="seconds to wait for the 
     from .frame.pairing import PairingServer
 
     srv = PairingServer().start()
-    typer.echo("On the Frame, open Desktop Mode → Konsole and run:\n\n    " + srv.one_liner + "\n")
+    typer.echo("On the Frame, open the SteamVR dashboard → Launch a program → Desktop, then System → Konsole, and "
+               "run:\n\n    " + srv.one_liner + "\n")
     end = time.time() + timeout
     while time.time() < end and not srv.paired:
         time.sleep(1)

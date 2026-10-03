@@ -36,11 +36,12 @@ Install games that target the Meta Quest, Android, or general PCVR onto your **V
 2. **Connect the Frame** (once):
    1. In FramePort click **Steam Frame → Show setup command**. Keep FramePort open; the Frame and your computer must
       be on the same Wi-Fi.
-   2. On the Frame press the **Steam button → Power → Switch to Desktop**.
-   3. Open the app menu (bottom-left corner), search for **Konsole** and open it.
+   2. On the Frame open the **SteamVR dashboard → Launch a program → Desktop**: the Linux desktop opens on a virtual
+      screen.
+   3. Open the app menu (bottom-left corner of that desktop) → **System → Konsole** (or search for Konsole).
    4. Type the command FramePort shows exactly as shown (on-screen keyboard or any USB/Bluetooth keyboard) and press
       **Enter**. This will run the following [bash setup script](bootstrap/bootstrap.sh).
-   5. After a few seconds the desktop closes by itself and the Frame returns to its normal view; that's expected. If
+   5. After a few seconds the desktop closes by itself (Steam restarts once); that's expected. If
       Steam asks to install **Lepton**, confirm it. FramePort shows the Frame as connected within a minute. No
       password needed.
 3. **Add games → Scan a folder** with your game backups (APK + OBB, or PC VR game folders).

@@ -31,12 +31,12 @@ The Frame and the computer must be on the same network.
 
 1. In FramePort open **Steam Frame** and click **Show setup command**.
 2. First time only, on the Frame:
-   1. Press the **Steam button → Power → Switch to Desktop**.
-   2. Open the app menu (bottom-left corner), search for **Konsole** and open it.
+   1. Open the **SteamVR dashboard → Launch a program → Desktop**: the Linux desktop opens on a virtual screen.
+   2. Open the app menu (bottom-left corner of that desktop) → **System → Konsole** (or search for Konsole).
    3. Type the command FramePort shows exactly as shown (on-screen keyboard or any USB/Bluetooth keyboard) and press
       **Enter**. It looks like `curl -fsS 192.168.1.20:8765/1a2b3c4d | bash`: your computer's address, then a
       one-time code.
-   4. After a few seconds the desktop closes by itself and the Frame returns to its normal view; that's expected. If
+   4. After a few seconds the desktop closes by itself (Steam restarts once); that's expected. If
       Steam asks to install **Lepton** (Valve's Android runtime), confirm it.
 
    FramePort connects by itself within a minute. No password is needed. The command lets FramePort in and turns on
