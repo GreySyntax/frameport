@@ -158,11 +158,18 @@ class FramePortApp:
         self._conn_name = C.body(tr("Steam Frame"), T.TEXT, weight=ft.FontWeight.W_600, max_lines=1,
                                  overflow=ft.TextOverflow.ELLIPSIS)
         self._conn_line = C.meta(tr("Not set up"))
+        # battery: icon + "7 %" next to the name, like a phone's status bar (a text suffix wrapped in the sidebar)
+        self._conn_bat_icon = ft.Icon(ft.Icons.BATTERY_FULL_ROUNDED, size=T.px(15), color=T.TEXT_2)
+        self._conn_bat_text = C.meta("")
+        self._conn_bat = ft.Container(ft.Row([self._conn_bat_icon, self._conn_bat_text], spacing=T.px(2), tight=True,
+                                             vertical_alignment=ft.CrossAxisAlignment.CENTER), visible=False)
         self._conn_extra = ft.Container(C.meta(""), visible=False, tooltip=C.tip(C.HELP["frame_summary"]))
         self.conn_card.content = ft.Container(ft.Row([
             ft.Stack([ft.Icon(ft.Icons.VIEW_IN_AR_ROUNDED, size=T.px(22), color=T.TEXT_2),
                       ft.Container(self._conn_dot, right=0, bottom=0)], width=T.px(24), height=T.px(24)),
-            ft.Column([self._conn_name, self._conn_line, self._conn_extra], spacing=1, expand=True),
+            ft.Column([ft.Row([ft.Container(self._conn_name, expand=True), self._conn_bat], spacing=T.S2,
+                              vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                       self._conn_line, self._conn_extra], spacing=1, expand=True),
         ], spacing=T.S3), padding=T.S3, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE, ink=True,
             border=ft.Border.all(1, T.BORDER), on_click=lambda e: self.go("frame"))
         self._nav = nav  # last: _refresh_sidebar (also called from job threads) treats it as "all built"
@@ -210,12 +217,17 @@ class FramePortApp:
             st, "Not set up")
         self._conn_line.color = color
         bat = (self.frame_info or {}).get("battery") if st == "connected" else None
+        self._conn_bat.visible = bool(bat)
         if bat:
-            from .battery import label, low
+            from .battery import charging, icon, low
 
-            self._conn_line.value += tr(" · battery {value}").format(value=label(bat))  # no 🔋 glyph in the font
-            if low(bat):
-                self._conn_line.color = T.WARN
+            warn = low(bat)
+            self._conn_bat_icon.icon = getattr(ft.Icons, icon(bat))
+            self._conn_bat_icon.color = T.WARN if warn else T.OK if charging(bat) else T.TEXT_2
+            self._conn_bat_text.value = f"{bat.get('percent', 0)} %"
+            self._conn_bat_text.color = T.WARN if warn else T.TEXT_2
+            self._conn_bat.tooltip = tr("Frame battery: charging") if charging(bat) else \
+                tr("Frame battery: not charging")
         if st == "connected" and self.frame_info:
             pr = (self.frame_info.get("proton") or {}).get("ready")
             quest = tr("Quest ✓") if self.frame_info.get("lepton") else tr("Quest ✗")

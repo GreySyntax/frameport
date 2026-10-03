@@ -32,3 +32,9 @@ def test_plugged_in_but_draining_counts_as_not_charging():
 def test_label():
     assert B.label(bat(76)) == "76 %" and B.label(bat(76, True)) == "76 % ⚡" and B.label(None) == ""
     assert B.low(bat(20)) and not B.low(bat(20, True)) and not B.low(bat(60))
+
+
+def test_icon_follows_level_and_charging():
+    assert B.icon(bat(7, True)) == "BATTERY_CHARGING_FULL_ROUNDED"
+    assert B.icon(bat(7)) == "BATTERY_ALERT_ROUNDED" and B.icon(bat(100)) == "BATTERY_FULL_ROUNDED"
+    assert B.icon(bat(50)) == "BATTERY_3_BAR_ROUNDED" and B.icon(bat(90)) == "BATTERY_6_BAR_ROUNDED"

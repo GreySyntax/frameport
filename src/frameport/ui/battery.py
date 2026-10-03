@@ -38,6 +38,16 @@ def label(battery: dict | None) -> str:
     return f"{battery.get('percent', 0)} %" + (" ⚡" if charging(battery) else "")
 
 
+def icon(battery: dict) -> str:
+    """Material battery icon name for the level (bars like a phone's status bar)."""
+    if charging(battery):
+        return "BATTERY_CHARGING_FULL_ROUNDED"
+    pct = battery.get("percent", 0)
+    if pct <= PAUSE_AT:
+        return "BATTERY_ALERT_ROUNDED"
+    return "BATTERY_FULL_ROUNDED" if pct >= 95 else f"BATTERY_{min(6, pct * 7 // 100)}_BAR_ROUNDED"
+
+
 def low(battery: dict | None) -> bool:
     return bool(battery) and not charging(battery) and battery.get("percent", 100) <= WARN_AT
 

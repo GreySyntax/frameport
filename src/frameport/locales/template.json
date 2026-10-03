@@ -290,6 +290,8 @@
  "Force enable passthrough": "",
  "Found": "",
  "Frame agent": "",
+ "Frame battery: charging": "",
+ "Frame battery: not charging": "",
  "Frame OpenXR compatibility layer": "",
  "FrameBridge OpenXR adapter": "",
  "FramePort": "",
