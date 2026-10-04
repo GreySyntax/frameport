@@ -61,28 +61,55 @@ def from_path(path: Path) -> SourceGame | None:
     return SourceGame(display_name(path.name), apk, data, path, [a for a in apks if a != apk])
 
 
-def scan(root: Path, depth: int = 2) -> list[SourceGame]:
-    """Find games under root (the root itself, or folders up to `depth` levels down)."""
-    root = Path(root)
-    found = []
-    game = from_path(root)
-    if game:
-        return [game]
-    frontier = [root]
-    for _ in range(depth):
-        nxt = []
-        for d in frontier:
-            try:
-                children = sorted(p for p in d.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
-            except OSError:
+def _no_quest_games_below(d: Path) -> bool:
+    """Folders not worth searching for APKs: a PC program (exe/dll files), a git checkout, a Python environment."""
+    try:
+        names = [p.name.lower() for p in d.iterdir()]
+    except OSError:
+        return True
+    return any(n.endswith((".exe", ".dll")) for n in names) or ".git" in names or "pyvenv.cfg" in names
+
+
+def _other_folders(d: Path, game: SourceGame) -> list[Path]:
+    """Subfolders of a folder with an APK that aren't that game's own data (OBB) folder."""
+    try:
+        subs = [p for p in d.iterdir() if p.is_dir() and not p.name.startswith(("_", "."))]
+    except OSError:
+        return []
+    own = {game.data_dir.resolve()} if game.data_dir else set()
+    return [p for p in subs if p.resolve() not in own and p.name.lower() not in ("obb", "android")]
+
+
+def scan(root: Path, depth: int = 5) -> list[SourceGame]:
+    """Find games under root, up to `depth` folder levels down (e.g. a download manager's
+    "<library>/data/downloads/<game>/game.apk"). A folder with an APK and nothing but that game's data folder is one
+    game; a folder that also has other folders is a collection: its loose APKs are games and its folders are searched
+    (a "VR" folder with a stray APK next to the game folders used to count as one game). PC program folders and code
+    checkouts aren't searched."""
+    found: list[SourceGame] = []
+
+    def walk(d: Path, level: int) -> None:
+        game = from_path(d)
+        if game and (level >= depth or not _other_folders(d, game)):
+            found.append(game)
+            return
+        if game:  # a collection with loose APKs: each is a game of its own
+            found.extend(g for g in (from_path(p) for p in sorted(d.glob("*.apk")) if _is_apk(p)) if g)
+        if level >= depth:
+            return
+        try:
+            children = sorted(p for p in d.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
+        except OSError:
+            return
+        for child in children:
+            if game and game.data_dir and child.resolve() == game.data_dir.resolve():
                 continue
-            for child in children:
-                g = from_path(child)
-                if g:
-                    found.append(g)
-                else:
-                    nxt.append(child)
-        frontier = nxt
-    loose = [p for p in root.glob("*.apk") if _is_apk(p)]
-    found += [g for g in (from_path(p) for p in loose) if g]
+            if from_path(child) or not _no_quest_games_below(child):
+                walk(child, level + 1)
+
+    root = Path(root)
+    if root.is_file():
+        g = from_path(root)
+        return [g] if g else []
+    walk(root, 0)
     return found

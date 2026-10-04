@@ -217,3 +217,28 @@ def test_uninstall_can_delete_the_games_files_on_this_pc(tmp_path):
     done, freed = pipeline.delete_local_files("com.x.game")
     assert not game.exists() and freed == 51 and library.game("com.x.game") is None
     assert key.exists() and shared.exists()  # signing keys and other games' files stay
+
+
+def test_scan_finds_games_in_download_manager_layouts(tmp_path, monkeypatch):
+    import zipfile
+
+    from frameport.sources import quest_dump
+
+    monkeypatch.setattr(quest_dump, "_package_of", lambda apk: Path(apk).stem)
+
+    def apk(path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(path, "w") as z:
+            z.writestr("AndroidManifest.xml", b"x")
+    root = tmp_path / "VR"
+    apk(root / "stray.app.apk")  # a loose APK next to game folders: not "one game"
+    apk(root / "Manager/Game A v1/com.a.game.apk")
+    (root / "Manager/Game A v1/com.a.game").mkdir()
+    (root / "Manager/Game A v1/com.a.game/main.obb").write_bytes(b"o")
+    apk(root / "Manager/data/downloads/Game B v2/com.b.game.apk")  # 4 levels down
+    (root / "PC Game/Binaries").mkdir(parents=True)
+    (root / "PC Game/game.exe").write_bytes(b"MZ")
+    apk(root / "PC Game/Binaries/never.apk")  # PC program folders aren't searched
+    found = {g.apk.name: g for g in quest_dump.scan(root)}
+    assert set(found) == {"stray.app.apk", "com.a.game.apk", "com.b.game.apk"}
+    assert found["com.a.game.apk"].data_dir == root / "Manager/Game A v1/com.a.game"
