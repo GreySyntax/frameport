@@ -1,10 +1,13 @@
 package: com.NewFolderGames.IAmCat
 title: I Am Cat
 status: issues
-notes: Renders each eye separately (the right eye was grey otherwise); the picture stutters slightly.
-details: Unity 2022.3 with the Oculus XR Plugin falls back to GLES (Zink) on the Frame, where its multiview pass drew
-  the right eye's slice wrong (GitHub issue 8). frame.unity_multipass switches the game to multi-pass rendering; not
-  yet confirmed in a headset.
+notes: The view vibrates slightly, even when holding still.
+details: Unity 2022.3 with the Oculus XR Plugin falls back to GLES (Zink) on the Frame, where its single-pass
+  (multiview) rendering drew the right eye wrong (GitHub issue 8); frame.unity_multipass renders each eye in its own
+  pass (OculusSettings.GetStereoRenderingMode + its inlined read in OculusLoader.Initialize). Poses and frame times
+  are consistent, but every frame reaches the runtime one display period late (two passes on Zink) and the game
+  clamps its physics step to 10 ms, so the view judders; scale 0.8 didn't change it. Possible next steps are fixing the
+  multiview path instead or the game's fixed timestep.
 tested_version: 1.4.0.0
 engine: Unity
 xr: OpenXR

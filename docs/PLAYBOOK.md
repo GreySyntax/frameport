@@ -76,6 +76,12 @@ version is `catalog/triage.yaml` (used by `frameport test` / the Job screen); ke
 | MR game stuck waiting for room data (Demeter) | no Meta scene API | adapter `scene_emul=1` (+ `frame.meta_permissions`) |
 | Hand-tracking game janky (Silhouette) | Frame synthesizes hands from controllers | `controller_fix=0` passes hands through; not really fixable |
 | Eye distortion while moving (Arcsmith, Time Stall) | unknown (not eye swap, tracking, Valve layers, depth or pacing) | unresolved |
+| One eye grey / only effects (I Am Cat, Unity Oculus XR Plugin on GLES) | the game's multiview pass draws array slice 1 wrong on Zink | `frame.unity_multipass` (also rewrites the getter's inlined read in `OculusLoader.Initialize`; check for two `array=1` eye swapchains) |
+| View vibrates even when holding still after `frame.unity_multipass` (I Am Cat) | poses/times are consistent, but two passes on Zink make every frame one period late, and the game clamps its physics step to 10 ms | not fixed (scale 0.8 didn't help); next ideas: fix multiview instead, or the game's fixed timestep |
+| Game freezes / pauses for 1-2 s now and then, no flicker; only some games (Blade & Sorcery) | the headset's wear sensor flickers off while worn (SteamVR vrserver.txt `HMD off, stopping eye tracking` … `HMD on`), the Frame turns it into a focus loss and Quest games that pause on focus loss pause | adapter `focus_hold=1` + `focus_hold_ms=2500` per game; native games don't react, so it's per game |
+| Minor glitches on some objects (Myst, Unreal Vulkan) | unknown; not application space warp (turning it off changed nothing and ran worse) | unresolved |
+| Graphics crash in vkCreateInstance with pc == fault address, from the game's own Vulkan hooks (BONELAB `libSLZQuestNative`) | a pointer into memory freed with OVRPlugin's pre-init OpenXR instance; not the runtime (vrclient.so) or Fossilize being unloaded (keeping both loaded with RTLD_NODELETE didn't help) | unresolved |
+| Own-engine game crashes in `je_free` from its own library on the first frames (Roblox) | the game frees memory it doesn't own; not the Vulkan shim or the format fallback | unsupported |
 
 ## Debugging techniques that worked
 - A user's problem report: `frameport diag inspect <FramePort-diag-*.zip>` re-triages its launch log with the current
@@ -85,6 +91,26 @@ version is `catalog/triage.yaml` (used by `frameport test` / the Job screen); ke
 - For GLES/GLAD engines, wrap `eglGetProcAddress` to see shader compile errors (build the shim with `-DGLSHIM_TRACE`
   for per-FBO draw counts and draw-call errors; the bridge has `-DOVP_GL_DIAG` for eye-image readback).
 - Anything visual needs one headset session per iteration — batch hypotheses into each build.
+- Headless launch tests never get focus: they prove startup, not play. Crashes right after FOCUSED (Myst), focus
+  dips and judder only show up in a headset session: ask for one, then `frameport diag collect <pkg>` (it contains
+  the headset sessions too, plus this boot's kernel log).
+- Which library a stale pointer belonged to: turn on the Android linker's log for one run by adding
+  `debug.ld.app.<pkg>=dlopen` as an extra line of `LEPTON_GFXRECON_FP_PROPS` (first line `0`) in the game's
+  launch.sh on the Frame (back it up, restore it after) and look for `dlclose: unloading "…"`.
+- Unity catches native crashes itself: no debuggerd backtrace in Lepton's logcat-crash.log, but a
+  `tombstone_00` in the game's `Android/data/<pkg>/files/` with the memory map (map pc/lr/registers to libraries).
+- Focus losses: the game sees FOCUSED→VISIBLE→SYNCHRONIZED (OVRPlugin `[XR_SESSION]`, FrameBridge `focus_hold:`
+  lines); the cause is on the host: `~/.local/share/Steam/logs/vrserver.txt` (`HMD off/on`, `entering standby`,
+  `SystemButtonDown` in vrclient_vrcompositor.txt) and XRService (`[UserPresence]`, `IMUFallback`). Compare the times
+  (Lepton logs UTC, host logs local time).
+- A Unity getter patch that changes nothing: the compiler may have inlined it (no `BL` to its address in
+  libil2cpp.so) — patch the field read in the caller (`Il2cppReturnPatch.field_loads`).
+- Fixes found by users count: a reporter's shader capture (VR4) became the `vk_shader_fix` recipe data (match by size
+  + SHA-256, insert words); verify on the device that the log shows the module being fixed.
+- Don't install or test on the Frame while the owner is playing: adding a library entry restarts Steam (FramePort
+  now skips the restart when the shortcut is unchanged and waits while a game runs), and a launch test starts a game.
+- Catalog YAML: a `: ` inside an unquoted value breaks the file and the loader skipped it silently (the game vanished
+  from the list); `tests/test_catalog_files.py` now catches it.
 - Keep the known-good APK and roll back if a change regresses (`PATCHED/_known-good-*`).
 
 ## When it can't run on the Frame

@@ -14,6 +14,7 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Batman: Arkham Shadow | Quest | ✅ Works |  |
 | BattleGlide | Quest | ✅ Works |  |
 | Beat Saber | Quest | ✅ Works |  |
+| Blade & Sorcery: Nomad | Quest | ✅ Works |  |
 | Carve Snowboarding | Quest | ✅ Works |  |
 | Cook-Out | Quest | ✅ Works |  |
 | Demeter | Quest | ✅ Works |  |
@@ -46,8 +47,7 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Wander | Quest | ✅ Works |  |
 | Arcsmith | Quest | ⚠️ Works with issues | Right eye distorts during movement (unresolved; swap, tracking, Valve layers, depth and pacing ruled out). |
 | Assassin's Creed Nexus | Quest | ⚠️ Works with issues | Some launch warning text is still upside down; the rest of the UI is fixed by flip emulation. |
-| Blade & Sorcery: Nomad | Quest | ⚠️ Works with issues | Pauses and re-centres (a sideways jump) when the Frame briefly loses focus. |
-| I Am Cat | Quest | ⚠️ Works with issues | Renders each eye separately (the right eye was grey otherwise); the picture stutters slightly. |
+| I Am Cat | Quest | ⚠️ Works with issues | The view vibrates slightly, even when holding still. |
 | Lucky's Tale | Quest | ⚠️ Works with issues | Keeps MSAA off; the game turned it on by itself and the whole Frame restarted in a menu. |
 | Myst | Quest | ⚠️ Works with issues | Minor graphical glitches on some objects. |
 | Phantom: Covert Ops | Quest | ⚠️ Works with issues | DLC/store button crashes (no Meta store). |
