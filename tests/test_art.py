@@ -312,6 +312,22 @@ def test_picked_art_survives_installs(monkeypatch):
     assert (d / "portrait.png").read_bytes() == png("red")
 
 
+
+def test_generated_cover_still_gets_a_steam_placeholder():
+    """The library's generated cover/banner (apps without store art, e.g. WiiCompiled) aren't store art: Steam still
+    gets the placeholder set (it used to get nothing at all, a blank tile in the Frame's library)."""
+    from PIL import Image
+
+    from frameport.artwork import fetch, steam
+
+    pkg = "org.example.generated"
+    d = fetch.artwork_dir(pkg)
+    d.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (600, 900)).save(d / "cover.jpg")
+    Image.new("RGB", (920, 430)).save(d / "banner.jpg")
+    art = steam.steam_set(pkg, title="Generated Cover App")
+    assert {"portrait", "landscape", "hero"} <= set(art)
+
 def test_apps_without_store_art_get_a_cover(tmp_path):
     """FramePort's library shows a cover (name + APK icon) for apps no store knows; store art always wins."""
     import zipfile

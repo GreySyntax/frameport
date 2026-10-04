@@ -76,7 +76,8 @@ def steam_set(package: str, title: str = "", apk: str | Path | None = None) -> d
     title = title or package
     out_dir = fetch.artwork_dir(package) / "steam"
     out_dir.mkdir(parents=True, exist_ok=True)
-    placeholder = not (set(src) - {"icon"})  # no store art (at most the APK's icon): the name on a coloured tile
+    # no store art (at most the APK's icon; the GUI's generated cover/banner don't count): the name on a coloured tile
+    placeholder = not (set(src) & (STORE_KINDS | {"shot"}))
     parts = [f"{k}:{p.stat().st_size}:{p.stat().st_mtime_ns}" for k, p in sorted(src.items())]
     if placeholder:
         parts.append(f"placeholder:{PLACEHOLDER_VERSION}:{title}:{apk or ''}")
