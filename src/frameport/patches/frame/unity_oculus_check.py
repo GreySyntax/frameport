@@ -7,9 +7,13 @@ from __future__ import annotations
 
 from ...analysis import elf
 from ..base import ApkContext, Patch, Suggestion, register
+from . import artifact
 
 PACKAGE = "com.oculus.systemactivities"
 ALWAYS_THERE = "android"
+# Unity's legacy frame loop never calls ovrp_WaitToBeginFrame: its ovrp_Update2 lookup goes to native/ovrpshim
+SHIM = "libfp_ovrp.so"
+UPDATE, SHIM_UPDATE = "ovrp_Update2", "fpov_Update2"
 
 
 class UnityOculusCheck(Patch):
@@ -43,6 +47,14 @@ class UnityOculusCheck(Patch):
         data, count = elf.replace_rodata_string(ws.read(name), PACKAGE, ALWAYS_THERE)
         if not count:
             return False
+        data, loops = elf.replace_rodata_string(data, UPDATE, SHIM_UPDATE)
+        plugin = ws.lib("libOVRPlugin.so")
+        if loops and ws.abi == "arm64-v8a" and ws.has(plugin):
+            ovrp = ws.read(plugin)
+            if SHIM.encode() not in ovrp:
+                ws.put(plugin, elf.add_needed(ovrp, SHIM))
+            ws.put(ws.lib(SHIM), artifact(ws.abi, SHIM))
+            ctx.notes.append(f"libunity.so: {UPDATE} -> {SHIM_UPDATE} ({SHIM} waits for each frame)")
         ws.put(name, data)
         ctx.notes.append(f"libunity.so: {PACKAGE} -> {ALWAYS_THERE} ({count}x)")
         return True
