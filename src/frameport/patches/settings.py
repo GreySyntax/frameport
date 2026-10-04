@@ -83,6 +83,14 @@ SETTINGS = [
     ("layer_debug", "int", 0, "Extra diagnostics (log)",
      "Logs details for debugging: composition layers and swapchains, focus changes, play-space creation, pointer vs "
      "grip poses, refresh rates. No effect on the game."),
+    ("eye_debug", "int", 0, "Per-eye diagnostics (log)",
+     "For one eye looking wrong (e.g. a jittering right eye): logs each eye's submitted pose against a fresh one, the "
+     "eye-to-eye relation and when each eye's image was released, also into framebridge.log in the game's storage "
+     "(some games stop Android's log early). No effect on the game."),
+    ("release_wait", "int", 0, "Wait for the game's GPU before showing an image",
+     "Before a swapchain image is handed to the Frame, wait until the game's GPU work on it has finished, for games "
+     "that hand over images early (an eye flickers or jitters). Costs some frame time. 2 = only after the first 60 s "
+     "(compare both in one session)."),
     ("scene_emul", "int", 0, "Emulate Meta scene (room)",
      "Fake XR_FB_scene/spatial entities: a guardian-sized room with floor, ceiling and four walls, for mixed-reality "
      "games that build their level from the room (e.g. Demeter)."),
@@ -199,7 +207,7 @@ UI: dict[str, dict] = {
                             control=("choice", [(0, "As the game sends it"), (2, "Flat")])),
     **{key: dict(group="troubleshooting", level="advanced", control=("switch",)) for key in (
         "foveation_fix", "swapchain_fix", "layer_fix", "gl_hide_multiview", "mutable_fix", "flip_quads", "swap_eyes",
-        "strip_depth", "respace_kick", "layer_debug")},
+        "strip_depth", "respace_kick", "layer_debug", "eye_debug", "release_wait")},
 }
 
 

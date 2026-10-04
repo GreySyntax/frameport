@@ -45,7 +45,30 @@
 #include <string.h>
 
 #define TAG "FrameBridge"
-#define LOG(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
+#include <stdarg.h>
+#include <time.h>
+// Everything also goes to <app external files>/framebridge.log when eye_debug is on: some games end Lepton's logcat
+// mirror early (WiiCompiled), so a headset session's diagnostics would otherwise be lost.
+static FILE *log_file;
+static void fb_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void fb_log(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    __android_log_vprint(ANDROID_LOG_INFO, TAG, fmt, args);
+    va_end(args);
+    if (!log_file) return;
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    flockfile(log_file);
+    fprintf(log_file, "%lld.%03ld ", (long long)now.tv_sec, now.tv_nsec / 1000000);
+    va_start(args, fmt);
+    vfprintf(log_file, fmt, args);
+    va_end(args);
+    fputc('\n', log_file);
+    fflush(log_file);
+    funlockfile(log_file);
+}
+#define LOG(...) fb_log(__VA_ARGS__)
 
 static void *loader;
 static PFN_xrGetInstanceProcAddr next_gipa;
@@ -53,6 +76,8 @@ static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static XrInstance active_instance = XR_NULL_HANDLE;
 static void *android_vm;     // JavaVM from XrInstanceCreateInfoAndroidKHR (surface_swapchain.c)
 static int surface_emul = 1;  // setting: emulate Android surface swapchains
+static int eye_debug;          // setting: per-eye diagnostics + file log (eye_debug.c)
+static int release_wait;       // setting: wait for the app's GPU work before releasing images (2 = after 60 s: A/B)
 static void surf_on_destroy(XrSwapchain handle);
 
 static float scale = 1.0f;
@@ -122,6 +147,8 @@ static void read_settings(const char *path) {
         if (sscanf(line, "controller_models=%f", &value) == 1) controller_models = value != 0;
         if (sscanf(line, "layer_debug=%f", &value) == 1) layer_debug = value != 0;
         if (sscanf(line, "surface_emul=%f", &value) == 1) surface_emul = value != 0;
+        if (sscanf(line, "eye_debug=%f", &value) == 1) eye_debug = value != 0;
+        if (sscanf(line, "release_wait=%f", &value) == 1) release_wait = (int)value;
         if (sscanf(line, "profile_remap=%f", &value) == 1) profile_remap = value != 0;
         if (sscanf(line, "sync_guard=%f", &value) == 1) sync_guard = value != 0;
         if (sscanf(line, "stable_local=%f", &value) == 1) stable_local = value != 0;
@@ -173,6 +200,12 @@ static void initialize(void) {
     }
     const char *env = getenv("FRAMEBRIDGE_CONFIG");
     if (env && *env) read_settings(env);
+    if (eye_debug && *process && !strchr(process, '/')) {
+        snprintf(path, sizeof(path), "/sdcard/Android/data/%s/files/framebridge.log", process);
+        log_file = fopen(path, "a");
+    }
+    if (eye_debug || release_wait) LOG("per-game: eye_debug=%d release_wait=%d log_file=%s", eye_debug, release_wait,
+                                       log_file ? path : "none");
     if (controller_models && *process && !strchr(process, '/')) render_model_init(process);
 
     LOG("scale=%.2f foveation_fix=%d controller_fix=%d swapchain_fix=%d layer_fix=%d mutable_fix=%d swap_eyes=%d passthrough_emul=%d respace_kick=%d flip_quads=%d controller_models=%d loader=%s",
@@ -682,6 +715,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrDestroySpace(XrSpace space) {
 #include "session_fixes.c"
 #include "layer_emul_gl.c"
 #include "surface_swapchain.c"
+#include "eye_debug.c"
 
 XRAPI_ATTR XrResult XRAPI_CALL xrCreateSession(XrInstance instance, const XrSessionCreateInfo *info, XrSession *session) {
     PFN_xrCreateSession fn = (PFN_xrCreateSession)lookup(instance, "xrCreateSession");
@@ -873,6 +907,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrLocateViews(XrSession session, const XrViewLoca
 XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession session, const XrFrameEndInfo *info) {
     PFN_xrEndFrame fn = (PFN_xrEndFrame)lookup(active_instance, "xrEndFrame");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    if (eye_debug) eye_debug_end_frame(session, info);
     {   // frame pacing statistics every ~5 s: fps and submitted-vs-predicted display time
         static struct timespec start;
         static int frames;
@@ -1258,6 +1293,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const 
         HOOK_AS(xrRequestDisplayRefreshRateFB, hook_request_refresh_rate)
     }
     if (surface_emul) HOOK_AS(xrCreateSwapchainAndroidSurfaceKHR, hook_xrCreateSwapchainAndroidSurfaceKHR)
+    if (eye_debug || release_wait) HOOK_AS(xrReleaseSwapchainImage, eye_hook_xrReleaseSwapchainImage)
     if (sync_guard || layer_debug) HOOK_AS(xrSyncActions, hook_xrSyncActions)
     if (layer_debug) HOOK_AS(xrGetActionStateBoolean, hook_xrGetActionStateBoolean)
     if (layer_debug || aim_correction_on() || profile_remap)
