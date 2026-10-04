@@ -60,7 +60,7 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | QuestCraft | Quest | ⚠️ Works with issues | The launcher runs, but Minecraft crashes while starting its graphics (OpenGL error 1282). |
 | Silhouette | Quest | ⚠️ Works with issues | Hand-tracking game; the Frame synthesizes hands from controllers, so it is janky. |
 | Time Stall | Quest | ⚠️ Works with issues | Both eyes distort during movement (unresolved). |
-| WiiCompiled VR | Quest | ⚠️ Works with issues | The right eye jitters during races (menus are fine), and the launcher's import buttons can't open a file picker. |
+| WiiCompiled VR | Quest | ⚠️ Works with issues | To add a game: in FramePort's Files tab, upload your .wcgame file to this game's storage, folder Android/data/org.wiicompiled.quest/files/WiiCompiledOpenXRVR… |
 | BONELAB | Quest | ❌ Doesn't run | Crashes while starting its graphics (Vulkan); no fix yet. |
 | Espire 1: VR Operative (Quest Edition) | Quest | ❌ Doesn't run | Mesa GL driver crash during texture upload. |
 | HITMAN 3 VR: Reloaded | Quest | ❌ Doesn't run | Vulkan driver crash (freedreno), even without Valve layers. |

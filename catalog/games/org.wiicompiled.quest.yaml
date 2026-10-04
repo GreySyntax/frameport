@@ -1,16 +1,15 @@
 package: org.wiicompiled.quest
 title: WiiCompiled VR
 status: issues
-notes: The right eye jitters during races (menus are fine), and the launcher's import buttons can't open a file picker.
+notes: 'To add a game: in FramePort''s Files tab, upload your .wcgame file to this game''s storage, folder
+  Android/data/org.wiicompiled.quest/files/WiiCompiledOpenXRVR/Import, then open WiiCompiled (it imports the newest
+  file there; one at a time). The right eye jitters during races.'
 details: A native Mario Kart Wii recompilation (needs your own disc as .wcgame files built by the WiiCompiled
-  launcher on a computer). Lepton's Android has no document picker, so "Import from computer" and "select disc
-  image" fail (ActivityNotFoundException for OPEN_DOCUMENT); the import can be done by hand - each .wcgame is a zip
-  whose game.json and libmain.so go to the app's internal files/game/<profile> (profile "base" or "retro_rewind" from
-  game.json), DATA/ to Android/data/org.wiicompiled.quest/files/WiiCompiledOpenXRVR/DATA and MOD/ to
-  .../WiiCompiledOpenXRVR/RetroRewind6. The game's libmain.so has its own OpenXR loader and talks to the Frame's
-  runtime directly (FrameBridge isn't in its path); the right-eye jitter in races comes from its stereo replay of the
-  race view, so it needs a fix in WiiCompiled itself. The launcher is a flat Android window (shown with
-  lepton-show-flatscreen).
+  launcher on a computer). Lepton's Android has no document picker, so the launcher's "Import from computer" and
+  "select disc image" buttons fail (ActivityNotFoundException for OPEN_DOCUMENT); its Import folder is read when the
+  launcher opens instead. The game's libmain.so has its own OpenXR loader and talks to the Frame's runtime directly
+  (FrameBridge isn't in its path); the right-eye jitter in races comes from its stereo replay of the race view, so it
+  needs a fix in WiiCompiled itself. The launcher is a flat Android window (shown with lepton-show-flatscreen).
 tested_version: 0.4.0-quest
 engine: Other
 xr: OpenXR
