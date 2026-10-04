@@ -54,6 +54,22 @@ def test_adapter_and_launcher(tmp_path, quest_manifest):
         assert names.count("lib/arm64-v8a/libopenxr_loader_generic.so") == 1
 
 
+def test_adapter_refreshes_existing_wrapper(tmp_path, quest_manifest):
+    """Reinstalling an already wrapped APK replaces its adapter with the shipped repair."""
+    from frameport.patches.frame import artifact
+
+    apk = _apk(tmp_path, quest_manifest)
+    with ApkWorkspace(apk) as ws:
+        ws.put(ws.lib("libopenxr_loader_original.so"), b"original-loader")
+        ws.put(ws.lib("libopenxr_loader_generic.so"), b"old-adapter")
+        patch = base.get("frame.adapter")
+        ctx = base.ApkContext(ws, _analysis(), {}, Reporter(), {"frame.adapter": {}})
+        assert patch.apply(ctx)
+        assert ws.read_lib("libopenxr_loader_generic.so") == artifact(ws.abi, "libopenxr_loader_generic.so")
+        assert ws.read_lib("libopenxr_loader_original.so") == b"original-loader"
+        assert not patch.apply(ctx)
+
+
 def test_controller_models_adds_xrshim(tmp_path, quest_manifest):
     from pathlib import Path
 

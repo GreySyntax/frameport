@@ -1,5 +1,9 @@
 # Native components
 
+FrameBridge includes automatic metadata retirement for the verified Meta XR Audio
+Wwise build; see [AUDIO_METADATA.md](../docs/AUDIO_METADATA.md) for its lifetime
+invariant and regression coverage. It uses the existing adapter installation.
+
 Sources of the prebuilt binaries in `../artifacts/` (committed, with `SHA256SUMS`). End users never compile anything;
 developers rebuild with `python native/build.py` (downloads NDK r27c, OpenXR headers at pinned commits, d8 into
 `native/.cache/`, git-ignored). The adapter, GL shim and platform compat rebuild byte-identically; the VrApi bridge
