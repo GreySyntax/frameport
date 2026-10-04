@@ -104,15 +104,36 @@ static void debug_reference_space(XrSession session, const XrReferenceSpaceCreat
 static pthread_mutex_t sync_lock = PTHREAD_MUTEX_INITIALIZER;
 static int64_t sync_resume_at;
 
+// layer_debug input counters, logged with the pacing line: were actions synced, did any button read as pressed?
+static int input_syncs, input_sync_ok, input_bool_reads, input_bool_true, input_last_sync_result;
+
 static XRAPI_ATTR XrResult XRAPI_CALL hook_xrSyncActions(XrSession session, const XrActionsSyncInfo *info) {
     PFN_xrSyncActions fn = (PFN_xrSyncActions)lookup(active_instance, "xrSyncActions");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    if (!sync_guard) {  // installed for layer_debug only: count
+        XrResult r = fn(session, info);
+        __atomic_add_fetch(&input_syncs, 1, __ATOMIC_RELAXED);
+        if (r == XR_SUCCESS) __atomic_add_fetch(&input_sync_ok, 1, __ATOMIC_RELAXED);
+        input_last_sync_result = r;
+        return r;
+    }
     pthread_mutex_lock(&sync_lock);
     int64_t wait = sync_resume_at - monotonic_ns();
     XrResult r = wait > 0 ? XR_SESSION_NOT_FOCUSED : fn(session, info);
     pthread_mutex_unlock(&sync_lock);
     static int logged;
     if (wait > 0 && logged++ < 5) LOG("sync_guard: input paused for %.0f ms after focus returned", wait / 1e6);
+    return r;
+}
+
+static XRAPI_ATTR XrResult XRAPI_CALL hook_xrGetActionStateBoolean(XrSession session, const XrActionStateGetInfo *info,
+        XrActionStateBoolean *state) {
+    PFN_xrGetActionStateBoolean fn = (PFN_xrGetActionStateBoolean)lookup(active_instance, "xrGetActionStateBoolean");
+    if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    XrResult r = fn(session, info, state);
+    __atomic_add_fetch(&input_bool_reads, 1, __ATOMIC_RELAXED);
+    if (r == XR_SUCCESS && state && state->isActive && state->currentState)
+        __atomic_add_fetch(&input_bool_true, 1, __ATOMIC_RELAXED);
     return r;
 }
 

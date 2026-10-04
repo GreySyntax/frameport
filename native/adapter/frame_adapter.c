@@ -879,6 +879,12 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession session, const XrFrameEndInf
         if (elapsed >= 5.0) {
             LOG("pacing: %.1f fps, displayTime vs predicted: avg %.2f ms, max %.2f ms", frames / elapsed,
                 drift_sum / (double)frames / 1e6, drift_max / 1e6);
+            if (layer_debug)
+                LOG("layer_debug: input: %d xrSyncActions (%d ok, last %d), %d bool reads, %d pressed",
+                    __atomic_exchange_n(&input_syncs, 0, __ATOMIC_RELAXED),
+                    __atomic_exchange_n(&input_sync_ok, 0, __ATOMIC_RELAXED), input_last_sync_result,
+                    __atomic_exchange_n(&input_bool_reads, 0, __ATOMIC_RELAXED),
+                    __atomic_exchange_n(&input_bool_true, 0, __ATOMIC_RELAXED));
             frames = 0; drift_sum = drift_max = 0;
         }
     }
@@ -1091,6 +1097,18 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetCurrentInteractionProfile(XrSession session,
         (PFN_xrGetCurrentInteractionProfile)lookup(active_instance, "xrGetCurrentInteractionProfile");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
     XrResult result = fn(session, user, state);
+    if (layer_debug && active_instance) {  // which device each hand has, as the runtime reports it
+        PFN_xrPathToString str = (PFN_xrPathToString)lookup(active_instance, "xrPathToString");
+        char who[XR_MAX_PATH_LENGTH] = "?", what[XR_MAX_PATH_LENGTH] = "(none)";
+        uint32_t n = 0;
+        if (str) {
+            str(active_instance, user, sizeof(who), &n, who);
+            if (XR_SUCCEEDED(result) && state && state->interactionProfile)
+                str(active_instance, state->interactionProfile, sizeof(what), &n, what);
+        }
+        static int logged;
+        if (logged++ < 40) LOG("layer_debug: interaction profile of %s: %s (result %d)", who, what, result);
+    }
     if (!controller_fix || XR_FAILED(result) || !state || !state->interactionProfile || !active_instance)
         return result;
     PFN_xrPathToString to_string = (PFN_xrPathToString)lookup(active_instance, "xrPathToString");
@@ -1223,7 +1241,8 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const 
     if (layer_debug || refresh_rate > 0) {
         HOOK_AS(xrRequestDisplayRefreshRateFB, hook_request_refresh_rate)
     }
-    if (sync_guard) HOOK_AS(xrSyncActions, hook_xrSyncActions)
+    if (sync_guard || layer_debug) HOOK_AS(xrSyncActions, hook_xrSyncActions)
+    if (layer_debug) HOOK_AS(xrGetActionStateBoolean, hook_xrGetActionStateBoolean)
     if (layer_debug || aim_correction_on() || profile_remap)
         HOOK_AS(xrSuggestInteractionProfileBindings, hook_xrSuggestInteractionProfileBindings)
     if (layer_debug || aim_correction_on()) {

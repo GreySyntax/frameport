@@ -45,6 +45,7 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | VR4 | Quest | ✅ Works |  |
 | Wallace & Gromit in The Grand Getaway | Quest | ✅ Works |  |
 | Wander | Quest | ✅ Works |  |
+| Accounting+ | Quest | ⚠️ Works with issues | Starts in VR, but doesn't get past its "press any button" screen. |
 | Arcsmith | Quest | ⚠️ Works with issues | Right eye distorts during movement (unresolved; swap, tracking, Valve layers, depth and pacing ruled out). |
 | Assassin's Creed Nexus | Quest | ⚠️ Works with issues | Some launch warning text is still upside down; the rest of the UI is fixed by flip emulation. |
 | I Am Cat | Quest | ⚠️ Works with issues | The view vibrates slightly, even when holding still. |

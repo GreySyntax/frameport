@@ -453,8 +453,9 @@ I Am Cat multipass: poses/times consistent, but every frame is submitted after t
 Zink + doubled draws) and the game clamps its physics step to 10 ms → judder while still; testing scale 0.8. Roblox's
 newest crash is on Fossilize's recording thread → vk_sanitize extended to own-engine libs (engine "Other").
 Accounting+: unity_oculus_check + native/ovrpshim (libfp_ovrp.so waits via ovrp_WaitToBeginFrame before Unity
-2017's ovrp_Update2) → frames at ~71 fps headless (2026-10-04); headset test pending. "outside of frame bounds" warnings
-stay (~2/frame) and are harmless.
+2017's ovrp_Update2) → VR in the headset at ~72 fps (2026-10-04), but stuck at "press any button" although input
+reaches its OVRInput cleanly (probe: both Touch connected 0x63, individual buttons, input focus 1) → works with issues.
+"outside of frame bounds" warnings stay (~2/frame) and are harmless.
 Headset round 3 (owner's verdicts, 2026-10-04): Blade & Sorcery works — its freezes were the headset's wear sensor
 flickering off while worn (vrserver.txt "HMD off/on" 0.5-2 s) → per-game `focus_hold_ms=2500` (only this game reacts;
 not a default). BattleGlide works (focus_hold). Myst works with issues (object glitches; space warp ruled out, its

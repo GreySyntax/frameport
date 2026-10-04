@@ -48,3 +48,148 @@ EXPORT int fpov_Update2(int step, int frame_index, double prediction_seconds) {
     }
     return real_update2 ? real_update2(step, frame_index, prediction_seconds) : -1000;  // ovrpFailure
 }
+
+// ---------------------------------------------------------------- input diagnostics (pass-through)
+// The game's C# input (OVRInput) asks OVRPlugin which controllers are connected and for their button state. These
+// wrappers return exactly what OVRPlugin returns and log the connected mask and every change of the button bits, to
+// see whether presses reach the game (Accounting+ stuck at "press any button" while the runtime reports presses).
+typedef struct { unsigned int words[3]; } State;  // the common start: ConnectedControllers, Buttons, Touches
+// ovrpControllerState2 is returned by value (through x8): the type must have its exact size, 64 bytes (4 uint32,
+// IndexTrigger[2], HandTrigger[2], Thumbstick[2] and Touchpad[2] as float pairs)
+typedef struct { unsigned int words[16]; } State2;
+_Static_assert(sizeof(State2) == 64, "ovrpControllerState2 is 64 bytes");
+typedef unsigned int (*PFN_GetConnected)(void);
+typedef int (*PFN_GetState4)(unsigned int mask, State *state);  // (written by OVRPlugin; only the start is read)
+typedef State2 (*PFN_GetState2)(unsigned int mask);
+static PFN_GetConnected real_connected;
+static PFN_GetState4 real_state4;
+static PFN_GetState2 real_state2;
+static pthread_once_t input_once = PTHREAD_ONCE_INIT;
+
+static void input_init(void) {
+    void *ovrp = dlopen("libOVRPlugin.so", RTLD_NOW | RTLD_NOLOAD);
+    if (!ovrp) return;
+    real_connected = (PFN_GetConnected)dlsym(ovrp, "ovrp_GetConnectedControllers");
+    real_state4 = (PFN_GetState4)dlsym(ovrp, "ovrp_GetControllerState4");
+    real_state2 = (PFN_GetState2)dlsym(ovrp, "ovrp_GetControllerState2");
+}
+
+// per requested controller mask (the game may ask for Touch, Remote, Gamepad... separately)
+static struct { unsigned int mask, connected, buttons; int seen; } masks[8];
+static int changes;
+
+// Face buttons on the Frame's controllers can read as clicked while only touched (Accounting+: buttons == touches ==
+// A|B|X|Y held for seconds). A button held for more than STUCK_NS is reported released until it really lets go, so
+// real presses (short) still register as a change.
+#include <time.h>
+#define STUCK_NS 2000000000ll
+static long long held_since[32];
+static unsigned int suppressed;
+
+static long long now_ns(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1000000000ll + t.tv_nsec;
+}
+
+static unsigned int unstick(unsigned int buttons) {
+    long long now = now_ns();
+    for (int b = 0; b < 32; b++) {
+        unsigned int bit = 1u << b;
+        if (!(buttons & bit)) {
+            held_since[b] = 0;
+            suppressed &= ~bit;
+            continue;
+        }
+        if (!held_since[b]) held_since[b] = now;
+        if (now - held_since[b] > STUCK_NS && !(suppressed & bit)) {
+            suppressed |= bit;
+            static int logged;
+            if (logged++ < 20) LOG("ovrp input: button 0x%x held for > 2 s: reported released until let go", bit);
+        }
+    }
+    return buttons & ~suppressed;
+}
+
+static void note_state(const char *which, unsigned int mask, const State *s) {
+    int i = 0;
+    while (i < 8 && masks[i].seen && masks[i].mask != mask) i++;
+    if (i == 8) return;
+    if (!masks[i].seen || masks[i].buttons != s->words[1] || masks[i].connected != s->words[0]) {
+        if (changes++ < 120)
+            LOG("ovrp input: %s(mask 0x%x): connected 0x%x buttons 0x%x touches 0x%x%s", which, mask, s->words[0],
+                s->words[1], s->words[2], masks[i].seen ? "" : " (first call with this mask)");
+        masks[i].seen = 1;
+        masks[i].mask = mask;
+        masks[i].connected = s->words[0];
+        masks[i].buttons = s->words[1];
+    }
+}
+
+EXPORT unsigned int fpov_GetConnectedControllers(void) {
+    pthread_once(&input_once, input_init);
+    unsigned int c = real_connected ? real_connected() : 0;
+    static unsigned int last = 0xffffffffu;
+    static int logged;
+    if (c != last && logged++ < 20) LOG("ovrp input: connected controllers 0x%x", c);
+    last = c;
+    return c;
+}
+
+EXPORT int fpov_GetControllerState4(unsigned int mask, State *state) {
+    pthread_once(&input_once, input_init);
+    int r = real_state4 ? real_state4(mask, state) : -1000;
+    if (state) {
+        note_state("State4", mask, state);
+        state->words[1] = unstick(state->words[1]);
+    }
+    return r;
+}
+
+EXPORT State2 fpov_GetControllerState2(unsigned int mask) {
+    pthread_once(&input_once, input_init);
+    State2 s = {{0}};
+    if (real_state2) s = real_state2(mask);
+    note_state("State2", mask, (const State *)&s);
+    s.words[1] = unstick(s.words[1]);
+    return s;
+}
+
+// Unity's own input (libunity.so: Input.GetKey/anyKey on the Oculus device) reads ovrp_GetControllerState (v1,
+// returned by value, 48 bytes: 4 uint32, IndexTrigger[2], HandTrigger[2], Thumbstick[2]) and ovrp_GetControllerState2
+typedef struct { unsigned int words[12]; } State1;
+_Static_assert(sizeof(State1) == 48, "ovrpControllerState is 48 bytes");
+typedef State1 (*PFN_GetState1)(unsigned int mask);
+static PFN_GetState1 real_state1;
+
+EXPORT State1 fpov_GetControllerState(unsigned int mask) {
+    pthread_once(&input_once, input_init);
+    if (!real_state1) {
+        void *ovrp = dlopen("libOVRPlugin.so", RTLD_NOW | RTLD_NOLOAD);
+        if (ovrp) real_state1 = (PFN_GetState1)dlsym(ovrp, "ovrp_GetControllerState");
+    }
+    State1 s = {{0}};
+    if (real_state1) s = real_state1(mask);
+    note_state("State1(unity)", mask, (const State *)&s);
+    return s;
+}
+
+// Oculus Utilities (1.3x) ignores every button unless OVRPlugin reports input focus; with Unity 2017's legacy frame
+// loop on OVRPort's OVRPlugin that may never be true. Report it as true (the session's own focus still pauses the game)
+// and log what OVRPlugin said.
+typedef int (*PFN_GetInputFocus)(int *has_focus);
+static PFN_GetInputFocus real_input_focus;
+
+EXPORT int fpov_GetAppHasInputFocus(int *has_focus) {
+    pthread_once(&input_once, input_init);
+    if (!real_input_focus) {
+        void *ovrp = dlopen("libOVRPlugin.so", RTLD_NOW | RTLD_NOLOAD);
+        if (ovrp) real_input_focus = (PFN_GetInputFocus)dlsym(ovrp, "ovrp_GetAppHasInputFocus");
+    }
+    int value = 0, r = real_input_focus ? real_input_focus(&value) : -1000;
+    static int last = -2, logged;
+    if ((r < 0 ? -1 : value) != last && logged++ < 20) LOG("ovrp input: OVRPlugin input focus %d (result %d)", value, r);
+    last = r < 0 ? -1 : value;
+    if (has_focus) *has_focus = 1;
+    return 0;  // ovrpSuccess
+}

@@ -14,6 +14,13 @@ ALWAYS_THERE = "android"
 # Unity's legacy frame loop never calls ovrp_WaitToBeginFrame: its ovrp_Update2 lookup goes to native/ovrpshim
 SHIM = "libfp_ovrp.so"
 UPDATE, SHIM_UPDATE = "ovrp_Update2", "fpov_Update2"
+# input diagnostics (off): the C# P/Invoke names in libil2cpp.so pointed at the shim's wrappers, which log what they
+# return, report input focus as true and release buttons held > 2 s. Accounting+ still didn't pass "press any button"
+# with them (input reached the game cleanly), so they stay off; switch on to investigate another game.
+INPUT_PROBE = False
+INPUT_CALLS = ("ovrp_GetConnectedControllers", "ovrp_GetControllerState4", "ovrp_GetControllerState2",
+               "ovrp_GetAppHasInputFocus")
+UNITY_INPUT_CALLS = ("ovrp_GetControllerState", "ovrp_GetControllerState2")
 
 
 class UnityOculusCheck(Patch):
@@ -57,6 +64,20 @@ class UnityOculusCheck(Patch):
                 ws.put(plugin, elf.add_needed(ovrp, SHIM))
             ws.put(ws.lib(SHIM), artifact(ws.abi, SHIM))
             ctx.notes.append(f"libunity.so: {UPDATE} -> {SHIM_UPDATE} ({SHIM} waits for each frame)")
+        il2cpp = ws.lib("libil2cpp.so")
+        if loops and INPUT_PROBE and ws.has(il2cpp):  # diagnostics: the game's C# input calls go through the shim
+            code, probes = ws.read(il2cpp), 0
+            for real in INPUT_CALLS:
+                code, n = elf.replace_rodata_string(code, real, "fpov_" + real[5:])
+                probes += n
+            if probes:
+                ws.put(il2cpp, code)
+                ctx.notes.append(f"libil2cpp.so: {probes} input calls logged by {SHIM}")
+        if loops and INPUT_PROBE:  # Unity's own input reads too
+            for real in UNITY_INPUT_CALLS:
+                data, n = elf.replace_rodata_string(data, real, "fpov_" + real[5:])
+                if n:
+                    ctx.notes.append(f"libunity.so: {real} logged by {SHIM}")
         ws.put(name, data)
         ctx.notes.append(f"libunity.so: {PACKAGE} -> {ALWAYS_THERE} ({count}x)")
         return True
