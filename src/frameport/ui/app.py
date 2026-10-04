@@ -1043,18 +1043,7 @@ class FramePortApp:
             tr("Removes {title} from this PC's Steam library (Steam restarts once). "
                "The game folder isn't touched.").format(title=title)
 
-        files = pipeline.local_game_files(pkg)
-        size = sum((sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size)
-                   for p in files)
-        delete_local = ft.Checkbox(label=tr("Also delete this game's files on this PC ({size})").format(
-            size=fmt_size(size)), value=False, active_color=T.ERROR) if files else None
-        extra = None
-        if delete_local:
-            from ..core import winhost
-
-            shown = [winhost.to_windows(p) if winhost.is_wsl() else str(p) for p in files]
-            extra = ft.Column([delete_local, *[C.body("• " + s, T.TEXT_3) for s in shown[:4]]], spacing=T.px(4),
-                              tight=True)
+        delete_local, extra = self._delete_local_option(pkg)
 
         def run(job: Job):
             self._target_for(to).uninstall(pkg, keep_data=True)
@@ -1070,12 +1059,37 @@ class FramePortApp:
                   lambda: self.submit(tr("Uninstall {title}").format(title=title), run, pkg, "uninstall"), danger=True,
                   extra=extra)
 
+    def _delete_local_option(self, pkg: str) -> tuple[ft.Checkbox | None, ft.Control | None]:
+        """The 'Also delete this game's files on this PC' checkbox (off by default) with the paths it would delete."""
+        files = pipeline.local_game_files(pkg)
+        if not files:
+            return None, None
+        size = sum((sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size)
+                   for p in files)
+        box = ft.Checkbox(label=tr("Also delete this game's files on this PC ({size})").format(size=fmt_size(size)),
+                          value=False, active_color=T.ERROR)
+        from ..core import winhost
+
+        shown = [winhost.to_windows(p) if winhost.is_wsl() else str(p) for p in files]
+        return box, ft.Column([box, *[C.body("• " + s, T.TEXT_3) for s in shown[:4]]], spacing=T.px(4), tight=True)
+
     def remove_from_library(self, pkg: str) -> None:
         title = self._title(pkg)
+        delete_local, extra = self._delete_local_option(pkg)
+
+        def remove():
+            if delete_local and delete_local.value:
+                _done, freed = pipeline.delete_local_files(pkg)  # (removes the library entry too)
+                message = tr("Removed {title} and deleted its files on this PC ({size})").format(
+                    title=title, size=fmt_size(freed))
+            else:
+                library.remove_game(pkg)
+                message = tr("Removed {title}").format(title=title)
+            self.go("library")
+            self.toast(message)
         C.confirm(self.page, tr("Remove {title} from the library?").format(title=title),
-                  tr("Only FramePort's entry is removed. Your game files and anything installed stay."), tr("Remove"),
-                  lambda: (library.remove_game(pkg), self.go("library"),
-                           self.toast(tr("Removed {title}").format(title=title))), danger=True)
+                  tr("Removes FramePort's entry. Anything installed on the Frame stays."), tr("Remove"), remove,
+                  danger=True, extra=extra)
 
     def _target_for(self, to: str):
         if to == "pc":
