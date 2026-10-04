@@ -24,7 +24,9 @@ def short(note: str) -> str:
 
 
 def render() -> str:
-    entries = [e for e in catalog.load().values() if e.origin == "bundled" and e.status in STATUS]
+    # the repo's own recipes only (a local user catalog would replace or hide entries)
+    bundled = catalog._load_dir(catalog.catalog_dir() / "games", "bundled")
+    entries = [e for e in bundled.values() if e.status in STATUS]
     entries.sort(key=lambda e: (ORDER[e.status], e.title.lower()))
     rows = ["| Game | Platform | Status | Notes |", "|---|---|---|---|"]
     for e in entries:

@@ -12,6 +12,7 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | BAM | Quest | ✅ Works |  |
 | BARTENDER VR SIMULATOR | Quest | ✅ Works |  |
 | Batman: Arkham Shadow | Quest | ✅ Works |  |
+| BattleGlide | Quest | ✅ Works |  |
 | Beat Saber | Quest | ✅ Works |  |
 | Carve Snowboarding | Quest | ✅ Works |  |
 | Cook-Out | Quest | ✅ Works |  |
@@ -45,11 +46,10 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Wander | Quest | ✅ Works |  |
 | Arcsmith | Quest | ⚠️ Works with issues | Right eye distorts during movement (unresolved; swap, tracking, Valve layers, depth and pacing ruled out). |
 | Assassin's Creed Nexus | Quest | ⚠️ Works with issues | Some launch warning text is still upside down; the rest of the UI is fixed by flip emulation. |
-| BattleGlide | Quest | ⚠️ Works with issues | Can freeze for a moment when the headset briefly loses focus. |
-| Blade & Sorcery: Nomad | Quest | ⚠️ Works with issues | The view can jump sideways when the headset briefly loses focus. |
+| Blade & Sorcery: Nomad | Quest | ⚠️ Works with issues | The view can still jump sideways now and then, and the game sometimes freezes. |
 | I Am Cat | Quest | ⚠️ Works with issues | Renders each eye separately (the right eye was grey otherwise); the picture stutters slightly. |
 | Lucky's Tale | Quest | ⚠️ Works with issues | Keeps MSAA off; the game turned it on by itself and the whole Frame restarted in a menu. |
-| Myst | Quest | ⚠️ Works with issues | Sometimes crashes right after it gets focus (a race in the Frame's input code); relaunch if it does. |
+| Myst | Quest | ⚠️ Works with issues | Minor graphical glitches on some objects. |
 | Phantom: Covert Ops | Quest | ⚠️ Works with issues | DLC/store button crashes (no Meta store). |
 | Silhouette | Quest | ⚠️ Works with issues | Hand-tracking game; the Frame synthesizes hands from controllers, so it is janky. |
 | Time Stall | Quest | ⚠️ Works with issues | Both eyes distort during movement (unresolved). |

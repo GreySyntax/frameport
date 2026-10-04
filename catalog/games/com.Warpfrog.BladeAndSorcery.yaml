@@ -1,7 +1,7 @@
 package: com.Warpfrog.BladeAndSorcery
 title: 'Blade & Sorcery: Nomad'
 status: issues
-notes: The view can jump sideways when the headset briefly loses focus.
+notes: The view can still jump sideways now and then, and the game sometimes freezes.
 details: On each brief focus dip (~0.5 s) the game pauses and, when focus returns, re-aligns the player to the head
   (ThunderRoad Player.OnVRPresence -> Player.Teleport), which looks like a sideways jump. focus_hold hides dips under
   600 ms once the game has been focused for 3 s (5 of 7 in the tested session).
