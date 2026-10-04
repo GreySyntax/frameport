@@ -3,6 +3,7 @@ SSH to 127.0.0.1, so everything else (agent, installs, launch tests) works uncha
 sshd; FramePort authorizes its own key for the local user, no pairing needed."""
 from __future__ import annotations
 
+import functools
 import getpass
 import os
 import platform
@@ -11,6 +12,7 @@ from pathlib import Path
 LOCAL_NAME = "This Frame"
 
 
+@functools.lru_cache(maxsize=1)
 def on_frame() -> bool:
     """SteamOS on ARM64 (the Steam Frame)."""
     if platform.machine().lower() not in ("aarch64", "arm64"):

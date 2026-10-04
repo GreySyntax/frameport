@@ -39,6 +39,12 @@ def bootstrap_dir() -> Path:
     return DATA_ROOT / "bootstrap"
 
 
+def _on_frame() -> bool:
+    from ..frame.local import on_frame
+
+    return on_frame()
+
+
 def user_data_dir() -> Path:
     """Tools, keystores, work dirs and settings. Override with FRAMEPORT_HOME."""
     if os.environ.get("FRAMEPORT_HOME"):
@@ -48,7 +54,10 @@ def user_data_dir() -> Path:
     elif sys.platform == "darwin":
         base = Path.home() / "Library/Application Support/FramePort"
     else:
-        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "frameport"
+        # on the Frame itself ~/.local/share/frameport is the agent's folder (and its purge removes it): the app's own
+        # data (library, tools, game signing keys) lives next to it
+        name = "frameport-app" if _on_frame() else "frameport"
+        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / name
     if not _removed.is_set():
         base.mkdir(parents=True, exist_ok=True)
     return base

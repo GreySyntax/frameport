@@ -100,3 +100,15 @@ def test_framport_on_the_frame_targets_itself(tmp_path, monkeypatch):
     assert not local.authorize_self(connection.app_public_key())  # once
     monkeypatch.setattr(local, "on_frame", lambda: False)
     assert connection.saved_targets()[0].host == "127.0.0.1"  # remembered like any Frame
+
+
+def test_app_data_on_the_frame_stays_out_of_the_agents_folder(monkeypatch, tmp_path):
+    from frameport.core import paths
+    from frameport.frame import local
+
+    monkeypatch.delenv("FRAMEPORT_HOME", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setattr(local, "on_frame", lambda: True)
+    assert paths.user_data_dir() == tmp_path / "frameport-app"  # the agent owns (and purges) .../frameport
+    monkeypatch.setattr(local, "on_frame", lambda: False)
+    assert paths.user_data_dir() == tmp_path / "frameport"
