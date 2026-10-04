@@ -57,6 +57,7 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Lucky's Tale | Quest | ⚠️ Works with issues | Runs out of memory within a few minutes and freezes the Frame until the game is killed. |
 | Myst | Quest | ⚠️ Works with issues | Minor graphical glitches on some objects. |
 | Phantom: Covert Ops | Quest | ⚠️ Works with issues | DLC/store button crashes (no Meta store). |
+| QuestCraft | Quest | ⚠️ Works with issues | The launcher runs, but Minecraft crashes while starting its graphics (OpenGL error 1282). |
 | Silhouette | Quest | ⚠️ Works with issues | Hand-tracking game; the Frame synthesizes hands from controllers, so it is janky. |
 | Time Stall | Quest | ⚠️ Works with issues | Both eyes distort during movement (unresolved). |
 | BONELAB | Quest | ❌ Doesn't run | Crashes while starting its graphics (Vulkan); no fix yet. |

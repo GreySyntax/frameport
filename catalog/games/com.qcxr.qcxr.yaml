@@ -1,0 +1,21 @@
+package: com.qcxr.qcxr
+title: QuestCraft
+status: issues
+notes: The launcher runs, but Minecraft crashes while starting its graphics (OpenGL error 1282).
+details: QuestCraft downloads its Java runtime (JRE.zip from QuestCraft's GitHub releases) into files/runtimes/JRE
+  on first start; on the Frame that step left nothing behind ("libjvm.so not found"). With the runtime unpacked there
+  by hand, Java, Fabric and the mods load and Minecraft 1.21.5 starts initializing, then its first texture fails with
+  OpenGL error 1282 in QuestCraft's GL-to-GLES layer on Zink. Leads (2026-10-04) - Android's libEGL ran out of
+  eglGetProcAddress slots for desktop GL functions; LWJGL and JNA natives in the APK don't match the newer files
+  QuestCraft downloads.
+tested_version: 6.0.0-RC4
+engine: Unity
+xr: OpenXR
+frame:
+- frame.unity_text_input
+device:
+- device.text_input_window
+verified:
+  date: '2026-10-04'
+updated: '2026-10-04'
+source_hint: QuestCraft
