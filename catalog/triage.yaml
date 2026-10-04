@@ -44,7 +44,13 @@ signatures:
     pattern: 'zink.*DEVICE[_ ]LOST|VK_ERROR_DEVICE_LOST'
     severity: fatal
     diagnosis: The GPU hung (Zink/Mesa). For GLES Unity games MSAA render-to-texture is the usual cause.
-    suggest: [frame.unity_no_msaa]
+    suggest: [frame.unity_no_msaa, frame.unity_runtime_msaa_off]
+  - id: unity-runtime-msaa
+    pattern: 'recommended MSAA level is [248]\. Switching to the recommended level'
+    severity: info
+    diagnosis: The game's OVRManager turns MSAA on at runtime (QualitySettings can't keep it off). On GLES this can
+      hang the Frame's GPU or restart the headset; if it does, keep it off in the game's code.
+    suggest: [frame.unity_runtime_msaa_off]
   - id: gl-shader-failed
     pattern: 'GLShim\s*: SHADER COMPILE FAILED|#extension directive is not allowed in the middle|could not implicitly convert operands'
     severity: error

@@ -1,12 +1,15 @@
 package: com.Armature.VR4
 title: VR4
 status: issues
-notes: Some cutscenes crash the game, which makes the main story unplayable.
+notes: Some cutscenes crash the game, which makes the main story unplayable. Installs the no-ForceQuit build.
+details: The regular build quits itself when the first level loads after the opening cutscene (System.exit, GitHub
+  issue 10), so the no-ForceQuit build is installed.
 tested_version: '2.3'
 engine: Unreal
 xr: VrApi
 alt_overport:
 - patch_remove_unreal_force_quit
+use_alt: true
 verified:
   date: '2026-10-02'
   known_good_sha256: 40ff74e37264b28ae8826923b69d0731d9620094c76462be34159643d6ae91b3

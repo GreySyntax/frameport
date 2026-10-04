@@ -29,12 +29,14 @@ def _executable(data: bytes) -> list[tuple[int, int]]:
             if s["p_type"] == "PT_LOAD" and s["p_flags"] & 1]
 
 
-def patch_methods(lib: bytes, found: dict[str, dict[str, tuple[int, int]]]) -> tuple[bytes | None, list[str]]:
-    """Write the return values over the methods' first two instructions. found = il2cpp.find_methods' result.
+def patch_methods(lib: bytes, found: dict[str, dict[str, tuple[int, int]]],
+                  targets: dict[str, dict[str, bytes]] | None = None) -> tuple[bytes | None, list[str]]:
+    """Write the return values over the methods' first two instructions. found = il2cpp.find_methods' result,
+    targets = {class file: {method: RET_*}} (default: the text field methods).
     Returns (patched library or None when nothing changed, notes)."""
     out, notes, changed = bytearray(lib), [], False
     code = _executable(lib)
-    for cls, methods in TARGETS.items():
+    for cls, methods in (targets or TARGETS).items():
         for method, new in methods.items():
             off, length = found.get(cls, {}).get(method, (None, 0))
             if off is None:
@@ -47,11 +49,50 @@ def patch_methods(lib: bytes, found: dict[str, dict[str, tuple[int, int]]]) -> t
                 continue
             out[off:off + len(new)] = new
             changed = True
-            notes.append(f"{name} -> {'true' if new == RET_TRUE else 'false'} (at {off:#x})")
+            notes.append(f"{name} -> {'true/1' if new == RET_TRUE else 'false/0'} (at {off:#x})")
     return (bytes(out) if changed else None), notes
 
 
-class UnityTextInput(Patch):
+ALL_TARGETS: dict[str, list[str]] = {}  # every IL2CPP patch's methods: one Cpp2IL run (and cache entry) serves all
+
+
+class Il2cppReturnPatch(Patch):
+    """Make IL2CPP methods return a constant (targets), found per game with Cpp2IL (analysis/il2cpp.py)."""
+    targets: dict[str, dict[str, bytes]] = {}
+    check_name = ""
+
+    def __init_subclass__(cls, **kw):
+        super().__init_subclass__(**kw)
+        for c, methods in cls.targets.items():
+            ALL_TARGETS.setdefault(c, [])
+            ALL_TARGETS[c] += [m for m in methods if m not in ALL_TARGETS[c]]
+
+    def apply(self, ctx: ApkContext) -> bool:
+        from ...analysis.il2cpp import find_methods
+
+        ws = ctx.ws
+        lib_name = ws.lib("libil2cpp.so")
+        if ws.abi != "arm64-v8a" or not ws.has(lib_name) or not ws.has(METADATA):
+            return False
+        version = (ctx.analysis.extra or {}).get("unity_version")
+        if not version:
+            ctx.reporter.check(self.check_name, False, "not fixed: unknown Unity version (rescan the game)")
+            return False
+        lib = ws.read(lib_name)
+        ctx.reporter.log(f"{self.check_name}: finding the code (Cpp2IL; the first time can take a minute)")
+        try:
+            found = find_methods(lib, ws.read(METADATA), version, ALL_TARGETS)
+            patched, notes = patch_methods(lib, found, self.targets)
+        except Exception as exc:  # noqa: BLE001 - optional fix: the game still builds, unchanged
+            ctx.reporter.check(self.check_name, False, f"not fixed: {exc}")
+            return False
+        ctx.notes.extend(notes or [f"{self.check_name}: code not found in this game"])
+        if patched is not None:
+            ws.put(lib_name, patched)
+        return patched is not None
+
+
+class UnityTextInput(Il2cppReturnPatch):
     id = "frame.unity_text_input"
     title = "Make Unity text fields work without a system keyboard"
     description = ("Unity's TMP_InputField / InputField wait for Android's on-screen keyboard and close themselves a "
@@ -63,6 +104,8 @@ class UnityTextInput(Patch):
                    "Frame from the PC.")
     order = 46
     needs_vr = False
+    targets = TARGETS
+    check_name = "Unity text fields"
 
     def applies(self, a):
         return a.engine == "Unity" and "libil2cpp.so" in a.libs and bool((a.extra or {}).get("text_fields"))
@@ -73,30 +116,6 @@ class UnityTextInput(Patch):
             return Suggestion(True, f"Unity app with text fields ({kinds}): they close at once on the Frame because "
                                     "it has no system keyboard.")
         return None
-
-    def apply(self, ctx: ApkContext) -> bool:
-        from ...analysis.il2cpp import find_methods
-
-        ws = ctx.ws
-        lib_name = ws.lib("libil2cpp.so")
-        if ws.abi != "arm64-v8a" or not ws.has(lib_name) or not ws.has(METADATA):
-            return False
-        version = (ctx.analysis.extra or {}).get("unity_version")
-        if not version:
-            ctx.reporter.check("Unity text fields", False, "not fixed: unknown Unity version (rescan the game)")
-            return False
-        lib = ws.read(lib_name)
-        ctx.reporter.log("finding the text field code (Cpp2IL; the first time can take a minute)")
-        try:
-            found = find_methods(lib, ws.read(METADATA), version, {c: list(m) for c, m in TARGETS.items()})
-            patched, notes = patch_methods(lib, found)
-        except Exception as exc:  # noqa: BLE001 - optional fix: the game still builds, its text fields as before
-            ctx.reporter.check("Unity text fields", False, f"not fixed: {exc}")
-            return False
-        ctx.notes.extend(notes or ["no Unity text field code found"])
-        if patched is not None:
-            ws.put(lib_name, patched)
-        return patched is not None
 
 
 register(UnityTextInput)

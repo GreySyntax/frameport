@@ -2,7 +2,9 @@
 in its "diffable C#" output with the attribute injector). Offset is the method's position in the libil2cpp.so FILE
 (not the virtual address: those differ, e.g. by 0x4000 in Stremio VR's library), which is what a byte patch needs.
 
-Results are cached per libil2cpp.so (sha256), so a rebuild of the same game doesn't run Cpp2IL again."""
+Results are cached per game build (its global-metadata.dat), so a rebuild of the same game doesn't run Cpp2IL again,
+and neither does the next patch of the same build (an earlier one has already changed libil2cpp.so's bytes, never its
+layout)."""
 from __future__ import annotations
 
 import hashlib
@@ -39,8 +41,9 @@ def _plain_version(version: str) -> str:
     return m.group(0) if m else version
 
 
-def _cache_file(lib: bytes) -> Path:
-    return cache_dir() / "il2cpp" / (hashlib.sha256(lib).hexdigest()[:32] + ".json")
+def _cache_file(lib: bytes, metadata: bytes) -> Path:
+    key = hashlib.sha256(metadata + len(lib).to_bytes(8, "little")).hexdigest()[:32]
+    return cache_dir() / "il2cpp" / (key + ".json")
 
 
 def find_methods(lib: bytes, metadata: bytes, unity_version: str, wanted: dict[str, list[str]],
@@ -48,7 +51,7 @@ def find_methods(lib: bytes, metadata: bytes, unity_version: str, wanted: dict[s
     """wanted: {class file (relative to Cpp2IL's DiffableCs folder, e.g. "Unity.TextMeshPro/TMPro/TMP_InputField.cs"):
     [method names]} -> {class file: {method: (file offset, length)}}; classes or methods not in the game are left
     out."""
-    cache_file = _cache_file(lib)
+    cache_file = _cache_file(lib, metadata)
     try:
         cached = json.loads(cache_file.read_text())
         if all(cls in cached.get("classes", {}) or cls in cached.get("missing", []) for cls in wanted):

@@ -43,6 +43,9 @@ SUMMARIES = {
     "frame.ovrplatformcompat": "Adds a small piece of Meta's platform library that some games need to start.",
     "frame.ovrstubs": "Provides stand-ins for Meta store functions the game expects, so it doesn't crash at start.",
     "frame.unity_no_msaa": "Turns off a smoothing setting that crashes some older Unity games on the Frame.",
+    "frame.unity_runtime_msaa_off": "Keeps a smoothing setting off that the game turns on itself and that can freeze "
+                                    "the Frame.",
+    "frame.unity_multipass": "Draws each eye separately; try it when one eye shows a grey or broken picture.",
     "frame.swapchain_limit": "Allows very large pictures (8K video, theatres) instead of quitting.",
     "frame.vrapi_bridge": "Translator for games built on Meta's oldest VR interface.",
     "frame.gl_shim": "Fixes graphics code that the Frame's drivers reject (black screen with sound).",
