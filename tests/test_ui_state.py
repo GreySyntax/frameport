@@ -489,3 +489,25 @@ def test_flet_updates_are_serialized():
         assert peak[0] == 1
     finally:
         Session.patch_control = original
+
+
+def test_window_sessions_share_one_job_queue():
+    """Every Flet session (a window reconnect builds a new app object) uses the same queue: a job started in an
+    old session is visible and the next one waits for it, instead of a second build of the same game at once."""
+    from frameport.ui import jobs
+
+    first, second = jobs.shared(), jobs.shared()
+    assert first is second
+    seen = []
+    listener = seen.append
+    first.subscribe(listener)
+    first.unsubscribe(listener)
+    first.unsubscribe(listener)  # twice is harmless
+    assert listener not in first._listeners
+
+
+def test_one_build_per_game_at_a_time():
+    from frameport import pipeline
+
+    assert pipeline._build_lock("com.x.y") is pipeline._build_lock("com.x.y")
+    assert pipeline._build_lock("com.x.y") is not pipeline._build_lock("com.x.z")

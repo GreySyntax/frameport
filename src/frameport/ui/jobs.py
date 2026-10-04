@@ -100,6 +100,10 @@ class JobManager:
     def subscribe(self, fn: Callable[[Job | None], None]) -> None:
         self._listeners.append(fn)
 
+    def unsubscribe(self, fn: Callable[[Job | None], None]) -> None:
+        if fn in self._listeners:
+            self._listeners.remove(fn)
+
     def submit(self, job: Job) -> Job:
         job.reporter.subscribe(lambda ev, j=job: self._event(j, ev))
         with self._cv:
@@ -225,3 +229,18 @@ class JobManager:
             if self.save_logs:
                 applog.save_job_log(job.kind, job.package, job.state, job.text())
             self._notify(job, force=True)
+
+
+_shared: JobManager | None = None
+_shared_lock = threading.Lock()
+
+
+def shared() -> JobManager:
+    """The process's one job queue. Flet builds a new app object for every window session (a reconnect after sleep
+    or a reload): with a queue per session, the old session's job kept running unseen and the same game could be
+    built twice at once in the same work folder (both builds then failed)."""
+    global _shared
+    with _shared_lock:
+        if _shared is None:
+            _shared = JobManager()
+        return _shared

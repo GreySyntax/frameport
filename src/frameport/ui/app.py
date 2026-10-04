@@ -23,9 +23,10 @@ from ..frame.connection import NOT_IN_LIBRARY, AgentFailed
 from ..i18n import fmt_size, tr, tr_n
 from ..recommend import catalog
 from . import components as C
+from . import jobs as jobs_module
 from . import theme as T
 from .components import install_state  # noqa: F401  (re-exported: tests and older callers import it from here)
-from .jobs import Job, JobManager
+from .jobs import Job
 
 NAV = [("library", tr("Library"), ft.Icons.GRID_VIEW_ROUNDED),
        ("frame", tr("Steam Frame"), ft.Icons.VIEW_IN_AR_ROUNDED),
@@ -52,7 +53,10 @@ class FramePortApp:
         self.files_view = None  # likewise (views/files.FilesView): keeps the location/folder between visits
         self.exe_queue: list[str] = []  # games whose executable the user should confirm (after a scan)
         self._failures: list[Job] = []  # failed installs/tests, shown together when the queue is done
-        self.jobs = JobManager(self._on_job)
+        self.jobs = jobs_module.shared()  # one queue per process, shared by every window session
+        self.jobs.subscribe(self._on_job)
+        self._handled_jobs: set[int] = set()  # finished jobs this session has reacted to (pop-ups, refreshes)
+        page.on_close = lambda e: self.jobs.unsubscribe(self._on_job)  # session gone: stop drawing into it
         from .updater import Updater
 
         self.updater = Updater(self)  # new FramePort releases (sidebar card, Library bar, one-click update)
@@ -366,8 +370,8 @@ class FramePortApp:
         self._refresh_sidebar()
         self.activity.refresh()
         self._keep_frame_awake()
-        if job and job.state in ("done", "failed", "cancelled") and job.finished and not getattr(job, "_handled", 0):
-            job._handled = 1
+        if job and job.state in ("done", "failed", "cancelled") and job.finished and id(job) not in self._handled_jobs:
+            self._handled_jobs.add(id(job))
             if job.kind == "app-update" and job.state != "done":
                 self.updater.restart = None  # the update didn't get ready: don't quit
             self.updater.on_jobs_changed()  # an update waiting for the queue to empty installs now

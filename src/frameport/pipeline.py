@@ -9,6 +9,7 @@ PC (Revive + local Steam) or on the Frame (Proton + Revive).
 """
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 
@@ -402,6 +403,15 @@ def recipe_fingerprint(recipe: dict) -> str:
     return fp(recipe)
 
 
+_build_locks: dict[str, threading.Lock] = {}
+_build_locks_guard = threading.Lock()
+
+
+def _build_lock(package: str) -> threading.Lock:
+    with _build_locks_guard:
+        return _build_locks.setdefault(package, threading.Lock())
+
+
 def build_game(package: str, reporter: Reporter, outdir: Path | None = None) -> dict:
     entry = library.game(package)
     if is_rift(entry):
@@ -412,7 +422,8 @@ def build_game(package: str, reporter: Reporter, outdir: Path | None = None) -> 
     a = library.analysis_from_dict(entry["analysis"])
     recipe = library.recipe_from_dict(entry["recipe"])
     out = outdir or (output_dir() / quest_dump.display_name(entry.get("name") or package))
-    res = builder.build(src, a, recipe, out, reporter)
+    with _build_lock(package):  # one build per game at a time: builds share the game's work folder
+        res = builder.build(src, a, recipe, out, reporter)
     art, store_title = artwork.fetch(package, res.apk)
     build_info = {"apk": str(res.apk), "alt_apk": str(res.alt_apk) if res.alt_apk else None, "sha256": res.sha256,
                   "alt_sha256": res.alt_sha256, "applied": res.applied, "checks": res.checks, "ok": res.ok,
