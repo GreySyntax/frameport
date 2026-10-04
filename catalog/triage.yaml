@@ -263,6 +263,25 @@ signatures:
     diagnosis: The game crashed under Wine/Proton (set the Proton debug log and check steam-<appid>.log).
     suggest: [pcvr.proton_log]
 
+  - id: save-folder-permission
+    pattern: "(We don't have write permission to|UnauthorizedAccessException: Access to the path \"/(sdcard|storage/emulated/0)/Android/data/)"
+    severity: error
+    diagnosis: The game can't write to a folder it created in its storage (e.g. SUPERHOT's cloud/data, mode 1700, which
+      makes it quit at start). FramePort's launcher (agent 41 or newer) gives such folders owner and group write
+      permission before and during every launch; update the game on the Frame (reinstall) to get the new launcher.
+    suggest: []
+  - id: surface-swapchain-emulated
+    pattern: 'surface_emul: emulated Android surface swapchain'
+    severity: info
+    diagnosis: The game plays a video on a panel through an Android Surface (XR_KHR_android_surface_swapchain), which the
+      Frame's runtime refuses; FrameBridge emulates it (surface_emul) and copies each video frame into the panel.
+    suggest: []
+  - id: surface-swapchain-failed
+    pattern: 'surface_emul: (setup failed|upload failed|EGL context failed|Vulkan upload path unavailable)'
+    severity: warning
+    diagnosis: FrameBridge couldn't emulate an Android video panel (XR_KHR_android_surface_swapchain); the panel stays
+      empty, and a game waiting for its intro video may stay black (e.g. I Am Monkey's intro).
+    suggest: []
 milestones:  # progress markers, in order; the furthest one reached is reported
   - {id: pcvr-launch, kind: pcvr, pattern: 'FramePort: launching|Launched injector with', label: Launcher started}
   - {id: pcvr-oculus-hmd, kind: pcvr, pattern: 'FramePort oculushmd: OculusHMDConnected event ready', label: Oculus headset event provided}

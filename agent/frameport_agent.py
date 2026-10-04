@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 40
+AGENT_VERSION = 41
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1392,9 +1392,11 @@ LAUNCH_SH = (r"""#!/usr/bin/env bash
 set -euo pipefail
 app_dir={base_q}
 [[ -d "$app_dir/lepton-app" ]] || {{ echo "Game files missing at $app_dir (storage not mounted?)" >&2; exit 1; }}
-# Some games (Unreal cloud saves) create folders without write/search permission inside Lepton,
-# which silently breaks saving. Repair them before and during every launch.
-fix_perms() {{ find "$app_dir/lepton-data/external" -type d ! -perm -u+rwx -exec chmod u+rwx {{}} + 2>/dev/null ||"""
+# Some games (Unreal cloud saves, SUPERHOT's cloud/data: mode 1700) create folders without write/search permission
+# for the app inside Lepton (it writes through the folder's group), which breaks saving or makes the game quit.
+# Repair them before and during every launch.
+fix_perms() {{ find "$app_dir/lepton-data/external" -type d \( ! -perm -u+rwx -o ! -perm -g+rwx \) """
+r"""-exec chmod u+rwx,g+rwx {{}} + 2>/dev/null ||"""
 r""" true; }}
 # Android can't create an app's external files/cache folders inside Lepton ("Invalid mkdirs path ... not a known app
 # path"): getExternalCacheDir() then returns nothing, which breaks e.g. Whirligig's video player cache. Create them"""

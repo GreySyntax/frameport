@@ -31,6 +31,11 @@ SETTINGS = [
     ("cylinder_strips", "int", 1, "Show curved panels",
      "Cylinder layers (curved menus and movie screens, e.g. 4XVR), which the Frame's runtime lacks, are shown as a "
      "few flat strips along the curve. 0 = drop them. 360° (equirect) layers can't be shown on the Frame."),
+    ("surface_emul", "int", 1, "Show video panels",
+     "Video panels that an Android media player draws into (XR_KHR_android_surface_swapchain, e.g. I Am Monkey's "
+     "intro video), which the Frame's runtime refuses, get an Android Surface from FrameBridge: each video frame is "
+     "copied into an ordinary swapchain the panel shows. Without it these panels are missing and a game waiting for "
+     "its video stays black. 0 = leave them to the runtime."),
     ("equirect_emul", "int", 0, "Show 360° layers",
      "360° (equirect) layers, e.g. a video player's virtual theatre or 360° videos (e.g. 4XVR), which the Frame's "
      "runtime lacks, are drawn by a background thread into a layer behind the game's own picture: the 360° image is "
@@ -150,6 +155,9 @@ UI: dict[str, dict] = {
     "cylinder_strips": dict(group="screens", level="common", label="Show curved menus and screens",
                             help="The Frame can't show curved panels; this shows them as gently bent strips.",
                             control=("switch",)),
+    "surface_emul": dict(group="screens", level="common", label="Show video panels",
+                         help="Shows videos that games play on a flat panel (e.g. an intro video).",
+                         control=("switch",)),
     "flip_emul": dict(group="screens", level="common", label="Fix upside-down menus",
                       help="Turns menus and text the right way up.", control=("switch",)),
     "stable_local": dict(group="screens", level="common", label="Keep menus in place",

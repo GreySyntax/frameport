@@ -51,6 +51,9 @@ static void *loader;
 static PFN_xrGetInstanceProcAddr next_gipa;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static XrInstance active_instance = XR_NULL_HANDLE;
+static void *android_vm;     // JavaVM from XrInstanceCreateInfoAndroidKHR (surface_swapchain.c)
+static int surface_emul = 1;  // setting: emulate Android surface swapchains
+static void surf_on_destroy(XrSwapchain handle);
 
 static float scale = 1.0f;
 static int foveation_fix = 1;
@@ -118,6 +121,7 @@ static void read_settings(const char *path) {
         if (sscanf(line, "scene_depth=%f", &value) == 1 && value > 0.5f && value < 20.0f) scene_depth = value;
         if (sscanf(line, "controller_models=%f", &value) == 1) controller_models = value != 0;
         if (sscanf(line, "layer_debug=%f", &value) == 1) layer_debug = value != 0;
+        if (sscanf(line, "surface_emul=%f", &value) == 1) surface_emul = value != 0;
         if (sscanf(line, "profile_remap=%f", &value) == 1) profile_remap = value != 0;
         if (sscanf(line, "sync_guard=%f", &value) == 1) sync_guard = value != 0;
         if (sscanf(line, "stable_local=%f", &value) == 1) stable_local = value != 0;
@@ -199,7 +203,10 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateInstance(const XrInstanceCreateInfo *info
 
     int chained = 0, enabled = 0;
     for (const XrBaseInStructure *p = (const XrBaseInStructure *)info->next; p; p = p->next)
-        if (p->type == XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR) chained = 1;
+        if (p->type == XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR) {
+            chained = 1;
+            android_vm = ((const struct { XrStructureType type; const void *next; void *vm; void *activity; } *)p)->vm;
+        }
     for (uint32_t i = 0; i < info->enabledExtensionCount; ++i)
         if (!strcmp(info->enabledExtensionNames[i], "XR_KHR_android_create_instance")) enabled = 1;
 
@@ -420,6 +427,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrDestroySwapchain(XrSwapchain swapchain) {
     PFN_xrDestroySwapchain fn = (PFN_xrDestroySwapchain)lookup(active_instance, "xrDestroySwapchain");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
     forget_swapchain(swapchain);
+    surf_on_destroy(swapchain);
     flip_on_destroy(swapchain);
     emul_on_destroy_swapchain(swapchain);
     if (equirect_emul && emul_is_virtual(swapchain)) { emul_virtual_destroy(swapchain); return XR_SUCCESS; }
@@ -673,6 +681,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrDestroySpace(XrSpace space) {
 
 #include "session_fixes.c"
 #include "layer_emul_gl.c"
+#include "surface_swapchain.c"
 
 XRAPI_ATTR XrResult XRAPI_CALL xrCreateSession(XrInstance instance, const XrSessionCreateInfo *info, XrSession *session) {
     PFN_xrCreateSession fn = (PFN_xrCreateSession)lookup(instance, "xrCreateSession");
@@ -969,6 +978,13 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession session, const XrFrameEndInf
                 continue;
             }
         }
+        if (layer && (layer->type == XR_TYPE_COMPOSITION_LAYER_QUAD || layer->type == XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR) &&
+            !surf_prepare_layer(layer->type == XR_TYPE_COMPOSITION_LAYER_QUAD
+                                    ? ((const XrCompositionLayerQuad *)layer)->subImage.swapchain
+                                    : ((const XrCompositionLayerCylinderKHR *)layer)->subImage.swapchain)) {
+            ++dropped;  // an emulated video surface without a frame yet
+            continue;
+        }
         if (!layer || (layer_fix && !layer_usable(layer))) { ++dropped; continue; }
         if (layer->type == XR_TYPE_COMPOSITION_LAYER_QUAD) {
             const XrCompositionLayerQuad *flipped = flip_quad(session, (const XrCompositionLayerQuad *)layer, &quads[count]);
@@ -1241,6 +1257,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const 
     if (layer_debug || refresh_rate > 0) {
         HOOK_AS(xrRequestDisplayRefreshRateFB, hook_request_refresh_rate)
     }
+    if (surface_emul) HOOK_AS(xrCreateSwapchainAndroidSurfaceKHR, hook_xrCreateSwapchainAndroidSurfaceKHR)
     if (sync_guard || layer_debug) HOOK_AS(xrSyncActions, hook_xrSyncActions)
     if (layer_debug) HOOK_AS(xrGetActionStateBoolean, hook_xrGetActionStateBoolean)
     if (layer_debug || aim_correction_on() || profile_remap)

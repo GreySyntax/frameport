@@ -49,6 +49,23 @@ def test_launcher_template(monkeypatch, tmp_path):
     assert subprocess.run(["bash", "-n", str(anchor / "launch.sh")]).returncode == 0
 
 
+def test_launcher_repairs_save_folder_permissions(monkeypatch, tmp_path):
+    """SUPERHOT creates its cloud save folder with mode 1700 and quits when it can't write there (Lepton's app
+    writes through the folder's group): the launcher gives every storage folder owner and group write permission."""
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "anchor"
+    anchor.mkdir()
+    a.write_launcher(str(anchor), str(tmp_path / "game"), "com.x.y", "T", 1, "/lepton/lepton", {})
+    fix = next(line for line in (anchor / "launch.sh").read_text().splitlines() if line.startswith("fix_perms()"))
+    saves = tmp_path / "game" / "lepton-data" / "external" / "Android" / "data" / "com.x.y" / "files" / "cloud"
+    saves.mkdir(parents=True)
+    os.chmod(saves, 0o1700)
+    if os.stat(saves).st_mode & 0o777 != 0o700:
+        pytest.skip("filesystem doesn't keep modes")
+    subprocess.run(["bash", "-c", f"app_dir={tmp_path / 'game'}\n{fix}\nfix_perms"], check=True)
+    assert os.stat(saves).st_mode & 0o770 == 0o770
+
+
 def test_cli_protocol(tmp_path):
     p = subprocess.run([sys.executable, str(AGENT), "nope"], capture_output=True, text=True)
     assert p.returncode == 2 and json.loads(p.stdout)["ok"] is False
