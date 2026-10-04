@@ -54,6 +54,14 @@ Lepton from the Steam Frame page afterwards if it's missing.
 If the setup command only says "timed out", a firewall on your computer blocks the Frame; the setup page
 says which after about 45 seconds. Details per system: [FRAME_SETUP.md](FRAME_SETUP.md#network-and-firewalls).
 
+## Running FramePort on the Frame (experimental)
+
+FramePort can run on the Steam Frame itself, without a PC: in **Desktop Mode**, download
+`FramePort-linux-arm64.tar.gz`, unpack it (`tar xzf FramePort-linux-arm64.tar.gz`) and start `FramePort/FramePort`.
+Turn on **Developer Mode** first (Steam → Settings → System); FramePort then manages "This Frame" directly, with
+no pairing. Games are added to the Steam library when you go back to **Gaming Mode** (Steam has to restart for it,
+which would end Desktop Mode). This is new: please report anything odd with **Report a problem**.
+
 ## Installing games
 
 - **Install on Frame** on a game's page (or select several in the Library and install them together). Installs run

@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 39
+AGENT_VERSION = 40
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1041,6 +1041,17 @@ def game_running():
 
 
 def shortcuts_worker(payload):
+    """One library update at a time: two at once each read shortcuts.vdf, changed it and wrote it back, so the second
+    write brought back a shortcut the first had removed (uninstalling two games quickly left Roblox in Steam)."""
+    import fcntl
+
+    os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
+    with open(STATUS_FILE + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        _shortcuts_worker(payload)
+
+
+def _shortcuts_worker(payload):
     args = json.loads(payload)
     result = {"state": "done", "added": [], "errors": [], "finished": None}
     os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)

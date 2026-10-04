@@ -9,7 +9,7 @@ import os
 import platform
 from pathlib import Path
 
-LOCAL_NAME = "This Frame"
+LOCAL_NAME = "This Frame (experimental)"  # FramePort running on the Frame itself
 
 
 @functools.lru_cache(maxsize=1)
