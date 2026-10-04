@@ -22,7 +22,9 @@ class UnityOculusCheck(Patch):
     description = ("Unity's older built-in Oculus support (Unity 2017–2018) only starts VR when Android has Meta's "
                    "com.oculus.systemactivities package; without it the game runs as a hidden 2D app (you see the "
                    "Android home screen, e.g. Accounting+). Points that package name in libunity.so at \"android\", "
-                   "which always exists.")
+                   "which always exists, and adds the frame wait its legacy frame loop never makes (libfp_ovrp.so "
+                   "calls ovrp_WaitToBeginFrame before ovrp_Update2; without it no frame starts and the dashboard "
+                   "freezes).")
     order = 45
 
     def applies(self, a):
@@ -33,10 +35,10 @@ class UnityOculusCheck(Patch):
             and 0 < major < 2019
 
     def detect(self, a):
-        if self.applies(a):  # opt-in for now: VR starts, but Unity 2017's frame loop never calls xrWaitFrame
-            return Suggestion(False, "Older Unity with built-in Oculus support: it checks for Meta's system apps "
-                                     "before starting VR. Experimental: VR then starts but the game doesn't show "
-                                     "frames yet and can freeze the Frame's dashboard (e.g. Accounting+).")
+        if self.applies(a):
+            return Suggestion(True, "Older Unity with built-in Oculus support: it checks for Meta's system apps "
+                                    "before starting VR, and its frame loop never waits for the next frame "
+                                    "(e.g. Accounting+).")
         return None
 
     def apply(self, ctx: ApkContext) -> bool:

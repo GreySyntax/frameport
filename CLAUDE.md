@@ -452,7 +452,9 @@ object glitches: app space warp suspected (FB_space_warp is advertised and used)
 I Am Cat multipass: poses/times consistent, but every frame is submitted after the next xrWaitFrame (one period late;
 Zink + doubled draws) and the game clamps its physics step to 10 ms → judder while still; testing scale 0.8. Roblox's
 newest crash is on Fossilize's recording thread → vk_sanitize extended to own-engine libs (engine "Other").
-Accounting+: with unity_oculus_check (now opt-in) the 2017 frame loop never waits → dashboard freeze.
+Accounting+: unity_oculus_check + native/ovrpshim (libfp_ovrp.so waits via ovrp_WaitToBeginFrame before Unity
+2017's ovrp_Update2) → frames at ~71 fps headless (2026-10-04); headset test pending. "outside of frame bounds" warnings
+stay (~2/frame) and are harmless.
 Headset round 3 (owner's verdicts, 2026-10-04): Blade & Sorcery works — its freezes were the headset's wear sensor
 flickering off while worn (vrserver.txt "HMD off/on" 0.5-2 s) → per-game `focus_hold_ms=2500` (only this game reacts;
 not a default). BattleGlide works (focus_hold). Myst works with issues (object glitches; space warp ruled out, its

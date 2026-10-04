@@ -901,7 +901,7 @@
  "Uninstall. ": "",
  "Uninstalled {title}": "",
  "Unity 2017: start VR without Meta's system apps": "",
- "Unity's older built-in Oculus support (Unity 2017–2018) only starts VR when Android has Meta's com.oculus.systemactivities package; without it the game runs as a hidden 2D app (you see the Android home screen, e.g. Accounting+). Points that package name in libunity.so at \"android\", which always exists.": "",
+ "Unity's older built-in Oculus support (Unity 2017–2018) only starts VR when Android has Meta's com.oculus.systemactivities package; without it the game runs as a hidden 2D app (you see the Android home screen, e.g. Accounting+). Points that package name in libunity.so at \"android\", which always exists, and adds the frame wait its legacy frame loop never makes (libfp_ovrp.so calls ovrp_WaitToBeginFrame before ovrp_Update2; without it no frame starts and the dashboard freezes).": "",
  "Unity's TMP_InputField / InputField wait for Android's on-screen keyboard and close themselves a frame later when there is none (Lepton has no on-screen keyboard; Meta's system keyboard does this on a Quest), so a selected text field only flashes a caret. Rewrites TouchScreenKeyboardShouldBeUsed -> false and isKeyboardUsingEvents (TMP) / InPlaceEditing (uGUI) -> true in libil2cpp.so, found per game with Cpp2IL (downloaded on first use), so fields stay selected and take key presses: Steam's keyboard (with \"Show the app window\") or Type on Frame from the PC.": "",
  "Unity: disable MSAA": "",
  "Unity: keep MSAA off at runtime (OVRManager)": "",
