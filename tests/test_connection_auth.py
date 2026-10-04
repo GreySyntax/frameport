@@ -86,3 +86,17 @@ def test_upload_resumes_after_a_transient_error(tmp_path, monkeypatch):
     monkeypatch.setattr("frameport.frame.connection.time.sleep", lambda s: None)
     f.put(tmp_path / "x.bin", "/r/x.bin")
     assert len(calls) == 2
+
+
+def test_framport_on_the_frame_targets_itself(tmp_path, monkeypatch):
+    from frameport.frame import connection, local
+
+    monkeypatch.setattr(local, "on_frame", lambda: True)
+    monkeypatch.setattr(local.Path, "home", lambda: tmp_path)
+    targets = connection.saved_targets()
+    assert targets and targets[0].host == "127.0.0.1" and targets[0].name == local.LOCAL_NAME
+    keys = (tmp_path / ".ssh/authorized_keys").read_text()
+    assert connection.app_public_key().split()[1] in keys
+    assert not local.authorize_self(connection.app_public_key())  # once
+    monkeypatch.setattr(local, "on_frame", lambda: False)
+    assert connection.saved_targets()[0].host == "127.0.0.1"  # remembered like any Frame

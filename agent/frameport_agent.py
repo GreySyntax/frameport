@@ -1021,6 +1021,12 @@ def shortcuts_lost(users, packages, wait=25):
     return lost
 
 
+def desktop_mode():
+    """Desktop Mode is open: it runs inside Steam's session, so a Steam restart would end it (and FramePort itself when
+    it runs on the Frame); library changes wait until the user is back in Gaming Mode."""
+    return run(["pgrep", "-x", "plasmashell"]).returncode == 0
+
+
 def game_running():
     """A game is being played on the Frame (any Lepton game container, or a FramePort PC VR game)."""
     names = run(["podman", "ps", "--format", "{{.Names}}"]).stdout.split()
@@ -1044,10 +1050,13 @@ def shortcuts_worker(payload):
             with open(STATUS_FILE, "w") as f:
                 json.dump(result, f)
             return
-        deadline = time.time() + 3 * 3600
-        while game_running() and time.time() < deadline:  # restarting Steam would end the game being played
+        deadline = time.time() + 12 * 3600
+        while time.time() < deadline:  # restarting Steam would end the game being played, or Desktop Mode
+            reason = "game" if game_running() else "desktop" if desktop_mode() else None
+            if not reason:
+                break
             with open(STATUS_FILE, "w") as f:
-                json.dump({"state": "waiting", "reason": "a game is running", "packages": args["packages"],
+                json.dump({"state": "waiting", "reason": reason, "packages": args["packages"],
                            "started": time.time()}, f)
             time.sleep(10)
         try:

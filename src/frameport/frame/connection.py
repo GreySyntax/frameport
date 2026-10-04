@@ -116,7 +116,14 @@ _saved_cache: tuple[float, list] = (-1.0, [])
 
 
 def saved_targets() -> list[FrameTarget]:
-    """The remembered Frames (read again only when frames.json changed: the sidebar asks several times a second)."""
+    """The remembered Frames (read again only when frames.json changed: the sidebar asks several times a second).
+    FramePort running on a Frame remembers that Frame itself (127.0.0.1) the first time."""
+    if not (user_data_dir() / "frames.json").exists():
+        return _local_frame()
+    return _read_saved()
+
+
+def _read_saved() -> list[FrameTarget]:
     global _saved_cache
     path = user_data_dir() / "frames.json"
     try:
@@ -139,9 +146,24 @@ def is_unreachable(exc: BaseException) -> bool:
     return isinstance(exc, (ConnectionRefusedError, TimeoutError, paramiko.ssh_exception.NoValidConnectionsError))
 
 
+def _local_frame() -> list[FrameTarget]:
+    """On a Frame with nothing remembered yet: this Frame, with FramePort's key authorized for the local user."""
+    from . import local
+
+    if not local.on_frame():
+        return []
+    try:
+        local.authorize_self(app_public_key())
+    except OSError:
+        pass
+    target = FrameTarget("127.0.0.1", local.local_user(), 22, local.LOCAL_NAME)
+    save_target(target)
+    return [target]
+
+
 def replace_target(old_host: str, target: FrameTarget) -> None:
     """The remembered Frame at old_host is now at target.host (same device: its SSH host key matched)."""
-    items = [FrameTarget(target.host, t.user, t.port, t.name) if t.host == old_host else t for t in saved_targets()]
+    items = [FrameTarget(target.host, t.user, t.port, t.name) if t.host == old_host else t for t in _read_saved()]
     if target.host not in [t.host for t in items]:
         items.insert(0, target)
     seen, out = set(), []
@@ -174,7 +196,7 @@ _last_relocate = -1e9
 
 
 def save_target(target: FrameTarget) -> None:
-    items = [t for t in saved_targets() if t.host != target.host]
+    items = [t for t in _read_saved() if t.host != target.host]
     items.insert(0, target)
     write_atomic(user_data_dir() / "frames.json", json.dumps([t.__dict__ for t in items], indent=2))
 
@@ -328,6 +350,9 @@ class Frame:
         try:
             return self._connect(timeout)
         except OSError:
+            if self.target.host in ("127.0.0.1", "localhost"):  # FramePort on the Frame itself: sshd isn't running
+                raise ConnectionError("FramePort runs on this Frame but can't reach it over SSH: turn on Developer "
+                                      "Mode (Steam → Settings → System → Developer Mode), then try again") from None
             moved = self.relocate()  # the router gave the Frame a new address (it's remembered by address)
             if not moved:
                 raise
@@ -417,6 +442,8 @@ class Frame:
         presents the same SSH host key as this connection. Returns (frame, link name); (self, "") if none."""
         import socket
 
+        if self.target.host in ("127.0.0.1", "localhost"):  # FramePort on the Frame itself: nothing is faster
+            return self, ""
         key = self.client.get_transport().get_remote_server_key()
         for iface in FAST_LINKS:
             for name, ip in self.addresses():

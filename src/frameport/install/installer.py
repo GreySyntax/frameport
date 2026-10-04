@@ -392,9 +392,11 @@ def add_to_steam(frame: Frame, packages: list[str], reporter: Reporter, wait: fl
             continue
         if status.get("state") in ("done", "failed"):
             break
-        if status.get("state") == "waiting":  # a game is being played: Steam restarts once it's closed
-            reporter.check("Steam library", None, "added when the game that's running now is closed (Steam has to "
-                                                  "restart for it)")
+        if status.get("state") == "waiting":  # Steam restarts later: after the game, or back in Gaming Mode
+            reporter.check("Steam library", None,
+                           "added when you're back in Gaming Mode (Steam has to restart for it)"
+                           if status.get("reason") == "desktop" else
+                           "added when the game that's running now is closed (Steam has to restart for it)")
             return status
     added = {a["package"] for a in status.get("added", [])}
     for a in status.get("added", []):
