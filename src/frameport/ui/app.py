@@ -1043,12 +1043,32 @@ class FramePortApp:
             tr("Removes {title} from this PC's Steam library (Steam restarts once). "
                "The game folder isn't touched.").format(title=title)
 
+        files = pipeline.local_game_files(pkg)
+        size = sum((sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size)
+                   for p in files)
+        delete_local = ft.Checkbox(label=tr("Also delete this game's files on this PC ({size})").format(
+            size=fmt_size(size)), value=False, active_color=T.ERROR) if files else None
+        extra = None
+        if delete_local:
+            from ..core import winhost
+
+            shown = [winhost.to_windows(p) if winhost.is_wsl() else str(p) for p in files]
+            extra = ft.Column([delete_local, *[C.body("• " + s, T.TEXT_3) for s in shown[:4]]], spacing=T.px(4),
+                              tight=True)
+
         def run(job: Job):
             self._target_for(to).uninstall(pkg, keep_data=True)
             self._pc_cache = None
+            if delete_local and delete_local.value:
+                done, freed = pipeline.delete_local_files(pkg)
+                job.reporter.log(f"deleted {len(done)} item(s) on this PC, {fmt_size(freed)}")
+                self.go("library")
+                return tr("Uninstalled {title} and deleted its files on this PC ({size})").format(
+                    title=title, size=fmt_size(freed))
             return tr("Uninstalled {title}").format(title=title)
         C.confirm(self.page, tr("Uninstall {title}?").format(title=title), text, tr("Uninstall"),
-                  lambda: self.submit(tr("Uninstall {title}").format(title=title), run, pkg, "uninstall"), danger=True)
+                  lambda: self.submit(tr("Uninstall {title}").format(title=title), run, pkg, "uninstall"), danger=True,
+                  extra=extra)
 
     def remove_from_library(self, pkg: str) -> None:
         title = self._title(pkg)

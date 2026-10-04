@@ -187,3 +187,33 @@ def test_sdl_clipboard_patch_for_2d_sdl_apps():
     assert "frame.sdl_clipboard" in r.patches and not r.as_is  # an APK edit: not installed unchanged
     a.extra["sdl_java"] = False
     assert "frame.sdl_clipboard" not in engine.suggest(a).patches
+
+
+def test_uninstall_can_delete_the_games_files_on_this_pc(tmp_path):
+    from frameport import pipeline
+    from frameport.core import library
+    from frameport.core.paths import output_dir, user_data_dir
+
+    game = tmp_path / "Game v1.2"
+    (game / "com.x.game").mkdir(parents=True)
+    (game / "com.x.game.apk").write_bytes(b"PK" * 10)
+    (game / "com.x.game/main.obb").write_bytes(b"o" * 30)
+    shared = tmp_path / "Shared"
+    (shared / "data").mkdir(parents=True)
+    (shared / "b.apk").write_bytes(b"PK")
+    conv = output_dir() / "Game v1.2"
+    conv.mkdir(parents=True)
+    (conv / "com.x.game.apk").write_bytes(b"c")
+    key = user_data_dir() / "overport-workspace/signatures/com.x.game.keystore"
+    key.parent.mkdir(parents=True)
+    key.write_bytes(b"k")
+    library.upsert_game("com.x.game", apk=str(game / "com.x.game.apk"), data_dir=str(game / "com.x.game"),
+                        build={"apk": str(conv / "com.x.game.apk")})
+    library.upsert_game("com.y.other", apk=str(shared / "b.apk"), data_dir=str(shared / "data"))
+    library.upsert_game("com.z.third", apk=str(shared / "c.apk"), data_dir=str(shared / "data"))
+    assert set(pipeline.local_game_files("com.x.game")) == {game / "com.x.game.apk", game / "com.x.game",
+                                                            conv / "com.x.game.apk"}
+    assert pipeline.local_game_files("com.y.other") == [shared / "b.apk"]  # its data folder is another game's too
+    done, freed = pipeline.delete_local_files("com.x.game")
+    assert not game.exists() and freed == 51 and library.game("com.x.game") is None
+    assert key.exists() and shared.exists()  # signing keys and other games' files stay

@@ -343,12 +343,14 @@ def bottom_fade(height: int | None = None, strength: float = 0.85) -> ft.Contain
 
 
 def confirm(page: ft.Page, heading: str, text: str, ok_label: str, on_ok: Callable[[], None],
-            danger: bool = False) -> None:
+            danger: bool = False, extra: ft.Control | None = None) -> None:
+    """A yes/no dialog; `extra` (e.g. an option checkbox) goes below the text and is read by on_ok."""
     def go(e):
         page.pop_dialog()
         on_ok()
+    content = body(text) if extra is None else ft.Column([body(text), extra], spacing=T.px(12), tight=True)
     page.show_dialog(ft.AlertDialog(
-        title=ft.Text(heading, weight=ft.FontWeight.W_600), content=ft.Container(body(text), width=T.px(420)),
+        title=ft.Text(heading, weight=ft.FontWeight.W_600), content=ft.Container(content, width=T.px(420)),
         bgcolor=T.SURFACE_2, shape=ft.RoundedRectangleBorder(radius=T.RADIUS),
         actions=[ghost(tr("Cancel"), on_click=lambda e: page.pop_dialog()),
                  ft.FilledButton(ok_label, on_click=go, style=ft.ButtonStyle(

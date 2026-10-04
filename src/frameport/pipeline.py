@@ -456,6 +456,52 @@ def remove_all_converted_copies() -> int:
     return freed
 
 
+def local_game_files(package: str) -> list[Path]:
+    """The game's own files on this PC that "Uninstall → also delete the files on this PC" removes: a Quest game's
+    APK and data (OBB) folder, a PC VR game's folder, and FramePort's converted copies of it. Never the signing keys,
+    and never a path another library entry still uses (e.g. a shared folder)."""
+    g = library.game(package) or {}
+    paths: list[Path] = []
+    if g.get("kind") == "rift":
+        paths += [Path(g["game_dir"])] if g.get("game_dir") else []
+    else:
+        paths += [Path(p) for p in (g.get("apk"), g.get("data_dir")) if p]
+    b = g.get("build") or {}
+    out = output_dir().resolve()
+    paths += [Path(b[k]) for k in ("apk", "alt_apk") if b.get(k) and out in Path(b[k]).resolve().parents]
+    others = [o for o in library.games() if o.get("package") != package]
+    used = [Path(p).resolve() for o in others for p in (o.get("apk"), o.get("data_dir"), o.get("game_dir")) if p]
+
+    def shared(p: Path) -> bool:  # the same path, a path inside it, or a folder around it belongs to another game
+        rp = p.resolve()
+        return any(u == rp or rp in u.parents or u in rp.parents for u in used)
+    return [p for p in dict.fromkeys(paths) if p.exists() and not shared(p)]
+
+
+def delete_local_files(package: str) -> tuple[list[str], int]:
+    """Delete local_game_files(package), then the game's folder if that left it empty, and drop the library entry (the
+    game can't be rebuilt without its files). Returns (deleted paths, bytes freed)."""
+    import shutil
+
+    files = local_game_files(package)
+    freed, done = 0, []
+    parents = {p.parent for p in files}
+    for p in files:
+        size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size
+        shutil.rmtree(p) if p.is_dir() else p.unlink()
+        freed += size
+        done.append(str(p))
+    for d in parents:  # e.g. "Game v1.2/" that held only the APK and its OBB folder
+        try:
+            if d.is_dir() and not any(d.iterdir()) and d != output_dir():
+                d.rmdir()
+                done.append(str(d))
+        except OSError:
+            pass
+    library.remove_game(package)
+    return done, freed
+
+
 def remove_converted_copies(package: str) -> int:
     """The converted APKs are only needed until they're on the Frame (every install converts again): remove them
     unless the user keeps them (setting build.keep_copies). Only files in FramePort's own output folder, never the
