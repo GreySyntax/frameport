@@ -9,17 +9,21 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import logging
 import os
 import posixpath
 import re
 import stat
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import paramiko
 
 from ..core.paths import agent_file, ssh_dir, user_data_dir, write_atomic
+
+log = logging.getLogger(__name__)
 
 REMOTE_AGENT_DIR = ".local/share/frameport/agent"
 
@@ -128,6 +132,40 @@ def saved_targets() -> list[FrameTarget]:
         return [FrameTarget(**d) for d in _saved_cache[1]]
     except TypeError:
         return []
+
+
+def replace_target(old_host: str, target: FrameTarget) -> None:
+    """The remembered Frame at old_host is now at target.host (same device: its SSH host key matched)."""
+    items = [FrameTarget(target.host, t.user, t.port, t.name) if t.host == old_host else t for t in saved_targets()]
+    if target.host not in [t.host for t in items]:
+        items.insert(0, target)
+    seen, out = set(), []
+    for t in items:
+        if t.host not in seen:
+            seen.add(t.host)
+            out.append(t)
+    write_atomic(user_data_dir() / "frames.json", json.dumps([t.__dict__ for t in out], indent=2))
+
+
+def server_key(host: str, port: int = 22, timeout: float = 5) -> paramiko.PKey | None:
+    """The SSH host key a device presents (no login)."""
+    import socket
+
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+    except OSError:
+        return None
+    transport = paramiko.Transport(sock)
+    try:
+        transport.start_client(timeout=timeout)
+        return transport.get_remote_server_key()
+    except (OSError, paramiko.SSHException, EOFError):
+        return None
+    finally:
+        transport.close()
+
+
+_last_relocate = -1e9
 
 
 def save_target(target: FrameTarget) -> None:
@@ -282,6 +320,45 @@ class Frame:
 
     # ------------------------------------------------------------------ connect
     def connect(self, timeout: float = 10) -> Frame:
+        try:
+            return self._connect(timeout)
+        except OSError:
+            moved = self.relocate()  # the router gave the Frame a new address (it's remembered by address)
+            if not moved:
+                raise
+            log.info("Frame moved from %s to %s", self.target.host, moved)
+            old, self.target.host = self.target.host, moved
+            self._connect(timeout)
+            replace_target(old, self.target)
+            return self
+
+    def relocate(self) -> str | None:
+        """The Frame's new address when it no longer answers at the remembered one: a device on the network whose
+        SSH host key is the one this PC saw at the old address (checked before logging in). At most once a minute (the
+        GUI retries every few seconds while a Frame sleeps)."""
+        global _last_relocate
+        if time.monotonic() - _last_relocate < 60 or self.target.host not in [t.host for t in saved_targets()]:
+            return None
+        _last_relocate = time.monotonic()
+        hk = paramiko.HostKeys()
+        try:
+            hk.load(str(ssh_dir() / "known_hosts"))
+        except OSError:
+            return None
+        known = hk.lookup(self.target.host if self.target.port == 22 else f"[{self.target.host}]:{self.target.port}")
+        if not known:
+            return None
+        from .discovery import browse
+
+        for f in browse(seconds=3.0):
+            if f.host == self.target.host or f.port != self.target.port:
+                continue
+            key = server_key(f.host, f.port)
+            if key is not None and known.get(key.get_name()) == key:
+                return f.host
+        return None
+
+    def _connect(self, timeout: float) -> Frame:
         known = ssh_dir() / "known_hosts"
         known.touch(exist_ok=True)
         kwargs = dict(hostname=self.target.host, port=self.target.port, username=self.target.user, timeout=timeout,

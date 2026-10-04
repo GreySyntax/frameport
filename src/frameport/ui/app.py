@@ -1796,6 +1796,11 @@ def main(argv=None):
         return
     T.set_scale(T.scale_from_setting(library.setting("ui.scale", "auto")))  # before any view is built
     applog.log.info("ui scale %.2f", T.SCALE)
+    from .. import updates
+    from ..artwork import thumbs
+
+    if updates.install_kind() == "bundle":  # a packaged app finds artwork by file path, not by URL (GitHub #16)
+        thumbs.use_file_paths(True)
     ft.run(lambda page: FramePortApp(page), assets_dir=assets_dir())
 
 

@@ -70,7 +70,20 @@ def install_state(game: dict, frame_info: dict | None) -> str | None:
     built = {b.get("sha256"), b.get("alt_sha256")} - {None}
     if built and dep.get("sha256") and dep["sha256"] not in built:
         return "outdated"
+    if built and dep.get("sha256") in built and recipe_changed(game):
+        return "outdated"  # the recipe changed since this build (e.g. a catalog fix): it needs a new build
     return "outdated" if settings_diff(game, frame_info) else "installed"
+
+
+def recipe_changed(game: dict) -> bool:
+    from ..patches.base import recipe_fingerprint, revised_since_unrecorded
+
+    recipe, b = game.get("recipe") or {}, game.get("build") or {}
+    if not recipe:
+        return False
+    if b.get("recipe_fp"):
+        return b["recipe_fp"] != recipe_fingerprint(recipe)
+    return revised_since_unrecorded(recipe)
 
 
 def pc_outdated(g: dict, dep: dict) -> bool:

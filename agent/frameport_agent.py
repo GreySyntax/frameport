@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 35
+AGENT_VERSION = 36
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -2264,11 +2264,13 @@ def cmd_collect_diag(args):
     host["steam_running"] = run(["pgrep", "-x", "steam"]).returncode == 0
     host["uptime"] = _tail("/proc/uptime", 200)
     host["boot"] = boot_state()
-    # how the previous boot ended: errors and kernel (GPU/msm/kgsl, OOM, panic) warnings before a crash or reset
-    for name, extra in (("previous-boot-errors.txt", ["-p", "err"]),
-                        ("previous-boot-kernel.txt", ["-k", "-p", "warning"])):
+    # how the previous boot ended: errors and kernel (GPU/msm/kgsl, OOM, panic) warnings before a crash or reset; and
+    # this boot's kernel warnings (a GPU hang the Frame recovered from only ends the game: no reboot, no tombstone)
+    for name, boot, extra in (("previous-boot-errors.txt", "-1", ["-p", "err"]),
+                              ("previous-boot-kernel.txt", "-1", ["-k", "-p", "warning"]),
+                              ("this-boot-kernel.txt", "0", ["-k", "-p", "warning"])):
         try:
-            text = run(["journalctl", "-b", "-1", *extra, "-n", "400", "-q", "--no-pager"]).stdout[-max_bytes:]
+            text = run(["journalctl", "-b", boot, *extra, "-n", "400", "-q", "--no-pager"]).stdout[-max_bytes:]
         except OSError:
             text = ""
         if text.strip():

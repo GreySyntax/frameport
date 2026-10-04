@@ -1,15 +1,21 @@
 package: com.Armature.VR4
 title: VR4
 status: works
-notes: Installs the no-ForceQuit build (the regular one quits after the opening cutscene).
-details: The regular build quits itself when the first level loads after the opening cutscene (System.exit, GitHub
-  issue 10), so the no-ForceQuit build is installed.
+notes: Installs the no-ForceQuit build and fixes a campaign shader that hung the GPU after the opening cutscene.
+details: Entering the campaign gave a black screen, slowing audio and a crash (Mercenaries loaded). One fragment shader
+  reads a loop counter before setting it, which hangs the GPU; the Vulkan shim zeroes it (vk_shader_fix). The
+  no-ForceQuit build is kept. Diagnosed and confirmed on a Frame by the reporter of GitHub issue 10.
 tested_version: '2.3'
 engine: Unreal
 xr: VrApi
 alt_overport:
 - patch_remove_unreal_force_quit
 use_alt: true
+adapter:
+  # one campaign shader reads an uninitialized loop counter and hangs the GPU (black screen, slowing audio, crash);
+  # the Vulkan shim inserts two OpStores that zero it and its accumulator (from the reporter's capture, GitHub
+  # issue 10)
+  vk_shader_fix: 6488:5dcd842db8d21e3fdd13ec916d2e34dd0cfdf12a92fffaf8a27115072ef55c59:2624:0x0003003e,138,18,0x0003003e,150,42
 verified:
   date: '2026-10-02'
   known_good_sha256: 40ff74e37264b28ae8826923b69d0731d9620094c76462be34159643d6ae91b3

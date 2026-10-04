@@ -370,7 +370,7 @@ def test_game_settings_dialog_shows_relevant_settings_and_saves_only_changes():
     from frameport.patches.settings import SETTINGS, UI
     from frameport.ui.views import adapter_dialog as ad
 
-    assert set(UI) == {k for k, *_ in SETTINGS}  # every setting has a plain label/control
+    assert set(UI) == {k for k, kind, *_ in SETTINGS if kind != "str"}  # every number/switch has a label/control
     vulkan = _analysis()
     gles = _analysis(graphics="GLES (declared in manifest)")
     assert ad.relevant(vulkan, "flip_emul", 1) and not ad.relevant(gles, "flip_emul", 1)  # Vulkan-only
@@ -386,6 +386,11 @@ def test_game_settings_dialog_shows_relevant_settings_and_saves_only_changes():
     adapter = {k: v for k, v in saved["patches"].items() if k.startswith("adapter.")}
     assert adapter == {"adapter.refresh_rate": {"value": 90.0}, "adapter.aim_pitch": {"value": -5.0}}  # no defaults
     assert "frame.launcher" in saved["patches"]  # other patches untouched
+    r = library.recipe_from_dict(saved)
+    r.patches["adapter.vk_shader_fix"] = {"value": "8:" + "0" * 64 + ":4:1"}
+    library.upsert_game("com.x", recipe=asdict(r))
+    ad.save_to_recipe("com.x", ad.recipe_values(library.game("com.x")))
+    assert library.game("com.x")["recipe"]["patches"]["adapter.vk_shader_fix"]["value"].startswith("8:")  # kept
     assert saved["source"] == "user" and saved["reasons"]["adapter.aim_pitch"] == "Set by you."
 
 

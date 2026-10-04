@@ -45,10 +45,16 @@ class UnityMultiPass(Il2cppReturnPatch):
     title = "Unity: render each eye separately (no multiview)"
     description = ("Oculus XR Plugin games render both eyes in one pass (multiview) on Android. If one eye shows only "
                    "effects or grey (e.g. I Am Cat), rendering each eye in its own pass can fix it, at some GPU cost. "
-                   "Rewrites OculusSettings.GetStereoRenderingMode -> MultiPass in libil2cpp.so (found with Cpp2IL). "
-                   "Try it when one eye is wrong.")
+                   "Rewrites OculusSettings.GetStereoRenderingMode and its inlined read in OculusLoader.Initialize -> "
+                   "MultiPass in libil2cpp.so (found with Cpp2IL). Try it when one eye is wrong.")
     order = 48
-    targets = {"Unity.XR.Oculus/Unity/XR/Oculus/OculusSettings.cs": {"GetStereoRenderingMode": RET_ZERO}}
+    revision = 2  # 0.6.3 only patched the getter, which is inlined: also the field read in OculusLoader.Initialize
+    SETTINGS = "Unity.XR.Oculus/Unity/XR/Oculus/OculusSettings.cs"
+    targets = {SETTINGS: {"GetStereoRenderingMode": RET_ZERO}}
+    # the one-line getter is inlined into OculusLoader.Initialize (no call sites in I Am Cat / Toy Master): the field
+    # read there is what reaches the native plugin
+    field_loads = {"Unity.XR.Oculus/Unity/XR/Oculus/OculusLoader.cs":
+                   {"Initialize": (SETTINGS, "m_StereoRenderingModeAndroid", 0)}}
     check_name = "Unity stereo mode"
 
     def applies(self, a):

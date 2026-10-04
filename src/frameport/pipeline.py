@@ -351,7 +351,8 @@ def prepare_rift(package: str, reporter: Reporter) -> dict:
         check("Revive", True, f"{revive.installed_version()} ({rdir})")
     art, store_title = artwork.fetch(package, lookup=entry.get("quest_package"))
     info = {"sha256": sha256(exe) if exe.is_file() else None, "checks": checks,
-            "ok": all(c["ok"] is not False for c in checks), "revive": revive.installed_version(), "kind": "rift"}
+            "ok": all(c["ok"] is not False for c in checks), "revive": revive.installed_version(), "kind": "rift",
+            "recipe_fp": recipe_fingerprint(entry["recipe"])}
     library.upsert_game(package, build=info)
     return info
 
@@ -386,9 +387,16 @@ def prepare_as_is(package: str, reporter: Reporter) -> dict:
         check("Manifest", None, str(exc))
     art, store_title = artwork.fetch(package, apk)
     info = {"apk": str(apk), "alt_apk": None, "sha256": sha256(apk), "alt_sha256": None, "applied": [],
-            "checks": checks, "ok": all(c["ok"] is not False for c in checks), "as_is": True}
+            "checks": checks, "ok": all(c["ok"] is not False for c in checks), "as_is": True,
+            "recipe_fp": recipe_fingerprint(entry["recipe"])}
     library.upsert_game(package, build=info, title=entry.get("title") or store_title)
     return info
+
+
+def recipe_fingerprint(recipe: dict) -> str:
+    from .patches.base import recipe_fingerprint as fp
+
+    return fp(recipe)
 
 
 def build_game(package: str, reporter: Reporter, outdir: Path | None = None) -> dict:
@@ -405,7 +413,7 @@ def build_game(package: str, reporter: Reporter, outdir: Path | None = None) -> 
     art, store_title = artwork.fetch(package, res.apk)
     build_info = {"apk": str(res.apk), "alt_apk": str(res.alt_apk) if res.alt_apk else None, "sha256": res.sha256,
                   "alt_sha256": res.alt_sha256, "applied": res.applied, "checks": res.checks, "ok": res.ok,
-                  "overport": res.meta.get("overport")}
+                  "overport": res.meta.get("overport"), "recipe_fp": recipe_fingerprint(entry["recipe"])}
     library.upsert_game(package, build=build_info, title=entry.get("title") or store_title)
     return build_info
 

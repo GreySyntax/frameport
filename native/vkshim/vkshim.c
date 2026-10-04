@@ -8,6 +8,11 @@
 // at this shim (patches/frame/vk_sanitize.py). dlsym on the shim finds the functions below first and every other
 // symbol in its dependency, the real libvulkan.so. Valid pointers are kept; a pointer is dropped only when it isn't
 // readable memory or doesn't point at a structure type the parent may chain.
+//
+// Shader fixes (adapter setting vk_shader_fix, from a game's recipe): a SPIR-V module whose size and SHA-256 match is
+// copied with extra words inserted at a byte offset, e.g. stores that initialize locals a shader reads before writing
+// (an undefined loop counter hung the GPU in VR4's campaign). Every other module passes through unchanged.
+// Format: vk_shader_fix=<size>:<sha256 hex>:<byte offset>:<word>,<word>,...[;<next fix>]
 #define _GNU_SOURCE
 #include <vulkan/vulkan.h>
 #include <android/log.h>
@@ -27,14 +32,162 @@ static void *real_vk;
 static PFN_vkGetInstanceProcAddr real_gipa;
 static PFN_vkGetDeviceProcAddr real_gdpa;
 static PFN_vkCreateRenderPass2 real_rp2_trampoline;
+static PFN_vkCreateShaderModule real_csm_trampoline;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 
+// ---------------------------------------------------------------- shader fixes (settings)
+
+#define MAX_FIXES 16
+#define MAX_WORDS 64
+static struct {
+    size_t size, offset;
+    uint8_t sha[32];
+    uint32_t words[MAX_WORDS];
+    int nwords;
+} fixes[MAX_FIXES];
+static int nfixes;
+
+static int hexval(char c) {
+    return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+}
+
+static void parse_fixes(char *v) {
+    for (char *save = NULL, *item = strtok_r(v, ";", &save); item && nfixes < MAX_FIXES; item = strtok_r(NULL, ";", &save)) {
+        char *f[4] = {0}, *save2 = NULL;
+        int n = 0;
+        for (char *t = strtok_r(item, ":", &save2); t && n < 4; t = strtok_r(NULL, ":", &save2)) f[n++] = t;
+        if (n != 4 || strlen(f[1]) != 64) continue;
+        int ok = 1;
+        for (int i = 0; i < 32 && ok; i++) {
+            int hi = hexval(f[1][2 * i]), lo = hexval(f[1][2 * i + 1]);
+            if (hi < 0 || lo < 0) ok = 0; else fixes[nfixes].sha[i] = (uint8_t)(hi << 4 | lo);
+        }
+        fixes[nfixes].size = strtoul(f[0], NULL, 0);
+        fixes[nfixes].offset = strtoul(f[2], NULL, 0);
+        int nw = 0;
+        for (char *save3 = NULL, *w = strtok_r(f[3], ",", &save3); w && nw < MAX_WORDS; w = strtok_r(NULL, ",", &save3))
+            fixes[nfixes].words[nw++] = (uint32_t)strtoul(w, NULL, 0);
+        fixes[nfixes].nwords = nw;
+        if (ok && nw && fixes[nfixes].size % 4 == 0 && fixes[nfixes].offset % 4 == 0 &&
+            fixes[nfixes].offset >= 20 && fixes[nfixes].offset <= fixes[nfixes].size)
+            nfixes++;
+    }
+}
+
+static void read_settings(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    char line[4096];
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        if (!strncmp(line, "vk_shader_fix=", 14)) {
+            nfixes = 0;  // later sources override earlier ones (as for the adapter's settings)
+            parse_fixes(line + 14);
+        }
+    }
+    fclose(f);
+}
+
+static void read_all_settings(void) {
+    char path[600];
+    Dl_info info;
+    if (dladdr((void *)read_all_settings, &info) && info.dli_fname) {
+        const char *slash = strrchr(info.dli_fname, '/');
+        if (slash && slash - info.dli_fname < 500) {
+            snprintf(path, sizeof path, "%.*s/libframe_settings.so", (int)(slash - info.dli_fname), info.dli_fname);
+            read_settings(path);
+        }
+    }
+    char pkg[256] = {0};
+    FILE *f = fopen("/proc/self/cmdline", "r");
+    if (f) {
+        size_t n = fread(pkg, 1, sizeof pkg - 1, f);
+        pkg[n] = 0;
+        fclose(f);
+    }
+    char *colon = strchr(pkg, ':');
+    if (colon) *colon = 0;
+    if (*pkg && !strchr(pkg, '/')) {
+        snprintf(path, sizeof path, "/sdcard/Android/data/%s/files/framebridge.conf", pkg);
+        read_settings(path);
+    }
+    const char *env = getenv("FRAMEBRIDGE_CONFIG");
+    if (env && *env) read_settings(env);
+}
+
+// SHA-256 (FIPS 180-4), only run for modules whose size matches a fix
+static const uint32_t K[64] = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01,
+    0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+    0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08,
+    0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
+#define ROR(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
+
+static void sha256_block(uint32_t h[8], const uint8_t *p) {
+    uint32_t w[64];
+    for (int i = 0; i < 16; i++) w[i] = (uint32_t)p[4 * i] << 24 | (uint32_t)p[4 * i + 1] << 16 | (uint32_t)p[4 * i + 2] << 8 | p[4 * i + 3];
+    for (int i = 16; i < 64; i++) {
+        uint32_t s0 = ROR(w[i - 15], 7) ^ ROR(w[i - 15], 18) ^ (w[i - 15] >> 3);
+        uint32_t s1 = ROR(w[i - 2], 17) ^ ROR(w[i - 2], 19) ^ (w[i - 2] >> 10);
+        w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+    }
+    uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
+    for (int i = 0; i < 64; i++) {
+        uint32_t t1 = hh + (ROR(e, 6) ^ ROR(e, 11) ^ ROR(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i];
+        uint32_t t2 = (ROR(a, 2) ^ ROR(a, 13) ^ ROR(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
+        hh = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
+    }
+    h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e; h[5] += f; h[6] += g; h[7] += hh;
+}
+
+static void sha256(const uint8_t *data, size_t len, uint8_t out[32]) {
+    uint32_t h[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+    size_t i = 0;
+    for (; i + 64 <= len; i += 64) sha256_block(h, data + i);
+    uint8_t tail[128] = {0};
+    size_t rest = len - i;
+    memcpy(tail, data + i, rest);
+    tail[rest] = 0x80;
+    size_t blocks = rest + 9 > 64 ? 2 : 1;
+    uint64_t bits = (uint64_t)len * 8;
+    for (int b = 0; b < 8; b++) tail[blocks * 64 - 1 - b] = (uint8_t)(bits >> (8 * b));
+    for (size_t b = 0; b < blocks; b++) sha256_block(h, tail + 64 * b);
+    for (int b = 0; b < 8; b++) {
+        out[4 * b] = h[b] >> 24; out[4 * b + 1] = h[b] >> 16; out[4 * b + 2] = h[b] >> 8; out[4 * b + 3] = h[b];
+    }
+}
+
+// The fixed copy of `code` (caller frees) and its size, or NULL when no fix matches.
+static uint32_t *fixed_shader(const uint32_t *code, size_t size, size_t *out_size) {
+    for (int i = 0; i < nfixes; i++) {
+        if (fixes[i].size != size) continue;
+        uint8_t digest[32];
+        sha256((const uint8_t *)code, size, digest);
+        if (memcmp(digest, fixes[i].sha, 32)) continue;
+        size_t extra = (size_t)fixes[i].nwords * 4;
+        uint32_t *copy = malloc(size + extra);
+        if (!copy) return NULL;
+        memcpy(copy, code, fixes[i].offset);
+        memcpy((uint8_t *)copy + fixes[i].offset, fixes[i].words, extra);
+        memcpy((uint8_t *)copy + fixes[i].offset + extra, (const uint8_t *)code + fixes[i].offset, size - fixes[i].offset);
+        *out_size = size + extra;
+        return copy;
+    }
+    return NULL;
+}
+
 static void init(void) {
+    read_all_settings();
+    if (nfixes) LOG("vk shim: %d shader fix(es) configured", nfixes);
     real_vk = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
     if (real_vk) {
         real_gipa = (PFN_vkGetInstanceProcAddr)dlsym(real_vk, "vkGetInstanceProcAddr");
         real_gdpa = (PFN_vkGetDeviceProcAddr)dlsym(real_vk, "vkGetDeviceProcAddr");
         real_rp2_trampoline = (PFN_vkCreateRenderPass2)dlsym(real_vk, "vkCreateRenderPass2");
+        real_csm_trampoline = (PFN_vkCreateShaderModule)dlsym(real_vk, "vkCreateShaderModule");
     }
     LOG("vk shim: libvulkan.so %s", real_gipa && real_gdpa ? "OK" : "MISSING");
 }
@@ -203,17 +356,26 @@ static VkRenderPassCreateInfo2 clean_create_info(Arena *a, const VkRenderPassCre
 // ---------------------------------------------------------------- entry points
 
 #define MAX_DEVICES 8
-static struct { VkDevice device; PFN_vkCreateRenderPass2 rp2, rp2khr; } devices[MAX_DEVICES];
+enum { FN_RP2, FN_RP2KHR, FN_CSM, FN_COUNT };
+static const char *const FN_NAMES[FN_COUNT] = {"vkCreateRenderPass2", "vkCreateRenderPass2KHR", "vkCreateShaderModule"};
+static struct { VkDevice device; PFN_vkVoidFunction fn[FN_COUNT]; } devices[MAX_DEVICES];
 static PFN_vkCreateRenderPass2 fallback_rp2khr;  // from vkGetInstanceProcAddr
 static pthread_mutex_t dev_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static PFN_vkCreateRenderPass2 real_for(VkDevice device, int khr) {
-    PFN_vkCreateRenderPass2 fn = NULL;
+// The next implementation of a wrapped device function: the one vkGetDeviceProcAddr returned for this device, else
+// a fresh lookup, else the loader's trampoline.
+static PFN_vkVoidFunction device_fn(VkDevice device, int which) {
+    PFN_vkVoidFunction fn = NULL;
     pthread_mutex_lock(&dev_lock);
     for (int i = 0; i < MAX_DEVICES; i++)
-        if (devices[i].device == device) { fn = khr ? devices[i].rp2khr : devices[i].rp2; break; }
+        if (devices[i].device == device) { fn = devices[i].fn[which]; break; }
     pthread_mutex_unlock(&dev_lock);
-    if (!fn && real_gdpa) fn = (PFN_vkCreateRenderPass2)real_gdpa(device, khr ? "vkCreateRenderPass2KHR" : "vkCreateRenderPass2");
+    if (!fn && real_gdpa) fn = real_gdpa(device, FN_NAMES[which]);
+    return fn;
+}
+
+static PFN_vkCreateRenderPass2 real_for(VkDevice device, int khr) {
+    PFN_vkCreateRenderPass2 fn = (PFN_vkCreateRenderPass2)device_fn(device, khr ? FN_RP2KHR : FN_RP2);
     if (!fn) fn = khr ? fallback_rp2khr : real_rp2_trampoline;
     return fn;
 }
@@ -246,10 +408,39 @@ static VKAPI_ATTR VkResult VKAPI_CALL create_render_pass2_khr(VkDevice device, c
     return create_render_pass2(device, ci, alloc, rp, 1);
 }
 
+static int fixes_applied;
+
+EXPORT VKAPI_ATTR VkResult VKAPI_CALL vkCreateShaderModule(VkDevice device, const VkShaderModuleCreateInfo *ci,
+                                                           const VkAllocationCallbacks *alloc, VkShaderModule *module) {
+    pthread_once(&once, init);
+    PFN_vkCreateShaderModule real = (PFN_vkCreateShaderModule)device_fn(device, FN_CSM);
+    if (!real) real = real_csm_trampoline;
+    if (!real) return VK_ERROR_INITIALIZATION_FAILED;
+    size_t size = 0;
+    uint32_t *code = nfixes && ci && ci->pCode ? fixed_shader(ci->pCode, ci->codeSize, &size) : NULL;
+    if (!code) return real(device, ci, alloc, module);
+    VkShaderModuleCreateInfo copy = *ci;  // the caller's create info and code stay untouched
+    copy.codeSize = size;
+    copy.pCode = code;
+    VkResult r = real(device, &copy, alloc, module);
+    free(code);
+    if (fixes_applied++ < 20) LOG("vk shim: fixed shader module (%zu -> %zu bytes): %d", ci->codeSize, size, r);
+    return r;
+}
+
+static int wrapped_index(const char *name) {
+    for (int i = 0; i < FN_COUNT; i++)
+        if (!strcmp(name, FN_NAMES[i])) return i;
+    return -1;
+}
+
 static PFN_vkVoidFunction wrap(const char *name) {
-    if (!strcmp(name, "vkCreateRenderPass2")) return (PFN_vkVoidFunction)vkCreateRenderPass2;
-    if (!strcmp(name, "vkCreateRenderPass2KHR")) return (PFN_vkVoidFunction)create_render_pass2_khr;
-    return NULL;
+    switch (wrapped_index(name)) {
+    case FN_RP2: return (PFN_vkVoidFunction)vkCreateRenderPass2;
+    case FN_RP2KHR: return (PFN_vkVoidFunction)create_render_pass2_khr;
+    case FN_CSM: return nfixes ? (PFN_vkVoidFunction)vkCreateShaderModule : NULL;  // nothing to fix: no detour
+    default: return NULL;
+    }
 }
 
 EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *name) {
@@ -258,7 +449,7 @@ EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice dev
     PFN_vkVoidFunction fn = real_gdpa(device, name);
     PFN_vkVoidFunction w = fn ? wrap(name) : NULL;
     if (!w) return fn;
-    int khr = name[strlen(name) - 1] == 'R';
+    int which = wrapped_index(name);
     pthread_mutex_lock(&dev_lock);
     int slot = -1;
     for (int i = 0; i < MAX_DEVICES; i++) {
@@ -267,7 +458,7 @@ EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice dev
     }
     if (slot >= 0) {
         devices[slot].device = device;
-        if (khr) devices[slot].rp2khr = (PFN_vkCreateRenderPass2)fn; else devices[slot].rp2 = (PFN_vkCreateRenderPass2)fn;
+        devices[slot].fn[which] = fn;
     }
     pthread_mutex_unlock(&dev_lock);
     return w;

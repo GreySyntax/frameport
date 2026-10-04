@@ -90,3 +90,54 @@ def test_maintained_entry_verified_later_beats_the_users_shared_one():
     user = e("user", verified={"date": "2026-10-03"})
     fixed, old = e("bundled", updated="2026-10-04"), e("bundled", verified={"date": "2026-09-28"})
     assert catalog._newer(fixed, user) and not catalog._newer(old, user) and not catalog._newer(None, user)
+
+
+def test_inlined_getter_field_read_is_rewritten():
+    lib = bytearray(_lib())
+    lo, _hi = U._executable(bytes(lib))[0]
+    m = (lo + 0x40) & ~3
+    lib[m:m + 4] = (0xB9401C00 | 20 << 5 | 22).to_bytes(4, "little")  # ldr w22, [x20, #0x1c]
+    lib[m + 4:m + 8] = (0x39408000 | 20 << 5 | 8).to_bytes(4, "little")  # ldrb w8, [x20, #0x20]: another field
+    out, notes = U.patch_field_loads(bytes(lib), (m, 16), 0x1C, 0, "Initialize")
+    assert out[m:m + 4] == (0x52800000 | 22).to_bytes(4, "little") and out[m + 4:m + 8] == lib[m + 4:m + 8]
+    assert U.patch_field_loads(out, (m, 16), 0x1C, 0, "Initialize")[0] is None  # idempotent
+    import pytest
+
+    with pytest.raises(RuntimeError, match="no load"):
+        U.patch_field_loads(bytes(_lib()), (m, 16), 0x1C, 0, "Initialize")
+
+
+def test_cpp2il_field_offsets_are_parsed():
+    cs = ("public class OculusSettings : ScriptableObject\n{\n\t[SerializeField]\n"
+          "\tpublic StereoRenderingModeAndroid m_StereoRenderingModeAndroid; //Field offset: 0x1C\n}\n")
+    assert il2cpp.parse_methods(cs, ["field:m_StereoRenderingModeAndroid", "Missing"]) == {
+        "field:m_StereoRenderingModeAndroid": (0x1C, 0)}
+    assert "field:m_StereoRenderingModeAndroid" in U.ALL_TARGETS[R.UnityMultiPass.SETTINGS]
+
+
+def test_recipe_changes_and_revised_patches_mark_builds_outdated():
+    from frameport.patches.base import recipe_fingerprint, revised_since_unrecorded
+    from frameport.ui.components import recipe_changed
+
+    base.load_all()
+    r = {"patches": {"frame.unity_text_input": {}}, "use_alt": False}
+    game = {"recipe": r, "build": {"sha256": "a", "recipe_fp": recipe_fingerprint(r)}}
+    assert not recipe_changed(game)
+    r["use_alt"] = True  # e.g. a catalog fix switched to the alternate build
+    assert recipe_changed(game)
+    assert not revised_since_unrecorded({"patches": {"frame.unity_text_input": {}}})
+    assert revised_since_unrecorded({"patches": {"frame.unity_multipass": {}}})  # fixed after 0.6.3
+    assert revised_since_unrecorded({"patches": {"adapter.vk_shader_fix": {"value": "x"}}})  # needs the new shim
+
+
+def test_packaged_app_shows_artwork_by_file_path(tmp_path, monkeypatch):
+    from frameport.artwork import thumbs
+
+    monkeypatch.setattr(thumbs, "user_data_dir", lambda: tmp_path)
+    art = tmp_path / "artwork" / "p.q" / "cover.jpg"
+    assert thumbs.asset_url(art) == "/artwork/p.q/cover.jpg"  # web view / source run: URL under assets_dir
+    thumbs.use_file_paths(True)
+    try:
+        assert thumbs.asset_url(art) == str(art.resolve())
+    finally:
+        thumbs.use_file_paths(False)

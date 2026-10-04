@@ -7,6 +7,7 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Game | Platform | Status | Notes |
 |---|---|---|---|
 | 4XVR Video Player | Quest | ✅ Works |  |
+| AllInOneSports | Quest | ✅ Works |  |
 | Asgard's Wrath 2 | Quest | ✅ Works |  |
 | BAM | Quest | ✅ Works |  |
 | BARTENDER VR SIMULATOR | Quest | ✅ Works |  |
@@ -21,6 +22,7 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | H.U.N.T | Quest | ✅ Works |  |
 | In Death: Unchained | Quest | ✅ Works |  |
 | Job Simulator | Quest | ✅ Works |  |
+| Keep Talking and Nobody Explodes | Quest | ✅ Works |  |
 | LEGO® Bricktales | Quest | ✅ Works |  |
 | Marvel's Deadpool VR | Quest | ✅ Works |  |
 | Medieval Dynasty New Settlement | Quest | ✅ Works |  |
@@ -33,12 +35,14 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Rick and Morty: Virtual Rick-ality | PC VR | ✅ Works |  |
 | Robo Recall | Quest | ✅ Works |  |
 | Sniper Elite VR: Winter Warrior | Quest | ✅ Works |  |
+| Space Pirate Trainer Quest | Quest | ✅ Works |  |
 | Stremio | Quest | ✅ Works |  |
 | The Climb 2 | Quest | ✅ Works |  |
 | Toy Master | Quest | ✅ Works |  |
 | Under Cover | Quest | ✅ Works |  |
 | VR4 | Quest | ✅ Works |  |
 | Wallace & Gromit in The Grand Getaway | Quest | ✅ Works |  |
+| Wander | Quest | ✅ Works |  |
 | Arcsmith | Quest | ⚠️ Works with issues | Right eye distorts during movement (unresolved; swap, tracking, Valve layers, depth and pacing ruled out). |
 | Assassin's Creed Nexus | Quest | ⚠️ Works with issues | Some launch warning text is still upside down; the rest of the UI is fixed by flip emulation. |
 | I Am Cat | Quest | ⚠️ Works with issues | Renders each eye separately; with the default single-pass rendering the right eye showed only effects on grey. |

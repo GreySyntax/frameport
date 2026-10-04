@@ -85,11 +85,19 @@ SETTINGS = [
     ("respace_kick", "int", 0, "Re-create reference space", "Recreate spaces after the first frames (diagnostic)."),
     ("flip_quads", "int", 0, "Rotate quads 180°",
      "Older workaround for upside-down quads: rotates them 180° (quads are single-sided; prefer flip_emul)."),
+    ("vk_shader_fix", "str", "", "Vulkan shader fixes",
+     "Vulkan shim (frame.vk_sanitize): SPIR-V modules matching size + SHA-256 get words inserted at a byte offset, "
+     "e.g. stores that initialize locals a shader reads before writing (an undefined loop counter hung the GPU in "
+     "VR4's campaign). Format: <size>:<sha256>:<byte offset>:<word>,<word>,...; several separated by ';'. Comes from "
+     "a game's recipe."),
     ("gl_hide_multiview", "int", 1, "GL shim: hide multiview",
      "GL shim only: hide GL_OVR_multiview so all passes use single-view shaders. For GLES games whose multiview "
      "shaders fail on single-view render targets (e.g. Path of the Warrior)."),
 ]
 
+
+# settings that need a new build, not only new settings files: the Vulkan shim learned vk_shader_fix in 0.6.4
+REVISIONS = {"vk_shader_fix": 2}
 
 # How the "Game settings" dialog shows each setting to non-technical users: group, level (common settings are always
 # shown; advanced ones only under "Show advanced settings"), a plain label and one-line help, the control, and the
@@ -177,6 +185,7 @@ class AdapterSetting(Patch):
         self.description = description
         self.params = [Param("value", kind, default, description)]
         self.default = default
+        self.revision = REVISIONS.get(key, 1)
 
     def detect(self, a):
         from .applicability import needs_scene, uses_equirect_layers, uses_render_models
@@ -210,6 +219,7 @@ class AdapterSetting(Patch):
             "mutable_fix": ap.is_vulkan,
             "swapchain_fix": ap.is_gles,
             "gl_hide_multiview": lambda a: a.direct_vrapi and ap.is_gles(a),
+            "vk_shader_fix": lambda a: a.engine == "Unreal",  # read by the Vulkan shim, which only Unreal games get
             "controller_models": ap.may_use_render_models,
             **{k: ap.is_gles for k in ("equirect_emul", "equirect_face", "equirect_res", "equirect_flip",
                                        "equirect_fps", "equirect_stereo")},

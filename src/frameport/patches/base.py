@@ -73,6 +73,7 @@ class Patch:
     default_on: bool = False  # part of the always-recommended baseline
     experimental: bool = False
     needs_vr: bool = True  # only matters for VR apps (hidden for Android apps without VR)
+    revision: int = 1  # bump when apply() writes something different: installed builds then show "Update on Frame"
 
     @property
     def summary(self) -> str:
@@ -168,3 +169,24 @@ def _import_modules() -> None:
 
     for mod in pkgutil.iter_modules(frame.__path__):
         importlib.import_module(f"{frame.__name__}.{mod.name}")
+
+
+def recipe_fingerprint(recipe: dict) -> str:
+    """What a build of this recipe contains: the patch selection with parameters, the build choices and each enabled
+    patch's revision. A build whose fingerprint differs from the recipe's now is outdated (a catalog fix, a revised
+    patch or a changed option), even when nothing was rebuilt yet."""
+    import hashlib
+    import json
+
+    load_all()
+    patches = recipe.get("patches") or {}
+    d = {"patches": patches, "use_alt": bool(recipe.get("use_alt")), "alt": sorted(recipe.get("alt_patches") or []),
+         "as_is": bool(recipe.get("as_is")), "overport": recipe.get("overport", True),
+         "rev": {p: REGISTRY[p].revision for p in sorted(patches) if p in REGISTRY and REGISTRY[p].revision != 1}}
+    return hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def revised_since_unrecorded(recipe: dict) -> bool:
+    """For builds made before fingerprints were recorded: an enabled patch has been revised since (revision > 1)."""
+    load_all()
+    return any(p in REGISTRY and REGISTRY[p].revision > 1 for p in recipe.get("patches") or {})

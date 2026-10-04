@@ -20,9 +20,15 @@ _ADDRESS = re.compile(r'Offset = "0x([0-9A-Fa-f]+)", Length = "0x([0-9A-Fa-f]+)"
 
 
 def parse_methods(cs_text: str, names: list[str]) -> dict[str, tuple[int, int]]:
-    """{method name: (file offset, length)} for the named methods of one Cpp2IL diffable-C# class file."""
+    """{method name: (file offset, length)} for the named methods of one Cpp2IL diffable-C# class file. A name
+    "field:<f>" gives the instance field's offset instead: (offset, 0)."""
     lines = cs_text.splitlines()
     found: dict[str, tuple[int, int]] = {}
+    for name in [n for n in names if n.startswith("field:")]:
+        m = re.search(rf"\s{re.escape(name[6:])};\s*//Field offset: 0x([0-9A-Fa-f]+)", cs_text)
+        if m:
+            found[name] = (int(m.group(1), 16), 0)
+    names = [n for n in names if not n.startswith("field:")]
     for i, line in enumerate(lines):
         for name in names:
             if name in found or not re.search(rf"\s{re.escape(name)}\s*\(", line) or "Token" in line:

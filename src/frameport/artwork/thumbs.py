@@ -86,7 +86,20 @@ def ready_thumb(path: Path, width: int, kind: str | None = None) -> Path | None:
     return out if out.exists() else None
 
 
+_FILE_PATHS = False
+
+
+def use_file_paths(on: bool = True) -> None:
+    """Images by absolute file path: a packaged app (flet build) serves relative image paths from its own bundled
+    assets, not from assets_dir, so artwork by URL stayed blank there (GitHub issue 16; the reporter confirmed file
+    paths work in the Windows app). Source runs and the web view (ui_smoke) keep URLs."""
+    global _FILE_PATHS
+    _FILE_PATHS = on
+
+
 def asset_url(path: Path) -> str:
+    if _FILE_PATHS:
+        return str(path.resolve())
     return "/" + path.relative_to(user_data_dir()).as_posix()
 
 

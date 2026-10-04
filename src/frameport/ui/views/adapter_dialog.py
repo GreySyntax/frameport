@@ -18,7 +18,9 @@ from .. import theme as T
 if TYPE_CHECKING:
     from ..app import FramePortApp
 
-SPECS = {key: (kind, default) for key, kind, default, _, _ in SETTINGS}
+# the dialog's settings: numbers and switches (text settings such as vk_shader_fix are recipe data: saving the dialog
+# keeps them as they are)
+SPECS = {key: (kind, default) for key, kind, default, _, _ in SETTINGS if kind in ("int", "float")}
 
 
 def default(key: str):
