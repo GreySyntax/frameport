@@ -1,10 +1,11 @@
 package: com.Warpfrog.BladeAndSorcery
 title: 'Blade & Sorcery: Nomad'
 status: issues
-notes: The view can still jump sideways now and then, and the game sometimes freezes.
-details: On each brief focus dip (~0.5 s) the game pauses and, when focus returns, re-aligns the player to the head
-  (ThunderRoad Player.OnVRPresence -> Player.Teleport), which looks like a sideways jump. focus_hold hides dips under
-  600 ms once the game has been focused for 3 s (5 of 7 in the tested session).
+notes: Pauses and re-centres (a sideways jump) when the Frame briefly loses focus.
+details: The Frame's runtime drops focus now and then (mostly 1.5-7 s, some only milliseconds); the game pauses
+  ("System menu opened", the world freezes) and re-aligns the player when focus returns (Player.OnVRPresence ->
+  Teleport, the sideways jump). They match the headset's wear sensor flickering off while worn (SteamVR "HMD off" 0.5-2
+  s), which only this game reacts to; focus_hold hides dips up to 2.5 s here. Rendering keeps 72 fps throughout.
 tested_version: 1.3.1
 engine: Unity
 xr: OpenXR
@@ -14,6 +15,7 @@ device:
 - device.text_input_window
 adapter:
   focus_hold: 1
+  focus_hold_ms: 2500
 verified:
   date: '2026-10-04'
 updated: '2026-10-04'

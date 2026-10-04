@@ -117,8 +117,12 @@ static XRAPI_ATTR XrResult XRAPI_CALL hook_xrSyncActions(XrSession session, cons
 }
 
 // ---------------------------------------------------------------- focus_hold
-#define FOCUS_HOLD_MIN_FOCUSED_NS 3000000000ll  // only after this long in FOCUSED (start-up transitions untouched)
-#define FOCUS_HOLD_MAX_DIP_NS 600000000ll       // dips longer than this are delivered (late, in order)
+#define FOCUS_HOLD_MIN_FOCUSED_NS 1000000000ll  // only after this long in FOCUSED (start-up transitions untouched;
+                                                // 3 s let a 27 ms dip through in Blade & Sorcery)
+// dips longer than focus_hold_ms (setting, default 1000) are delivered (late, in order): taking the headset off or the
+// system menu must still pause the game. A longer limit is for headsets whose wear sensor flickers ("HMD off" for
+// 0.5-2 s while worn; Blade & Sorcery pauses on each)
+#define FOCUS_HOLD_MAX_DIP_NS ((int64_t)(focus_hold_ms * 1000000.0f))
 static struct {
     XrEventDataBuffer events[6];
     int count, holding, delivering;
@@ -152,7 +156,7 @@ static XrResult focus_hold_poll(PFN_xrPollEvent fn, XrInstance instance, XrEvent
         if (result != XR_SUCCESS) {
             if (held.holding && now - held.since > FOCUS_HOLD_MAX_DIP_NS) {
                 LOG("focus_hold: focus lost for > %lld ms, delivering %d state change(s)",
-                    FOCUS_HOLD_MAX_DIP_NS / 1000000, held.count);
+                    (long long)(FOCUS_HOLD_MAX_DIP_NS / 1000000), held.count);
                 held.holding = 0; held.delivering = 1;
                 continue;
             }

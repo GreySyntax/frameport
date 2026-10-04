@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 36
+AGENT_VERSION = 37
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -831,9 +831,10 @@ def vdf_encode(obj):
 
 
 def upsert_shortcut(vdf_path, exe, title, start_dir, icon="", tag="Quest on Frame", launch_options="", tags=None,
-                    openvr=True):
+                    openvr=True, write=True):
     """Add/update a non-Steam shortcut (matched by Exe, so its appid never changes). `tags` (genres, the user's tags)
-    are merged with tags already on the shortcut, so ones set in Steam are kept."""
+    are merged with tags already on the shortcut, so ones set in Steam are kept. write=False: change nothing, return
+    (appid, whether shortcuts.vdf would change)."""
     data = open(vdf_path, "rb").read() if os.path.exists(vdf_path) else b""
     root = vdf_decode(data) if data else {"shortcuts": {}}
     shortcuts = root.setdefault("shortcuts", {})
@@ -849,6 +850,8 @@ def upsert_shortcut(vdf_path, exe, title, start_dir, icon="", tag="Quest on Fram
     entry.update(appname=title, Exe=exe, StartDir=start_dir, icon=icon or entry.get("icon", ""), ShortcutPath="",
                  LaunchOptions=launch_options, IsHidden=0, AllowDesktopConfig=1, AllowOverlay=1,
                  OpenVR=1 if openvr else 0, Devkit=0, DevkitGameID="", DevkitOverrideAppID=0, FlatpakAppID="")
+    if not write:
+        return ident, vdf_encode(root) != data
     if data:
         backup_vdf(vdf_path)
     os.makedirs(os.path.dirname(vdf_path), exist_ok=True)
@@ -967,11 +970,56 @@ def cmd_shortcuts(args):
     return {"started": True, "unit": unit}
 
 
+def shortcut_args(pkg):
+    """(exe, title, start dir, icon, tag, tags, openvr) of an installed game's shortcut."""
+    anchor = os.path.join(ANCHORS, pkg)
+    dep = json.load(open(os.path.join(anchor, "deployment.json")))
+    icon = next(iter(glob.glob(os.path.join(anchor, "artwork/icon.*"))), "")
+    flat = dep.get("vr") is False
+    tag = ("Windows game on Frame" if flat else "PC VR on Frame") if dep.get("kind") == "pcvr" else "Quest on Frame"
+    return f'"{anchor}/launch.sh"', dep["title"], anchor, icon, tag, dep.get("tags") or [], not flat
+
+
+def library_changes(users, packages):
+    """Whether shortcuts.vdf would change for any of these games (a reinstall usually changes nothing)."""
+    for user in users:
+        vdf = os.path.join(STEAM, "userdata", user, "config/shortcuts.vdf")
+        for pkg in packages:
+            exe, title, start, icon, tag, tags, openvr = shortcut_args(pkg)
+            if upsert_shortcut(vdf, exe, title, start, icon, tag, tags=tags, openvr=openvr, write=False)[1]:
+                return True
+    return False
+
+
+def game_running():
+    """A game is being played on the Frame (any Lepton game container, or a FramePort PC VR game)."""
+    names = run(["podman", "ps", "--format", "{{.Names}}"]).stdout.split()
+    if any(n.startswith("lepton-steamlaunch-") for n in names):
+        return True
+    return any(pcvr_pids(d["base"]) for d in cmd_list_installed({})["games"] if d.get("kind") == "pcvr")
+
+
 def shortcuts_worker(payload):
     args = json.loads(payload)
     result = {"state": "done", "added": [], "errors": [], "finished": None}
+    os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
     try:
         users = library_users()
+        if not args.get("remove") and not library_changes(users, args["packages"]):
+            # nothing to change in shortcuts.vdf (e.g. a reinstall): only the artwork, no Steam restart
+            for user in users:
+                update_library(user, args["packages"], result, shortcuts=False)
+            result["unchanged"] = True
+            result["finished"] = time.time()
+            with open(STATUS_FILE, "w") as f:
+                json.dump(result, f)
+            return
+        deadline = time.time() + 3 * 3600
+        while game_running() and time.time() < deadline:  # restarting Steam would end the game being played
+            with open(STATUS_FILE, "w") as f:
+                json.dump({"state": "waiting", "reason": "a game is running", "packages": args["packages"],
+                           "started": time.time()}, f)
+            time.sleep(10)
         try:
             service = stop_steam()
         except AgentError:
@@ -1005,8 +1053,9 @@ def remove_from_library(user, remove, result):
             result["errors"].append(f"{r.get('exe')}: {exc}")
 
 
-def update_library(user, packages, result):
-    """Add/update installed games' shortcuts + grid art in one Steam account (Steam is closed)."""
+def update_library(user, packages, result, shortcuts=True):
+    """Add/update installed games' shortcuts + grid art in one Steam account (Steam is closed; shortcuts=False: only
+    the grid art of shortcuts that are already right, while Steam runs)."""
     vdf = os.path.join(STEAM, "userdata", user, "config/shortcuts.vdf")
     grid = os.path.join(os.path.dirname(vdf), "grid")
     os.makedirs(grid, exist_ok=True)
@@ -1014,12 +1063,9 @@ def update_library(user, packages, result):
         try:
             anchor = os.path.join(ANCHORS, pkg)
             dep = json.load(open(os.path.join(anchor, "deployment.json")))
-            icon = next(iter(glob.glob(os.path.join(anchor, "artwork/icon.*"))), "")
-            flat = dep.get("vr") is False
-            tag = ("Windows game on Frame" if flat else "PC VR on Frame") if dep.get("kind") == "pcvr" \
-                else "Quest on Frame"
-            got = upsert_shortcut(vdf, f'"{anchor}/launch.sh"', dep["title"], anchor, icon, tag,
-                                  tags=dep.get("tags") or [], openvr=not flat)
+            exe, title, start, icon, tag, tags, openvr = shortcut_args(pkg)
+            got = upsert_shortcut(vdf, exe, title, start, icon, tag, tags=tags, openvr=openvr, write=shortcuts)
+            got = got[0] if not shortcuts else got
             for kind, suffix in (("portrait", "p"), ("landscape", ""), ("hero", "_hero"), ("logo", "_logo")):
                 img = next(iter(glob.glob(os.path.join(anchor, f"artwork/{kind}.*"))), None)
                 if not img:

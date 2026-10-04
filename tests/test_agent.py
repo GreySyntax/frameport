@@ -859,3 +859,25 @@ def test_flat_windows_game_launcher_and_shortcut(monkeypatch, tmp_path):
     a.upsert_shortcut(vdf, '"/x/launch.sh"', "Game", "/x", tag="Windows game on Frame", openvr=False)
     entry = a.vdf_decode(open(vdf, "rb").read())["shortcuts"]["0"]
     assert entry["OpenVR"] == 0 and entry["tags"]["0"] == "Windows game on Frame"
+
+
+def test_reinstall_with_unchanged_shortcut_does_not_restart_steam(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "Applications/quest-frame/com.x.y"
+    (anchor / "artwork").mkdir(parents=True)
+    (anchor / "artwork/portrait.jpg").write_bytes(b"art")
+    (anchor / "deployment.json").write_text(json.dumps({"package": "com.x.y", "appid": 1, "title": "X", "base": "b"}))
+    cfg = tmp_path / ".local/share/Steam/userdata/42/config"
+    cfg.mkdir(parents=True)
+    exe, title, start, icon, tag, tags, openvr = a.shortcut_args("com.x.y")
+    assert a.library_changes(["42"], ["com.x.y"])  # not in the library yet
+    a.upsert_shortcut(str(cfg / "shortcuts.vdf"), exe, title, start, icon, tag, tags=tags, openvr=openvr)
+    assert not a.library_changes(["42"], ["com.x.y"])  # a reinstall: nothing to change
+    stops = []
+    monkeypatch.setattr(a, "stop_steam", lambda: stops.append(1) or True)
+    monkeypatch.setattr(a, "start_steam", lambda s: stops.append(2))
+    a.shortcuts_worker(json.dumps({"packages": ["com.x.y"], "remove": []}))
+    status = json.load(open(a.STATUS_FILE))
+    assert not stops and status["state"] == "done" and status["unchanged"]
+    assert status["added"][0]["package"] == "com.x.y"
+    assert (cfg / "grid").is_dir() and any(p.name.endswith("p.jpg") for p in (cfg / "grid").iterdir())

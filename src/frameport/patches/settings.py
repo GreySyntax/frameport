@@ -53,8 +53,12 @@ SETTINGS = [
      "Every 'local' play space the game creates lines up with the one at the start. For games whose menus or screens "
      "jump to where you look on the Frame."),
     ("focus_hold", "int", 0, "Ignore brief focus dips",
-     "Hides the Frame's brief focus dips (well under a second) once the game has been focused for a few seconds. For "
+     "Hides the Frame's brief focus dips (up to a second) once the game has been focused for a second. For "
      "games that recentre or pause every time focus returns."),
+    ("focus_hold_ms", "float", 1000.0, "Longest focus dip to ignore (ms)",
+     "focus_hold hides focus dips up to this long (100-5000). Longer for a headset whose wear sensor flickers "
+     "(\"HMD off\" for 0.5-2 s while worn, e.g. Blade & Sorcery pausing); taking the headset off or the system menu "
+     "pauses the game only after this long."),
     ("sync_guard", "int", 0, "Guard controller input after focus",
      "Runs xrSyncActions one at a time with xrPollEvent and skips it for 250 ms after focus returns. For games that "
      "crash in the runtime's input code right after focus comes back (SIGSEGV in vrclient.so UpdateActionStateInternal "
@@ -123,6 +127,9 @@ UI: dict[str, dict] = {
     "controller_fix": dict(group="controllers", level="common", label="Use controllers",
                            help="Turn off only for games you play with your hands instead of controllers.",
                            control=("switch",)),
+    "focus_hold_ms": dict(group="screens", level="advanced", label="Ignore focus dips up to", depends="focus_hold",
+                          help="Longer for headsets that briefly think they're off your head.",
+                          control=("slider", 500.0, 3000.0, 100.0, "{:.0f} ms")),
     "sync_guard": dict(group="troubleshooting", level="advanced", label="Steady controller input after focus",
                        help="For games that crash right after you return to them (e.g. after the Steam menu).",
                        control=("switch",)),

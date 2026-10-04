@@ -29,9 +29,10 @@ class UnityOculusCheck(Patch):
             and 0 < major < 2019
 
     def detect(self, a):
-        if self.applies(a):
-            return Suggestion(True, "Older Unity with built-in Oculus support: it checks for Meta's system apps "
-                                    "before starting VR, which the Frame doesn't have.")
+        if self.applies(a):  # opt-in for now: VR starts, but Unity 2017's frame loop never calls xrWaitFrame
+            return Suggestion(False, "Older Unity with built-in Oculus support: it checks for Meta's system apps "
+                                     "before starting VR. Experimental: VR then starts but the game doesn't show "
+                                     "frames yet and can freeze the Frame's dashboard (e.g. Accounting+).")
         return None
 
     def apply(self, ctx: ApkContext) -> bool:

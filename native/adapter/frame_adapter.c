@@ -81,6 +81,7 @@ static int profile_remap = 1; // Meta's newer controller profiles (rejected by t
 static int layer_debug;      // diagnostics: layers, swapchains, session states, spaces, aim/grip, refresh rates
 static int stable_local;     // keep every LOCAL space the app creates on the session-start origin
 static int focus_hold;       // hide brief focus dips once the session has been focused for a while
+static float focus_hold_ms = 1000;  // longest focus dip focus_hold hides
 static float aim_pitch, aim_yaw, aim_forward;  // aim pose correction (degrees, degrees, metres)
 static float refresh_rate;   // requested display refresh rate (Hz), 0 = the app's choice
 static int equirect_emul;    // show 360 layers as cube faces (GLES)
@@ -121,6 +122,7 @@ static void read_settings(const char *path) {
         if (sscanf(line, "sync_guard=%f", &value) == 1) sync_guard = value != 0;
         if (sscanf(line, "stable_local=%f", &value) == 1) stable_local = value != 0;
         if (sscanf(line, "focus_hold=%f", &value) == 1) focus_hold = value != 0;
+        if (sscanf(line, "focus_hold_ms=%f", &value) == 1 && value >= 100 && value <= 5000) focus_hold_ms = value;
         if (sscanf(line, "aim_pitch=%f", &value) == 1 && fabsf(value) <= 90) aim_pitch = value;
         if (sscanf(line, "aim_yaw=%f", &value) == 1 && fabsf(value) <= 90) aim_yaw = value;
         if (sscanf(line, "aim_forward=%f", &value) == 1 && fabsf(value) <= 0.5f) aim_forward = value;

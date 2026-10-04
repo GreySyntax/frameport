@@ -46,7 +46,7 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Wander | Quest | ✅ Works |  |
 | Arcsmith | Quest | ⚠️ Works with issues | Right eye distorts during movement (unresolved; swap, tracking, Valve layers, depth and pacing ruled out). |
 | Assassin's Creed Nexus | Quest | ⚠️ Works with issues | Some launch warning text is still upside down; the rest of the UI is fixed by flip emulation. |
-| Blade & Sorcery: Nomad | Quest | ⚠️ Works with issues | The view can still jump sideways now and then, and the game sometimes freezes. |
+| Blade & Sorcery: Nomad | Quest | ⚠️ Works with issues | Pauses and re-centres (a sideways jump) when the Frame briefly loses focus. |
 | I Am Cat | Quest | ⚠️ Works with issues | Renders each eye separately (the right eye was grey otherwise); the picture stutters slightly. |
 | Lucky's Tale | Quest | ⚠️ Works with issues | Keeps MSAA off; the game turned it on by itself and the whole Frame restarted in a menu. |
 | Myst | Quest | ⚠️ Works with issues | Minor graphical glitches on some objects. |

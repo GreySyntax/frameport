@@ -3,7 +3,7 @@ title: BattleGlide
 status: works
 notes: Freezes from the headset's brief focus losses are hidden (focus_hold).
 details: The Frame drops the session out of focus for ~0.5 s every few seconds (11 times in 80 s of play) and Unreal
-  pauses each time; focus_hold hides dips under 600 ms once the game has been focused for 3 s. Longer dips (real
+  pauses each time; focus_hold hides dips up to 1 s once the game has been focused for 1 s. Longer dips (real
   interruptions) still pause it.
 tested_version: 0.4.1 (BETA)
 engine: Unreal

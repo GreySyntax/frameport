@@ -148,7 +148,7 @@ def test_unity_oculus_check_only_for_old_unity_with_the_check():
     p = base.get("frame.unity_oculus_check")
     old = _analysis(libs=["libunity.so", "libOVRPlugin.so"],
                     extra={"unity_version": "2017.4.23f1", "unity_oculus_check": True})
-    assert p.applies(old) and p.detect(old).recommended
+    assert p.applies(old) and not p.detect(old).recommended  # opt-in until Unity 2017's frame loop works
     new = _analysis(libs=["libunity.so", "libOVRPlugin.so"],
                     extra={"unity_version": "2019.4.35f1", "unity_oculus_check": True})
     assert not p.applies(new) and p.detect(new) is None  # 2019+ runs without it: builds stay byte-identical

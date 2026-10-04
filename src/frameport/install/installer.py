@@ -392,6 +392,10 @@ def add_to_steam(frame: Frame, packages: list[str], reporter: Reporter, wait: fl
             continue
         if status.get("state") in ("done", "failed"):
             break
+        if status.get("state") == "waiting":  # a game is being played: Steam restarts once it's closed
+            reporter.check("Steam library", None, "added when the game that's running now is closed (Steam has to "
+                                                  "restart for it)")
+            return status
     added = {a["package"] for a in status.get("added", [])}
     for a in status.get("added", []):
         reporter.check(f"Steam library: {a['package']}", True, f"shortcut {a['appid']}")
