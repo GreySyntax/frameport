@@ -22,7 +22,6 @@ from frameport.core.models import Analysis
 from frameport.patches import base
 from frameport.patches.frame import langpack as patch_mod
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "native/langpack/langpack.c"
 FAKE = Path(__file__).with_name("fixtures") / "src" / "fakeloader.c"
@@ -55,7 +54,8 @@ def built(tmp_path_factory):
     _compile(SRC, d / "langpack_fast.so", "-fvisibility=hidden", "-DFP_LIST_TIMEOUT_MS=100")
     original = (d / "fakeloader.so").read_bytes()
     patched, hidden = elf.hide_exports(original, patch_mod.EXPORTS)
-    return {"lib": d / "langpack.so", "fast": d / "langpack_fast.so", "original": original, "patched": patched, "hidden": hidden}
+    return {"lib": d / "langpack.so", "fast": d / "langpack_fast.so", "original": original, "patched": patched,
+            "hidden": hidden}
 
 
 def _dlclose(lib):
@@ -188,7 +188,7 @@ def test_get_current_by_environment_and_single_pack(api, packs, monkeypatch, tmp
     d = api.details(api.f("ovr_Message_GetAssetDetails", VOIDP, VOIDP)(m))
     assert d["type"] == b"language_pack" and d["status"] == b"installed"
     assert d["path"] == str(packs / "de.lang").encode()
-    assert (d["tag"], d["en"], d["native"]) == (b"de", b"German", "Deutsch".encode())
+    assert (d["tag"], d["en"], d["native"]) == (b"de", b"German", b"Deutsch")
     assert d["id"] >> 48 == 0x4650
     api.free(m)
     # exactly one pack and nothing chosen: that one
@@ -302,7 +302,8 @@ def _tags(api):
     m = api.pop()
     arr = api.f("ovr_Message_GetAssetDetailsArray", VOIDP, VOIDP)(m)
     get = api.f("ovr_AssetDetailsArray_GetElement", VOIDP, VOIDP, C.c_size_t)
-    out = {api.details(get(arr, i)).get("tag") for i in range(api.f("ovr_AssetDetailsArray_GetSize", C.c_size_t, VOIDP)(arr))}
+    size = api.f("ovr_AssetDetailsArray_GetSize", C.c_size_t, VOIDP)(arr)
+    out = {api.details(get(arr, i)).get("tag") for i in range(size)}
     api.free(m)
     out.discard(None)
     return out
@@ -358,7 +359,8 @@ def test_asset_list_the_loader_never_answers_gets_our_packs_after_the_timeout(ap
     api_fast.free(m)
     assert api_fast.pop() is None  # answered once
     before = api_fast.loader.fake_freed()
-    api_fast.loader.fake_late_list(C.c_uint64(req))  # the dispatcher's answer arrives after all: dropped, not a 2nd answer
+    # the dispatcher's answer arrives after all: dropped, not a second answer
+    api_fast.loader.fake_late_list(C.c_uint64(req))
     assert api_fast.pop() is None
     assert api_fast.loader.fake_freed() == before + 1
 
