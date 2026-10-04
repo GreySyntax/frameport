@@ -183,7 +183,10 @@ def _non_quest(analysis: Analysis, recipe: Recipe) -> None:
     if kind == "none":
         # an ordinary (2D) Android app: no OpenXR to translate. Install it unchanged, or with only the launcher fix
         recipe.overport = False
-        needed = {"device.hide_navbar"} | ({"frame.launcher"} if analysis.has_info_category else set())  # LAUNCHER
+        # fixes that aren't about VR stay (navigation bar, SDL's clipboard, Unity text fields...), and the launcher
+        # entry when the app only has an INFO activity
+        needed = {pid for pid in recipe.patches if not base.get(pid).needs_vr and pid != "frame.launcher"}
+        needed |= {"frame.launcher"} if analysis.has_info_category else set()
         recipe.patches = {pid: v for pid, v in recipe.patches.items() if pid in needed}
         recipe.reasons = {pid: v for pid, v in recipe.reasons.items() if pid in recipe.patches}
         recipe.alt_patches = []

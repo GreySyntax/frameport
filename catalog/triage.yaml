@@ -69,6 +69,11 @@ signatures:
     diagnosis: Unity didn't start its Oculus VR device (older Unity checks for Meta's system apps first), so the game
       runs as a hidden 2D app.
     suggest: [frame.unity_oculus_check]
+  - id: sdl-no-clipboard
+    pattern: 'ClipboardManager\.addPrimaryClipChangedListener|SDLClipboardHandler\.<init>'
+    severity: fatal
+    diagnosis: An SDL app (SDL2 / LÖVE) crashed at start because Lepton's Android has no clipboard service.
+    suggest: [frame.sdl_clipboard]
   - id: controller-profile-rejected
     pattern: 'PATH_UNSUPPORTED.*xrSuggestInteractionProfileBindings|xrSuggestInteractionProfileBindings.*(-48|PATH_UNSUPPORTED)'
     severity: info

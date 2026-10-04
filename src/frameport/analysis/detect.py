@@ -93,6 +93,9 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
         abi = next((a for a in ("arm64-v8a", "armeabi-v7a") if a in abis), None)
         prefix = f"lib/{abi}/" if abi else None
         libs = sorted(n[len(prefix):] for n in names if prefix and n.startswith(prefix) and n.endswith(".so"))
+        # SDL's Java side (SDL2 / LÖVE apps): crashes in Lepton without a clipboard service (frame.sdl_clipboard)
+        sdl_java = any(b"Lorg/libsdl/app/SDLClipboardHandler;" in z.read(n) for n in names
+                       if n.startswith("classes") and n.endswith(".dex"))
         manifest = z.read("AndroidManifest.xml")
         lib_bytes = {}
         if deep and prefix:
@@ -195,6 +198,7 @@ def analyze(path: Path, deep: bool = True, data_bytes: int | None = None) -> Ana
             "text_fields": unity_text_fields(il2cpp_meta) if il2cpp_meta else [],
             # Meta's OVRManager raises MSAA at runtime (frame.unity_runtime_msaa_off); Oculus XR Plugin (multiview)
             "ovr_runtime_msaa": bool(il2cpp_meta) and b"\0useRecommendedMSAALevel\0" in il2cpp_meta,
+            "sdl_java": sdl_java,
             "oculus_xr_plugin": bool(il2cpp_meta) and b"\0m_StereoRenderingModeAndroid\0" in il2cpp_meta,
             # Unity's built-in Oculus support checks for Meta's system apps before VR (frame.unity_oculus_check)
             "unity_oculus_check": b"\0com.oculus.systemactivities\0" in lib_bytes.get("libunity.so", b""),

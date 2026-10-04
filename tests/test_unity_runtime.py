@@ -175,3 +175,15 @@ def test_app_update_refreshes_derived_recipes_once(tmp_path, monkeypatch):
     assert "adapter.scale" not in got["com.own.engine"]["recipe"]["patches"]  # derived again from scratch
     assert got["com.mine"]["recipe"]["patches"]["adapter.scale"] == {"value": 1.5}  # the user's own recipe stays
     assert not library._follow_catalog(library.load())  # once per app version
+
+
+def test_sdl_clipboard_patch_for_2d_sdl_apps():
+    from frameport.recommend import engine
+
+    base.load_all()
+    a = _analysis(package="org.love2d.android", engine="Other", libs=["liblove.so"], is_overport_output=False,
+                  extra={"sdl_java": True, "vr_kind": "none"})
+    r = engine.suggest(a)
+    assert "frame.sdl_clipboard" in r.patches and not r.as_is  # an APK edit: not installed unchanged
+    a.extra["sdl_java"] = False
+    assert "frame.sdl_clipboard" not in engine.suggest(a).patches

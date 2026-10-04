@@ -460,6 +460,11 @@ Steam library (GitHub #4/#21/#27, agent v38): shortcuts go to every Steam accoun
 always the account on the Frame); stop_steam also waits for Steam's helpers; after the restart the agent re-reads
 shortcuts.vdf and writes once more if Steam put its old copy back (`shortcuts_lost`), else reports it. 0.6.3's Play
 auto-repair (`_add_then_play`) crashed (its job got a Job, not a reporter). Uploads resume on a transient OSError.
+Lepton's Android 11 has no clipboard service (134 services; checked with `podman exec … service check clipboard`):
+SDL/LÖVE apps crashed at start → `frame.sdl_clipboard` (`apk/dex.py`: in-place dex edit, nops one invoke, fixes
+the header checksum/signature; verified with LÖVE for Android 11.5, GitHub #24 Dramatic Shape). 2D apps (vr_kind none)
+keep every suggested patch that isn't about VR (`needs_vr = False`), not a fixed list. FramePort on the Frame:
+`frame/local.py` (127.0.0.1, own key authorized) and Steam library changes wait while Desktop Mode is open.
 Headset round 3 (owner's verdicts, 2026-10-04): Blade & Sorcery works — its freezes were the headset's wear sensor
 flickering off while worn (vrserver.txt "HMD off/on" 0.5-2 s) → per-game `focus_hold_ms=2500` (only this game reacts;
 not a default). BattleGlide works (focus_hold). Myst works with issues (object glitches; space warp ruled out, its
