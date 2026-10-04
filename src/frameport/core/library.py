@@ -42,18 +42,26 @@ def edit() -> Iterator[dict]:
         save(data)
 
 
+REFRESH_ON_UPDATE = True  # (tests switch it off: their hand-made libraries have no version marker)
+
+
 def _follow_catalog(data: dict) -> bool:
-    """Recipes FramePort derived (not ones the user edited) follow their catalog entry: when an entry is new or
-    changed (e.g. a fix shipped with an update), the game's recipe is derived again; Update on Frame applies it."""
+    """Recipes FramePort derived (not ones the user edited) stay current: when their catalog entry is new or changed,
+    and once after every app update (new automatic fixes and suggestions in FramePort's code), the game's recipe is
+    derived again; a changed recipe shows Update on Frame."""
+    from .. import __version__
     from ..recommend import catalog, engine
 
-    changed = False
+    settings = data.setdefault("settings", {})
+    app_updated = REFRESH_ON_UPDATE and settings.get("recipes.app_version") != __version__
+    changed = app_updated
+    settings["recipes.app_version"] = __version__
     for pkg, g in (data.get("games") or {}).items():
         r, a = g.get("recipe"), g.get("analysis")
         if not isinstance(r, dict) or not isinstance(a, dict) or r.get("source") == "user":
             continue
         entry = catalog.lookup(pkg)
-        if entry is None or r.get("catalog_rev") == entry.rev():
+        if not app_updated and (entry is None or r.get("catalog_rev") == entry.rev()):
             continue
         try:
             g["recipe"] = recipe_to_dict(engine.suggest(analysis_from_dict(a)))

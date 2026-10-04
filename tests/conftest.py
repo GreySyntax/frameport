@@ -14,9 +14,10 @@ os.environ["FRAMEPORT_HOME"] = tempfile.mkdtemp(prefix="frameport-tests-")
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path, monkeypatch):
     """Never touch the real user data dir (tools, keystores, library) from tests."""
-    from frameport.core import paths
+    from frameport.core import library, paths
 
     monkeypatch.setenv("FRAMEPORT_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(library, "REFRESH_ON_UPDATE", False)  # hand-made test libraries have no version marker
     yield
     paths._removed.clear()  # an uninstall test marks the data folder as removed for the rest of the process
 

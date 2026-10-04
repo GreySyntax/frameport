@@ -154,3 +154,24 @@ def test_unity_oculus_check_only_for_old_unity_with_the_check():
     assert not p.applies(new) and p.detect(new) is None  # 2019+ runs without it: builds stay byte-identical
     log = "10-04 15:08:01.000  1213  1235 I Unity   : [NewtonVR] Critical Error: Oculus / SteamVR not setup properly"
     assert "frame.unity_oculus_check" in {s for f in triage(log, "RUNNING", None).findings for s in f.suggest}
+
+
+def test_app_update_refreshes_derived_recipes_once(tmp_path, monkeypatch):
+    import json
+
+    from frameport.core import library
+
+    monkeypatch.setattr(library, "_path", lambda: tmp_path / "library.json")
+    monkeypatch.setattr(library, "REFRESH_ON_UPDATE", True)
+    an = {"package": "com.own.engine", "engine": "Other", "libs": ["libgame.so"], "abis": ["arm64-v8a"]}
+    custom = {"frame.adapter": {}, "adapter.scale": {"value": 1.5}}
+    games = {"com.own.engine": {"analysis": an, "recipe": {"package": "com.own.engine", "source": "heuristics",
+                                                          "patches": dict(custom)}},
+             "com.mine": {"analysis": dict(an, package="com.mine"),
+                          "recipe": {"package": "com.mine", "source": "user", "patches": dict(custom)}}}
+    (tmp_path / "library.json").write_text(json.dumps({"games": games, "settings": {"recipes.app_version": "0.0.1"}}))
+    got = library.load()["games"]
+    assert "frame.vk_sanitize" in got["com.own.engine"]["recipe"]["patches"]  # a newer automatic fix reaches it
+    assert "adapter.scale" not in got["com.own.engine"]["recipe"]["patches"]  # derived again from scratch
+    assert got["com.mine"]["recipe"]["patches"]["adapter.scale"] == {"value": 1.5}  # the user's own recipe stays
+    assert not library._follow_catalog(library.load())  # once per app version
