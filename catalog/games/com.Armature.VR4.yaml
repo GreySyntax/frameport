@@ -1,0 +1,18 @@
+package: com.Armature.VR4
+title: Resident Evil 4
+status: issues
+notes: Some cutscenes crash the game, which makes the main story unplayable.
+tested_version: '2.3'
+engine: Unreal
+xr: VrApi
+alt_overport:
+- patch_remove_unreal_force_quit
+verified:
+  date: '2026-10-02'
+  known_good_sha256: 40ff74e37264b28ae8826923b69d0731d9620094c76462be34159643d6ae91b3
+  app: 0.3.4
+  overport_cli: 1.2.5
+  frame_build: '20260930.6234839'
+  agent: 26
+  issue: 1
+source_hint: Resident Evil 4

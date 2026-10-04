@@ -21,7 +21,10 @@ from frameport.recommend.catalog import CatalogEntry, to_yaml  # noqa: E402
 
 PKG_RE = re.compile(r"^(rift\.[a-z0-9_]{1,80}|[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+){1,8})$")
 STATUSES = {"works", "issues", "unsupported", "unknown"}
-LIST_FIELDS = {"overport_extra", "overport_remove", "alt_overport", "frame", "frame_remove", "pcvr", "pcvr_remove"}
+LIST_FIELDS = {"overport_extra", "overport_remove", "alt_overport", "frame", "frame_remove", "pcvr", "pcvr_remove",
+               "device"}
+# FramePort's own patch ids must exist (OVRPort's are listed by its CLI at runtime, so not checked here)
+OWN_PATCH_FIELDS = ("frame", "frame_remove", "pcvr", "pcvr_remove", "device")
 DICT_FIELDS = {"adapter", "device_files", "lepton_env", "proton_env", "verified"}
 ID_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,80}$")
 
@@ -64,6 +67,13 @@ def validate(d: dict) -> CatalogEntry:
     for k in LIST_FIELDS & set(d):
         if not isinstance(d[k], list) or not all(isinstance(x, str) and ID_RE.match(x) for x in d[k]):
             raise Invalid(f"{k} must be a list of patch ids")
+    from frameport.patches import base
+
+    base.load_all()
+    for k in OWN_PATCH_FIELDS:
+        unknown_ids = [x for x in d.get(k) or [] if x not in base.REGISTRY]
+        if unknown_ids:
+            raise Invalid(f"{k}: unknown patch id(s) {', '.join(unknown_ids)}")
     for k in DICT_FIELDS & set(d):
         if not isinstance(d[k], dict):
             raise Invalid(f"{k} must be a mapping")

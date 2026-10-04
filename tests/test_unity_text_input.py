@@ -133,9 +133,10 @@ def test_reanalyze_refreshes_the_suggestion_and_keeps_a_users_recipe(monkeypatch
 
 
 def test_flat_windows_game_keeps_only_proton_patches():
+    from test_patches import _analysis
+
     from frameport.patches import base
     from frameport.recommend import engine
-    from test_patches import _analysis
 
     base.load_all()
     a = _analysis(package="rift.somegame", engine="Unity", xr="?", libs=[],

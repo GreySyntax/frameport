@@ -216,12 +216,17 @@ def test_catalog_from_issue(tmp_path):
     assert s.main([str(_write(tmp_path, BODY)), "--issue", "7", "--out", str(tmp_path)]) == 0
     d = yaml.safe_load((tmp_path / "com.example.game.yaml").read_text())
     assert d["frame"] == ["frame.ovrstubs"] and d["verified"]["issue"] == 7
+    with_device = BODY.replace("- frame.ovrstubs", "- frame.ovrstubs\ndevice:\n- device.text_input_window")
+    assert s.main([str(_write(tmp_path, with_device)), "--out", str(tmp_path)]) == 0
+    assert yaml.safe_load((tmp_path / "com.example.game.yaml").read_text())["device"] == ["device.text_input_window"]
 
 
 @pytest.mark.parametrize("bad", ["package: ../../etc/passwd\ntitle: x", "package: com.a.b\ntitle: x\nevil: 1",
                                  "package: com.a.b\ntitle: x\nstatus: great",
                                  "package: com.a.b\ntitle: x\nframe: [\"$(rm)\"]",
-                                 "package: com.a.b\ntitle: x\ndevice_files: {'../x': 1}", "- a list"])
+                                 "package: com.a.b\ntitle: x\ndevice_files: {'../x': 1}", "- a list",
+                                 "package: com.a.b\ntitle: x\nframe: [frame.no_such_patch]",
+                                 "package: com.a.b\ntitle: x\ndevice: device.text_input_window"])
 def test_catalog_from_issue_rejects(tmp_path, bad):
     s = _script()
     body = BODY.split("```yaml")[0] + "```yaml\n" + bad + "\n```\n"

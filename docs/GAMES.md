@@ -11,12 +11,16 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | BAM | Quest | ✅ Works |  |
 | BARTENDER VR SIMULATOR | Quest | ✅ Works |  |
 | Batman: Arkham Shadow | Quest | ✅ Works |  |
+| Beat Saber | Quest | ✅ Works |  |
 | Carve Snowboarding | Quest | ✅ Works |  |
+| Cook-Out | Quest | ✅ Works |  |
 | Demeter | Quest | ✅ Works |  |
+| Dinosaur Island | Quest | ✅ Works |  |
 | Espire 2 | Quest | ✅ Works |  |
 | Genotype | Quest | ✅ Works |  |
 | H.U.N.T | Quest | ✅ Works |  |
 | In Death: Unchained | Quest | ✅ Works |  |
+| Job Simulator | Quest | ✅ Works |  |
 | LEGO® Bricktales | Quest | ✅ Works |  |
 | Marvel's Deadpool VR | Quest | ✅ Works |  |
 | Medieval Dynasty New Settlement | Quest | ✅ Works |  |
@@ -37,6 +41,7 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Arcsmith | Quest | ⚠️ Works with issues | Right eye distorts during movement (unresolved; swap, tracking, Valve layers, depth and pacing ruled out). |
 | Assassin's Creed Nexus | Quest | ⚠️ Works with issues | Some launch warning text is still upside down; the rest of the UI is fixed by flip emulation. |
 | Phantom: Covert Ops | Quest | ⚠️ Works with issues | DLC/store button crashes (no Meta store). |
+| Resident Evil 4 | Quest | ⚠️ Works with issues | Some cutscenes crash the game, which makes the main story unplayable. |
 | Silhouette | Quest | ⚠️ Works with issues | Hand-tracking game; the Frame synthesizes hands from controllers, so it is janky. |
 | Time Stall | Quest | ⚠️ Works with issues | Both eyes distort during movement (unresolved). |
 | Espire 1: VR Operative (Quest Edition) | Quest | ❌ Doesn't run | Mesa GL driver crash during texture upload. |
