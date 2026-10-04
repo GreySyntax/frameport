@@ -56,8 +56,8 @@ signatures:
     severity: info
     diagnosis: The runtime rejected controller bindings for a profile it doesn't know (Meta's Touch Plus/Pro). Usually
       harmless (Meta's OVRPlugin suggests plain Touch too); a game that suggests only these gets them again as Touch
-      (profile_remap; log "controller profile ... -> oculus/touch_controller").
-    suggest: [adapter.profile_remap]
+      (profile_remap, on by default; log "controller profile ... -> oculus/touch_controller").
+    suggest: []
   - id: gl-shader-failed
     pattern: 'GLShim\s*: SHADER COMPILE FAILED|#extension directive is not allowed in the middle|could not implicitly convert operands'
     severity: error

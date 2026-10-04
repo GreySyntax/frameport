@@ -41,6 +41,13 @@ def parse_methods(cs_text: str, names: list[str]) -> dict[str, tuple[int, int]]:
     return found
 
 
+def _last_error(output: str) -> str:
+    """The exception line of Cpp2IL's output (its stack trace isn't useful to a user)."""
+    lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
+    msg = next((ln for ln in reversed(lines) if "Exception" in ln and not ln.startswith("at ")), None)
+    return (msg or (lines[-1] if lines else "no output"))[:300]
+
+
 def _plain_version(version: str) -> str:
     """6000.2.7f2 -> 6000.2.7 (what Cpp2IL's --force-unity-version takes)."""
     m = re.match(r"\d+\.\d+\.\d+", version)
@@ -60,6 +67,8 @@ def find_methods(lib: bytes, metadata: bytes, unity_version: str, wanted: dict[s
     cache_file = _cache_file(lib, metadata)
     try:
         cached = json.loads(cache_file.read_text())
+        if cached.get("error"):  # Cpp2IL can't read this build (e.g. an old Unity): don't run it again per patch
+            raise RuntimeError(cached["error"])
         if all(cls in cached.get("classes", {}) or cls in cached.get("missing", []) for cls in wanted):
             return {cls: {m: tuple(v) for m, v in cached["classes"][cls].items() if m in names}
                     for cls, names in wanted.items() if cls in cached.get("classes", {})}
@@ -81,7 +90,10 @@ def find_methods(lib: bytes, metadata: bytes, unity_version: str, wanted: dict[s
                               timeout=timeout, cwd=tmp)
         root = t / "out" / "DiffableCs"
         if not root.is_dir():
-            raise RuntimeError("Cpp2IL couldn't read this game's code: " + (proc.stdout + proc.stderr)[-400:].strip())
+            error = "Cpp2IL couldn't read this game's code: " + _last_error(proc.stdout + proc.stderr)
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text(json.dumps({"unity_version": unity_version, "error": error}))
+            raise RuntimeError(error)
         out, missing = {}, []
         for cls, names in wanted.items():
             f = root / cls
