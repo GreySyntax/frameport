@@ -95,6 +95,27 @@ static void debug_reference_space(XrSession session, const XrReferenceSpaceCreat
         LOG("layer_debug: that LOCAL space can't be located yet (no tracking)");
 }
 
+// ---------------------------------------------------------------- sync_guard
+// The Frame's runtime crashed in xrSyncActions right after focus returned (SIGSEGV in vrclient.so
+// CVRInputLatest::UpdateActionStateInternal, Myst; a race inside the runtime, not every launch). sync_guard runs
+// xrSyncActions one at a time with xrPollEvent and skips it for a moment after FOCUSED arrives (XR_SESSION_NOT_FOCUSED
+// is a success code every app handles: no input for those few frames).
+#define SYNC_GUARD_PAUSE_NS 250000000ll
+static pthread_mutex_t sync_lock = PTHREAD_MUTEX_INITIALIZER;
+static int64_t sync_resume_at;
+
+static XRAPI_ATTR XrResult XRAPI_CALL hook_xrSyncActions(XrSession session, const XrActionsSyncInfo *info) {
+    PFN_xrSyncActions fn = (PFN_xrSyncActions)lookup(active_instance, "xrSyncActions");
+    if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    pthread_mutex_lock(&sync_lock);
+    int64_t wait = sync_resume_at - monotonic_ns();
+    XrResult r = wait > 0 ? XR_SESSION_NOT_FOCUSED : fn(session, info);
+    pthread_mutex_unlock(&sync_lock);
+    static int logged;
+    if (wait > 0 && logged++ < 5) LOG("sync_guard: input paused for %.0f ms after focus returned", wait / 1e6);
+    return r;
+}
+
 // ---------------------------------------------------------------- focus_hold
 #define FOCUS_HOLD_MIN_FOCUSED_NS 3000000000ll  // only after this long in FOCUSED (start-up transitions untouched)
 #define FOCUS_HOLD_MAX_DIP_NS 600000000ll       // dips longer than this are delivered (late, in order)

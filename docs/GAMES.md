@@ -45,14 +45,19 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Wander | Quest | ✅ Works |  |
 | Arcsmith | Quest | ⚠️ Works with issues | Right eye distorts during movement (unresolved; swap, tracking, Valve layers, depth and pacing ruled out). |
 | Assassin's Creed Nexus | Quest | ⚠️ Works with issues | Some launch warning text is still upside down; the rest of the UI is fixed by flip emulation. |
-| I Am Cat | Quest | ⚠️ Works with issues | Renders each eye separately; with the default single-pass rendering the right eye showed only effects on grey. |
+| BattleGlide | Quest | ⚠️ Works with issues | Can freeze for a moment when the headset briefly loses focus. |
+| Blade & Sorcery: Nomad | Quest | ⚠️ Works with issues | The view can jump sideways when the headset briefly loses focus. |
+| I Am Cat | Quest | ⚠️ Works with issues | Renders each eye separately (the right eye was grey otherwise); the picture stutters slightly. |
 | Lucky's Tale | Quest | ⚠️ Works with issues | Keeps MSAA off; the game turned it on by itself and the whole Frame restarted in a menu. |
+| Myst | Quest | ⚠️ Works with issues | Sometimes crashes right after it gets focus (a race in the Frame's input code); relaunch if it does. |
 | Phantom: Covert Ops | Quest | ⚠️ Works with issues | DLC/store button crashes (no Meta store). |
 | Silhouette | Quest | ⚠️ Works with issues | Hand-tracking game; the Frame synthesizes hands from controllers, so it is janky. |
 | Time Stall | Quest | ⚠️ Works with issues | Both eyes distort during movement (unresolved). |
+| BONELAB | Quest | ❌ Doesn't run | Crashes while starting its graphics (Vulkan); no fix yet. |
 | Espire 1: VR Operative (Quest Edition) | Quest | ❌ Doesn't run | Mesa GL driver crash during texture upload. |
 | HITMAN 3 VR: Reloaded | Quest | ❌ Doesn't run | Vulkan driver crash (freedreno), even without Valve layers. |
 | Journey of the Gods | Quest | ❌ Doesn't run | 32-bit only; the Frame has no AArch32. |
+| Roblox | Quest | ❌ Doesn't run | Crashes on its first VR frame on the Frame. |
 | Shadow Point | Quest | ❌ Doesn't run | 32-bit only; the Frame has no AArch32. |
 | Sniper Elite VR | Quest | ❌ Doesn't run | GPU hang (zink: DEVICE LOST) even with MSAA off. |
 | Sports Scramble (Santa Cruz) | Quest | ❌ Doesn't run | 32-bit only; the Frame has no AArch32. |

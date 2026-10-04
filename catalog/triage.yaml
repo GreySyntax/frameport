@@ -51,6 +51,24 @@ signatures:
     diagnosis: The game's OVRManager turns MSAA on at runtime (QualitySettings can't keep it off). On GLES this can
       hang the Frame's GPU or restart the headset; if it does, keep it off in the game's code.
     suggest: [frame.unity_runtime_msaa_off]
+  - id: runtime-input-crash
+    pattern: 'vrclient\.so[^\n]*(UpdateActionStateInternal|sxr_xrSyncActions)'
+    severity: fatal
+    diagnosis: The Frame's runtime crashed in its controller-input code (xrSyncActions), typically right after the game
+      got focus. sync_guard serialises input syncs and pauses them briefly after focus returns.
+    suggest: [adapter.sync_guard]
+  - id: focus-dip-teleport
+    pattern: 'OnVRPresence[^\n]*Teleport'
+    severity: warning
+    diagnosis: The game moves the player when the headset reports presence again, which the Frame's brief focus dips
+      trigger (the view jumps). focus_hold hides dips under 600 ms.
+    suggest: [adapter.focus_hold]
+  - id: unity-vr-device-none
+    pattern: 'NewtonVR.*(not setup properly|no headset found)|Loaded VR device: None|XR: Oculus could not be loaded'
+    severity: fatal
+    diagnosis: Unity didn't start its Oculus VR device (older Unity checks for Meta's system apps first), so the game
+      runs as a hidden 2D app.
+    suggest: [frame.unity_oculus_check]
   - id: controller-profile-rejected
     pattern: 'PATH_UNSUPPORTED.*xrSuggestInteractionProfileBindings|xrSuggestInteractionProfileBindings.*(-48|PATH_UNSUPPORTED)'
     severity: info

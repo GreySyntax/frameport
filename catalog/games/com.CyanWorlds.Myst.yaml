@@ -1,0 +1,18 @@
+package: com.CyanWorlds.Myst
+title: Myst
+status: issues
+notes: Sometimes crashes right after it gets focus (a race in the Frame's input code); relaunch if it does.
+details: The crash is in the Frame's SteamVR runtime (vrclient.so CVRInputLatest::UpdateActionStateInternal via
+  xrSyncActions) on the first input sync after focus, in 2 of 4 headset sessions. sync_guard serialises input syncs
+  with event polling and pauses them for 250 ms after focus returns; not yet confirmed in a headset.
+tested_version: 3.3.0
+engine: Unreal
+xr: OpenXR
+alt_overport:
+- patch_remove_unreal_force_quit
+adapter:
+  sync_guard: 1
+verified:
+  date: '2026-10-04'
+updated: '2026-10-04'
+source_hint: Myst

@@ -1,0 +1,15 @@
+package: com.StressLevelZero.BONELAB
+title: BONELAB
+status: unsupported
+notes: Crashes while starting its graphics (Vulkan); no fix yet.
+details: SIGSEGV in vkCreateInstance, called from the game's own Vulkan hooks (libSLZQuestNative.so) into code that no
+  longer exists, right after OVRPlugin's pre-initialization creates and destroys an OpenXR instance. Keeping the
+  runtime (vrclient.so) and Steam's Fossilize layer loaded didn't help, so the stale pointer is to memory freed with
+  that first instance.
+tested_version: 1.2974.57485
+engine: Unity
+xr: OpenXR
+verified:
+  date: '2026-10-04'
+updated: '2026-10-04'
+source_hint: BONELAB

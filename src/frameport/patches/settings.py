@@ -55,6 +55,10 @@ SETTINGS = [
     ("focus_hold", "int", 0, "Ignore brief focus dips",
      "Hides the Frame's brief focus dips (well under a second) once the game has been focused for a few seconds. For "
      "games that recentre or pause every time focus returns."),
+    ("sync_guard", "int", 0, "Guard controller input after focus",
+     "Runs xrSyncActions one at a time with xrPollEvent and skips it for 250 ms after focus returns. For games that "
+     "crash in the runtime's input code right after focus comes back (SIGSEGV in vrclient.so UpdateActionStateInternal "
+     "/ xrSyncActions, e.g. Myst)."),
     ("profile_remap", "int", 1, "Newer Touch profiles as Touch",
      "Apps that suggest controller bindings only for Meta's newer profiles (Touch Plus, Touch Pro), which the Frame's "
      "runtime rejects (XR_ERROR_PATH_UNSUPPORTED), get the same bindings as oculus/touch_controller instead "
@@ -119,6 +123,9 @@ UI: dict[str, dict] = {
     "controller_fix": dict(group="controllers", level="common", label="Use controllers",
                            help="Turn off only for games you play with your hands instead of controllers.",
                            control=("switch",)),
+    "sync_guard": dict(group="troubleshooting", level="advanced", label="Steady controller input after focus",
+                       help="For games that crash right after you return to them (e.g. after the Steam menu).",
+                       control=("switch",)),
     "profile_remap": dict(group="controllers", level="advanced", label="Treat newer Quest controllers as Touch",
                           help="For apps that only know Quest 3/Pro controllers: without it they get no buttons.",
                           control=("switch",)),

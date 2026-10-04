@@ -45,6 +45,8 @@ SUMMARIES = {
     "frame.unity_no_msaa": "Turns off a smoothing setting that crashes some older Unity games on the Frame.",
     "frame.unity_runtime_msaa_off": "Keeps a smoothing setting off that the game turns on itself and that can freeze "
                                     "the Frame.",
+    "frame.unity_oculus_check": "Lets older Unity games start VR without Meta's system apps (they'd stay on a 2D "
+                                "screen).",
     "frame.unity_multipass": "Draws each eye separately; try it when one eye shows a grey or broken picture.",
     "frame.swapchain_limit": "Allows very large pictures (8K video, theatres) instead of quitting.",
     "frame.vrapi_bridge": "Translator for games built on Meta's oldest VR interface.",

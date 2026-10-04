@@ -76,6 +76,7 @@ static int no_equirect, no_equirect2, no_cylinder, no_cube;
 static int runtime_has_fb_passthrough, emulate_passthrough, alpha_blend_failed;
 static int controller_models;  // serve Frame controller models via XR_FB_render_model (render_model.c)
 // Per-game settings, all off by default (session_fixes.c, layer_emul_gl.c).
+static int sync_guard;       // xrSyncActions one at a time with xrPollEvent, paused briefly after focus returns
 static int profile_remap = 1; // Meta's newer controller profiles (rejected by the Frame) -> oculus/touch_controller
 static int layer_debug;      // diagnostics: layers, swapchains, session states, spaces, aim/grip, refresh rates
 static int stable_local;     // keep every LOCAL space the app creates on the session-start origin
@@ -117,6 +118,7 @@ static void read_settings(const char *path) {
         if (sscanf(line, "controller_models=%f", &value) == 1) controller_models = value != 0;
         if (sscanf(line, "layer_debug=%f", &value) == 1) layer_debug = value != 0;
         if (sscanf(line, "profile_remap=%f", &value) == 1) profile_remap = value != 0;
+        if (sscanf(line, "sync_guard=%f", &value) == 1) sync_guard = value != 0;
         if (sscanf(line, "stable_local=%f", &value) == 1) stable_local = value != 0;
         if (sscanf(line, "focus_hold=%f", &value) == 1) focus_hold = value != 0;
         if (sscanf(line, "aim_pitch=%f", &value) == 1 && fabsf(value) <= 90) aim_pitch = value;
@@ -730,7 +732,13 @@ XRAPI_ATTR XrResult XRAPI_CALL xrPollEvent(XrInstance instance, XrEventDataBuffe
         pthread_mutex_unlock(&scene_lock);
         if (got) return XR_SUCCESS;
     }
+    if (sync_guard) pthread_mutex_lock(&sync_lock);
     XrResult result = focus_hold && event ? focus_hold_poll(fn, instance, event) : fn(instance, event);
+    if (sync_guard) {
+        if (result == XR_SUCCESS && event && session_state_of(event) == XR_SESSION_STATE_FOCUSED)
+            sync_resume_at = monotonic_ns() + SYNC_GUARD_PAUSE_NS;
+        pthread_mutex_unlock(&sync_lock);
+    }
     if (result == XR_SUCCESS && event && (layer_debug || stable_local)) {
         if (event->type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED && layer_debug)
             LOG("layer_debug: session state %d at %.3f", ((const XrEventDataSessionStateChanged *)event)->state,
@@ -1213,6 +1221,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const 
     if (layer_debug || refresh_rate > 0) {
         HOOK_AS(xrRequestDisplayRefreshRateFB, hook_request_refresh_rate)
     }
+    if (sync_guard) HOOK_AS(xrSyncActions, hook_xrSyncActions)
     if (layer_debug || aim_correction_on() || profile_remap)
         HOOK_AS(xrSuggestInteractionProfileBindings, hook_xrSuggestInteractionProfileBindings)
     if (layer_debug || aim_correction_on()) {

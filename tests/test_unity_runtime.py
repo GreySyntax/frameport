@@ -141,3 +141,16 @@ def test_packaged_app_shows_artwork_by_file_path(tmp_path, monkeypatch):
         assert thumbs.asset_url(art) == str(art.resolve())
     finally:
         thumbs.use_file_paths(False)
+
+
+def test_unity_oculus_check_only_for_old_unity_with_the_check():
+    base.load_all()
+    p = base.get("frame.unity_oculus_check")
+    old = _analysis(libs=["libunity.so", "libOVRPlugin.so"],
+                    extra={"unity_version": "2017.4.23f1", "unity_oculus_check": True})
+    assert p.applies(old) and p.detect(old).recommended
+    new = _analysis(libs=["libunity.so", "libOVRPlugin.so"],
+                    extra={"unity_version": "2019.4.35f1", "unity_oculus_check": True})
+    assert not p.applies(new) and p.detect(new) is None  # 2019+ runs without it: builds stay byte-identical
+    log = "10-04 15:08:01.000  1213  1235 I Unity   : [NewtonVR] Critical Error: Oculus / SteamVR not setup properly"
+    assert "frame.unity_oculus_check" in {s for f in triage(log, "RUNNING", None).findings for s in f.suggest}
