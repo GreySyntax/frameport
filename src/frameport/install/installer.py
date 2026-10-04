@@ -392,8 +392,13 @@ def add_to_steam(frame: Frame, packages: list[str], reporter: Reporter, wait: fl
             continue
         if status.get("state") in ("done", "failed"):
             break
+    added = {a["package"] for a in status.get("added", [])}
     for a in status.get("added", []):
         reporter.check(f"Steam library: {a['package']}", True, f"shortcut {a['appid']}")
     for e in status.get("errors", []):
         reporter.check("Steam library", False, e)
+    if not status.get("errors"):
+        for pkg in packages:
+            if pkg not in added:  # no answer in time: say so (Play adds a missing shortcut itself)
+                reporter.check(f"Steam library: {pkg}", False, "the Frame didn't confirm the library entry in time")
     return status

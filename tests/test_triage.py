@@ -60,3 +60,10 @@ def test_crash_logcat_signatures():
              "(xrCreateSwapchain+424)\n")
     r = triage(log.replace("11 (SIGSEGV)", "6 (SIGABRT)"), "EXITED", "com.example.game", crash=abort)
     assert [(f.id, f.suggest) for f in r.findings] == [("swapchain-size-abort", ["frame.swapchain_limit"])]
+
+
+def test_ovrplugin_extension_probe_is_not_a_scene_game():
+    probe = LOG_OK + "09-28 17:39:02.200  1147  1174 I OVRPlugin: Unavailable OpenXR extension: XR_FB_scene\n"
+    assert "scene-missing" not in {f.id for f in triage(probe, "RUNNING", "com.example.game").findings}
+    used = LOG_OK + "09-28 17:39:04.000  1147  1174 E Unity   : xrQuerySpacesFB failed: -12\n"
+    assert "scene-missing" in {f.id for f in triage(used, "RUNNING", "com.example.game").findings}

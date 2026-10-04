@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 34
+AGENT_VERSION = 35
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -564,6 +564,48 @@ def steam_users():
         if os.path.isdir(os.path.join(STEAM, "userdata")) else []
 
 
+STEAMID64_BASE = 76561197960265728
+
+
+def active_steam_user():
+    """userdata folder (account id) of the most recent Steam login (config/loginusers.vdf), if it has one."""
+    try:
+        text = open(os.path.join(STEAM, "config/loginusers.vdf"), encoding="utf-8", errors="replace").read()
+    except OSError:
+        return None
+    users = steam_users()
+    for sid, body in re.findall(r'"(\d{17})"\s*\{([^}]*)\}', text):
+        if re.search(r'"MostRecent"\s+"1"', body) and str(int(sid) - STEAMID64_BASE) in users:
+            return str(int(sid) - STEAMID64_BASE)
+    return None
+
+
+def library_users():
+    """Steam accounts whose library gets FramePort's shortcuts: the signed-in one, else every account on the Frame
+    (several accounts used to stop the shortcut step: "found 2 Steam users", and Play then failed with Steam's "Game
+    configuration unavailable")."""
+    users = steam_users()
+    if not users:
+        raise AgentError("Steam has no signed-in account on this Frame yet; sign in to Steam on the Frame first")
+    active = active_steam_user()
+    return [active] if active else users
+
+
+def shortcut_appid_for(exe):
+    """appid of the shortcut whose Exe is `exe` in the signed-in account's library (any account if unknown); None
+    when it isn't in the library."""
+    for u in library_users():
+        vdf = os.path.join(STEAM, "userdata", u, "config/shortcuts.vdf")
+        try:
+            root = vdf_decode(open(vdf, "rb").read()) if os.path.exists(vdf) else {}
+        except (OSError, AgentError):
+            continue
+        for v in (root.get("shortcuts") or {}).values():
+            if isinstance(v, dict) and v.get("Exe") == exe and v.get("appid"):
+                return v["appid"] & 0xFFFFFFFF
+    return None
+
+
 def container_running(appid):
     p = run(["podman", "ps", "--format", "{{.Names}}"])
     return f"lepton-steamlaunch-{appid}" in p.stdout.split()
@@ -929,44 +971,15 @@ def shortcuts_worker(payload):
     args = json.loads(payload)
     result = {"state": "done", "added": [], "errors": [], "finished": None}
     try:
-        users = steam_users()
-        if len(users) != 1:
-            raise AgentError(f"found {len(users)} Steam users; not guessing which library to edit")
-        vdf = os.path.join(STEAM, "userdata", users[0], "config/shortcuts.vdf")
+        users = library_users()
         try:
             service = stop_steam()
         except AgentError:
             raise AgentError("Steam did not close; library not modified") from None
-        grid = os.path.join(os.path.dirname(vdf), "grid")
-        os.makedirs(grid, exist_ok=True)
-        for r in args.get("remove", []):  # uninstalled games
-            try:
-                if remove_shortcut(vdf, r["exe"]):
-                    result.setdefault("removed", []).append(r["exe"])
-                for art in grid_files(grid, r.get("appid") or ""):
-                    os.remove(art)
-            except Exception as exc:  # noqa: BLE001
-                result["errors"].append(f"{r.get('exe')}: {exc}")
-        for pkg in args["packages"]:
-            try:
-                anchor = os.path.join(ANCHORS, pkg)
-                dep = json.load(open(os.path.join(anchor, "deployment.json")))
-                icon = next(iter(glob.glob(os.path.join(anchor, "artwork/icon.*"))), "")
-                flat = dep.get("vr") is False
-                tag = ("Windows game on Frame" if flat else "PC VR on Frame") if dep.get("kind") == "pcvr" \
-                    else "Quest on Frame"
-                got = upsert_shortcut(vdf, f'"{anchor}/launch.sh"', dep["title"], anchor, icon, tag,
-                                      tags=dep.get("tags") or [], openvr=not flat)
-                for kind, suffix in (("portrait", "p"), ("landscape", ""), ("hero", "_hero"), ("logo", "_logo")):
-                    img = next(iter(glob.glob(os.path.join(anchor, f"artwork/{kind}.*"))), None)
-                    if not img:
-                        continue
-                    for old in glob.glob(os.path.join(grid, f"{got}{suffix}.*")):
-                        os.remove(old)
-                    shutil.copy(img, os.path.join(grid, f"{got}{suffix}{os.path.splitext(img)[1]}"))
-                result["added"].append({"package": pkg, "appid": got, "expected": dep["appid"]})
-            except Exception as exc:  # noqa: BLE001
-                result["errors"].append(f"{pkg}: {exc}")
+        for user in steam_users():  # uninstalled games leave every account's library
+            remove_from_library(user, args.get("remove", []), result)
+        for user in users:
+            update_library(user, args["packages"], result)
         if service or args.get("restart", True):
             start_steam(service)
     except Exception as exc:  # noqa: BLE001
@@ -976,6 +989,48 @@ def shortcuts_worker(payload):
     result["finished"] = time.time()
     with open(STATUS_FILE, "w") as f:
         json.dump(result, f)
+
+
+def remove_from_library(user, remove, result):
+    """Remove uninstalled games' shortcuts + grid art from one Steam account (Steam is closed)."""
+    vdf = os.path.join(STEAM, "userdata", user, "config/shortcuts.vdf")
+    grid = os.path.join(os.path.dirname(vdf), "grid")
+    for r in remove:
+        try:
+            if remove_shortcut(vdf, r["exe"]):
+                result.setdefault("removed", []).append(r["exe"])
+            for art in grid_files(grid, r.get("appid") or ""):
+                os.remove(art)
+        except Exception as exc:  # noqa: BLE001
+            result["errors"].append(f"{r.get('exe')}: {exc}")
+
+
+def update_library(user, packages, result):
+    """Add/update installed games' shortcuts + grid art in one Steam account (Steam is closed)."""
+    vdf = os.path.join(STEAM, "userdata", user, "config/shortcuts.vdf")
+    grid = os.path.join(os.path.dirname(vdf), "grid")
+    os.makedirs(grid, exist_ok=True)
+    for pkg in packages:
+        try:
+            anchor = os.path.join(ANCHORS, pkg)
+            dep = json.load(open(os.path.join(anchor, "deployment.json")))
+            icon = next(iter(glob.glob(os.path.join(anchor, "artwork/icon.*"))), "")
+            flat = dep.get("vr") is False
+            tag = ("Windows game on Frame" if flat else "PC VR on Frame") if dep.get("kind") == "pcvr" \
+                else "Quest on Frame"
+            got = upsert_shortcut(vdf, f'"{anchor}/launch.sh"', dep["title"], anchor, icon, tag,
+                                  tags=dep.get("tags") or [], openvr=not flat)
+            for kind, suffix in (("portrait", "p"), ("landscape", ""), ("hero", "_hero"), ("logo", "_logo")):
+                img = next(iter(glob.glob(os.path.join(anchor, f"artwork/{kind}.*"))), None)
+                if not img:
+                    continue
+                for old in glob.glob(os.path.join(grid, f"{got}{suffix}.*")):
+                    os.remove(old)
+                shutil.copy(img, os.path.join(grid, f"{got}{suffix}{os.path.splitext(img)[1]}"))
+            if not any(a["package"] == pkg for a in result["added"]):
+                result["added"].append({"package": pkg, "appid": got, "expected": dep["appid"]})
+        except Exception as exc:  # noqa: BLE001
+            result["errors"].append(f"{pkg}: {exc}")
 
 
 def cmd_shortcut_status(args):
@@ -1021,6 +1076,9 @@ def steam_gameid(appid):
     return (int(appid) << 32) | 0x02000000
 
 
+NOT_IN_LIBRARY = "not in the Frame's Steam library"
+
+
 def cmd_launch(args):
     """Start an installed game the way the headset's library does: ask the running Steam to launch its shortcut, so
     it gets Steam's VR session, overlay and controller setup (unlike launch_test's direct, headless start)."""
@@ -1030,7 +1088,10 @@ def cmd_launch(args):
         raise AgentError(f"{pkg} is not installed")
     if run(["pgrep", "-x", "steam"]).returncode != 0:
         raise AgentError("Steam isn't running on the Frame")
-    gid = steam_gameid(dep["appid"])
+    appid = shortcut_appid_for(f'"{os.path.join(ANCHORS, pkg)}/launch.sh"')
+    if appid is None:  # Steam would only say "Game configuration unavailable"
+        raise AgentError(f"{NOT_IN_LIBRARY}: {dep.get('title') or pkg}")
+    gid = steam_gameid(appid)  # the shortcut's own id (it keeps its first one when the title changes)
     # systemd-run: the launch request must outlive this SSH session
     run(["systemd-run", "--user", "--collect", "--quiet", f"--unit=frameport-launch-{int(time.time())}",
          "steam", "-ifrunning", f"steam://rungameid/{gid}"])
@@ -2014,7 +2075,7 @@ def cmd_uninstall(args):
         remove_tree(base)
     anchor = os.path.join(ANCHORS, pkg)
     removed_sc = False
-    if args.get("remove_shortcut") and len(steam_users()) == 1:
+    if args.get("remove_shortcut") and steam_users():
         # Steam keeps its own copy of shortcuts.vdf and writes it back: change it only with Steam closed (worker)
         removed_sc = cmd_shortcuts({"remove": [{"exe": f'"{anchor}/launch.sh"', "appid": dep.get("appid")}]})["started"]
     if not keep_data or base != anchor:

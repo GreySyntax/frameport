@@ -79,7 +79,8 @@ signatures:
       agent's controller_models command).
     suggest: []
   - id: scene-missing
-    pattern: 'XR_FB_scene|XR_FB_spatial_entity.*(not supported|UNSUPPORTED)|xrQuerySpacesFB'
+    # not OVRPlugin's routine "Unavailable OpenXR extension: XR_FB_scene" (printed by every OVRPlugin game)
+    pattern: '(?<!Unavailable OpenXR extension: )XR_FB_scene|XR_FB_spatial_entity.*(not supported|UNSUPPORTED)|xrQuerySpacesFB'
     severity: warning
     diagnosis: The game uses the Meta scene (room) API; enable the adapter's guardian-based room emulation.
     suggest: [adapter.scene_emul]

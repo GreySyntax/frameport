@@ -369,9 +369,30 @@ def test_launch_uses_steam_shortcut(monkeypatch, tmp_path):
     (anchor / "deployment.json").write_text(json.dumps(deployment))
     calls = []
     monkeypatch.setattr(a, "run", lambda cmd, **k: (calls.append(cmd), SimpleNamespace(returncode=0, stdout=""))[1])
+    cfg = tmp_path / ".local/share/Steam/userdata/42/config"
+    cfg.mkdir(parents=True)
+    with pytest.raises(a.AgentError, match="not in the Frame's Steam library"):
+        a.cmd_launch({"package": "com.x.y"})
+    exe = f'"{anchor}/launch.sh"'
+    a.upsert_shortcut(str(cfg / "shortcuts.vdf"), exe, "Old title", str(anchor))  # keeps its first id
     r = a.cmd_launch({"package": "com.x.y"})
-    assert r["gameid"] == (2546384938 << 32) | 0x02000000
+    assert r["gameid"] == (a.shortcut_appid(exe, "Old title") << 32) | 0x02000000
     assert calls[-1][-1] == f"steam://rungameid/{r['gameid']}" and calls[-1][0] == "systemd-run"
+
+
+def test_library_users_prefers_the_signed_in_account(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    steam = tmp_path / ".local/share/Steam"
+    with pytest.raises(a.AgentError, match="signed-in"):
+        a.library_users()
+    for u in ("12345", "999"):
+        (steam / "userdata" / u / "config").mkdir(parents=True)
+    assert a.library_users() == ["12345", "999"]  # unknown: every account (used to fail with 2 accounts)
+    (steam / "config").mkdir()
+    (steam / "config/loginusers.vdf").write_text(
+        '"users"\n{\n\t"76561197960278073"\n\t{\n\t\t"MostRecent"\t\t"1"\n\t}\n'
+        '\t"76561197960266727"\n\t{\n\t\t"MostRecent"\t\t"0"\n\t}\n}\n')
+    assert a.library_users() == ["12345"]
 
 
 def test_uninstall_quest_keeping_saves_drops_the_install_record(monkeypatch, tmp_path):

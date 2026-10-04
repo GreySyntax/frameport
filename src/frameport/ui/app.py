@@ -19,6 +19,7 @@ import flet as ft
 from .. import pipeline
 from ..core import applog, library
 from ..errors import explain
+from ..frame.connection import NOT_IN_LIBRARY, AgentFailed
 from ..i18n import fmt_size, tr, tr_n
 from ..recommend import catalog
 from . import components as C
@@ -509,7 +510,13 @@ class FramePortApp:
         title = self._title(pkg)
 
         def work():
-            res = self._target_for(to).launch(pkg) or {}
+            try:
+                res = self._target_for(to).launch(pkg) or {}
+            except AgentFailed as exc:
+                if to != "frame" or NOT_IN_LIBRARY not in str(exc):
+                    raise
+                self._add_then_play(pkg, title)  # e.g. the shortcut step failed during the install
+                return
             library.upsert_game(pkg, last_played=time.time())
             if to == "frame":
                 self.toast(tr("Starting {title} on the Frame — put the headset on").format(title=title))
@@ -520,6 +527,21 @@ class FramePortApp:
             else:
                 self.toast(tr("Starting SteamVR and {title} — put your headset on").format(title=title))
         self.run_bg(work)
+
+    def _add_then_play(self, pkg: str, title: str) -> None:
+        def run(reporter):
+            target = self._target_for("frame")
+            status = target.add_to_library([pkg], reporter)
+            if not any(a.get("package") == pkg for a in status.get("added", [])):
+                raise RuntimeError(tr("{title} couldn't be added to the Frame's Steam library: {why}").format(
+                    title=title, why="; ".join(status.get("errors") or []) or tr("no answer from the Frame")))
+            time.sleep(15)  # Steam restarted: give it time to load the library before asking it to launch
+            target.launch(pkg)
+            library.upsert_game(pkg, last_played=time.time())
+            return tr("Starting {title} on the Frame — put the headset on").format(title=title)
+        self.toast(tr("{title} isn't in the Frame's Steam library yet: adding it (Steam restarts once)").format(
+            title=title))
+        self.submit(tr("Add to Steam library: {title}").format(title=title), run, pkg, "tool-frame")
 
     def quick_action(self, g: dict) -> tuple[str | None, str | None]:
         """(tooltip, kind) for a library card's round button; kind: play | install | update | reinstall (None: no

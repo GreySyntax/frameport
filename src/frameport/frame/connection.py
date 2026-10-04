@@ -152,6 +152,9 @@ def bundled_agent_version() -> int | None:
 RUN_TIMEOUT = 120  # seconds: default bound for one remote command's output
 
 
+NOT_IN_LIBRARY = "not in the Frame's Steam library"  # agent cmd_launch's error when the shortcut is missing
+
+
 class AgentFailed(RuntimeError):
     pass
 
