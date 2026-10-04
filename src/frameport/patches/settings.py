@@ -55,6 +55,10 @@ SETTINGS = [
     ("focus_hold", "int", 0, "Ignore brief focus dips",
      "Hides the Frame's brief focus dips (well under a second) once the game has been focused for a few seconds. For "
      "games that recentre or pause every time focus returns."),
+    ("profile_remap", "int", 1, "Newer Touch profiles as Touch",
+     "Apps that suggest controller bindings only for Meta's newer profiles (Touch Plus, Touch Pro), which the Frame's "
+     "runtime rejects (XR_ERROR_PATH_UNSUPPORTED), get the same bindings as oculus/touch_controller instead "
+     "(components Touch lacks are dropped). Without it such apps get no controller input."),
     ("aim_pitch", "float", 0.0, "Pointer tilt (degrees)",
      "Tilts the controllers' pointing ray up (+) or down (−), for games whose pointer doesn't hit what you aim at."),
     ("aim_yaw", "float", 0.0, "Pointer turn (degrees)", "Turns the controllers' pointing ray left (+) or right (−)."),
@@ -115,6 +119,9 @@ UI: dict[str, dict] = {
     "controller_fix": dict(group="controllers", level="common", label="Use controllers",
                            help="Turn off only for games you play with your hands instead of controllers.",
                            control=("switch",)),
+    "profile_remap": dict(group="controllers", level="advanced", label="Treat newer Quest controllers as Touch",
+                          help="For apps that only know Quest 3/Pro controllers: without it they get no buttons.",
+                          control=("switch",)),
     "aim_pitch": dict(group="controllers", level="common", label="Pointer angle",
                       help="If the pointer doesn't hit what you aim at, tilt it up or down.",
                       control=("slider", -30.0, 30.0, 1.0, "{:+.0f}°")),

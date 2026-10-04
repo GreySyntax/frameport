@@ -67,3 +67,11 @@ def test_ovrplugin_extension_probe_is_not_a_scene_game():
     assert "scene-missing" not in {f.id for f in triage(probe, "RUNNING", "com.example.game").findings}
     used = LOG_OK + "09-28 17:39:04.000  1147  1174 E Unity   : xrQuerySpacesFB failed: -12\n"
     assert "scene-missing" in {f.id for f in triage(used, "RUNNING", "com.example.game").findings}
+
+
+def test_rejected_controller_profile_is_information_only():
+    log = LOG_OK + ("09-28 17:39:02.300  1147  1174 E OVRPlugin: OpenXR error: XR_ERROR_PATH_UNSUPPORTED, cmd "
+                    "xrSuggestInteractionProfileBindings(m_xrInstance, &plusSuggestedBindings)\n")
+    f = {x.id: x for x in triage(log, "RUNNING", "com.example.game").findings}
+    assert f["controller-profile-rejected"].severity == "info"
+    assert triage(log, "RUNNING", "com.example.game").verdict == "pass"

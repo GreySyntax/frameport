@@ -26,8 +26,8 @@ def count_msaa_levels(ggm_bytes: bytes) -> int:
 
 def disable_msaa(ggm_bytes: bytes) -> bytes | None:
     """Set every quality level's antiAliasing to 0 by patching the int in place (re-serializing with UnityPy breaks
-    scene loading). The field is found through the 4-int run skinWeights, textureQuality, anisotropicTextures,
-    antiAliasing."""
+    scene loading). The field is found through the 4-int run skinWeights (blendWeights before Unity 2019),
+    textureQuality, anisotropicTextures, antiAliasing."""
     data = bytearray(ggm_bytes)
     patched = 0
     for obj, raw, level in _levels(ggm_bytes):
@@ -35,9 +35,12 @@ def disable_msaa(ggm_bytes: bytes) -> bytes | None:
         if aa <= 1:
             continue
         base = obj.byte_start
-        if bytes(data[base:base + len(raw)]) != raw:
+        if ggm_bytes[base:base + len(raw)] != raw:  # (not `data`: an earlier level of the same object changed it)
             raise RuntimeError("QualitySettings object bytes not found in place")
-        key = struct.pack("<4i", level["skinWeights"], level["textureQuality"], level["anisotropicTextures"], aa)
+        weights = level.get("skinWeights", level.get("blendWeights"))
+        if weights is None:
+            raise RuntimeError(f"quality level {level.get('name')}: unknown QualitySettings layout")
+        key = struct.pack("<4i", weights, level["textureQuality"], level["anisotropicTextures"], aa)
         at = raw.find(key)
         if at < 0:
             raise RuntimeError(f"antiAliasing field not found for quality level {level['name']}")

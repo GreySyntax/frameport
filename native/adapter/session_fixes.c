@@ -195,20 +195,100 @@ static int pose_action_kind(XrAction action) {  // 1 aim, 0 grip, -1 unknown
     return kind;
 }
 
+// Meta's newer controller profiles, which the Frame's runtime doesn't know (it has oculus/touch_controller). An app
+// that suggests bindings only for these gets XR_ERROR_PATH_UNSUPPORTED and no input (e.g. a setup screen that can't be
+// passed); its bindings are suggested again for Touch, keeping the components Touch controllers have.
+static const char *const NEWER_TOUCH[] = {"/interaction_profiles/meta/touch_controller_plus",
+                                          "/interaction_profiles/meta/touch_plus_controller",
+                                          "/interaction_profiles/facebook/touch_controller_pro",
+                                          "/interaction_profiles/meta/touch_pro_controller",
+                                          "/interaction_profiles/meta/touch_controller_rift_cv1",
+                                          "/interaction_profiles/meta/touch_controller_quest_1_rift_s",
+                                          "/interaction_profiles/meta/touch_controller_quest_2"};
+static const char *const TOUCH_PROFILE = "/interaction_profiles/oculus/touch_controller";
+// oculus/touch_controller components (OpenXR spec), after /user/hand/<left|right>/
+static const char *const TOUCH_COMMON[] = {"input/squeeze/value", "input/trigger/value", "input/trigger/touch",
+    "input/thumbstick", "input/thumbstick/x", "input/thumbstick/y", "input/thumbstick/click",
+    "input/thumbstick/touch", "input/thumbrest/touch", "input/grip/pose", "input/aim/pose", "output/haptic"};
+static const char *const TOUCH_LEFT[] = {"input/x/click", "input/x/touch", "input/y/click", "input/y/touch",
+    "input/menu/click"};
+static const char *const TOUCH_RIGHT[] = {"input/a/click", "input/a/touch", "input/b/click", "input/b/touch",
+    "input/system/click"};
+static int app_suggested_touch;
+
+static int in_list(const char *s, const char *const *list, size_t n) {
+    for (size_t i = 0; i < n; ++i)
+        if (!strcmp(s, list[i])) return 1;
+    return 0;
+}
+#define IN(s, list) in_list(s, list, sizeof(list) / sizeof(*list))
+
+// 1 if the binding path exists on oculus/touch_controller
+static int touch_has(const char *path) {
+    const char *left = "/user/hand/left/", *right = "/user/hand/right/";
+    if (!strncmp(path, left, strlen(left))) {
+        path += strlen(left);
+        return IN(path, TOUCH_COMMON) || IN(path, TOUCH_LEFT);
+    }
+    if (!strncmp(path, right, strlen(right))) {
+        path += strlen(right);
+        return IN(path, TOUCH_COMMON) || IN(path, TOUCH_RIGHT);
+    }
+    return 0;
+}
+
+static XrResult remap_to_touch(XrInstance instance, PFN_xrSuggestInteractionProfileBindings fn,
+                               PFN_xrPathToString to_string, const XrInteractionProfileSuggestedBinding *suggested,
+                               const char *profile) {
+    PFN_xrStringToPath to_path = (PFN_xrStringToPath)lookup(instance, "xrStringToPath");
+    XrPath touch;
+    if (!to_path || XR_FAILED(to_path(instance, TOUCH_PROFILE, &touch))) return XR_ERROR_PATH_UNSUPPORTED;
+    uint32_t n = suggested->countSuggestedBindings, kept = 0;
+    XrActionSuggestedBinding *b = calloc(n ? n : 1, sizeof(*b));
+    if (!b) return XR_ERROR_OUT_OF_MEMORY;
+    for (uint32_t i = 0; i < n; ++i) {
+        char path[XR_MAX_PATH_LENGTH];
+        uint32_t size = 0;
+        if (XR_SUCCEEDED(to_string(instance, suggested->suggestedBindings[i].binding, sizeof(path), &size, path))
+                && touch_has(path))
+            b[kept++] = suggested->suggestedBindings[i];
+    }
+    XrInteractionProfileSuggestedBinding copy = *suggested;
+    copy.interactionProfile = touch;
+    copy.countSuggestedBindings = kept;
+    copy.suggestedBindings = b;
+    XrResult r = kept ? fn(instance, &copy) : XR_ERROR_PATH_UNSUPPORTED;
+    free(b);
+    LOG("controller profile %s -> oculus/touch_controller (%u bindings, %u dropped): %d", profile + 22, kept,
+        n - kept, r);
+    return r;
+}
+
 static XRAPI_ATTR XrResult XRAPI_CALL hook_xrSuggestInteractionProfileBindings(XrInstance instance,
         const XrInteractionProfileSuggestedBinding *suggested) {
     PFN_xrSuggestInteractionProfileBindings fn =
         (PFN_xrSuggestInteractionProfileBindings)lookup(instance, "xrSuggestInteractionProfileBindings");
     if (!fn) return XR_ERROR_FUNCTION_UNSUPPORTED;
     PFN_xrPathToString to_string = (PFN_xrPathToString)lookup(instance, "xrPathToString");
-    if (suggested && to_string)
+    if (suggested && to_string && (layer_debug || aim_correction_on()))
         for (uint32_t i = 0; i < suggested->countSuggestedBindings; ++i) {
             char path[XR_MAX_PATH_LENGTH];
             uint32_t size = 0;
             if (XR_SUCCEEDED(to_string(instance, suggested->suggestedBindings[i].binding, sizeof(path), &size, path)))
                 note_pose_binding(suggested->suggestedBindings[i].action, path);
         }
-    return fn(instance, suggested);
+    XrResult r = fn(instance, suggested);
+    if (!profile_remap || !suggested || !to_string) return r;
+    char profile[XR_MAX_PATH_LENGTH] = {0};
+    uint32_t size = 0;
+    if (XR_FAILED(to_string(instance, suggested->interactionProfile, sizeof(profile), &size, profile))) return r;
+    if (!strcmp(profile, TOUCH_PROFILE)) {
+        if (XR_SUCCEEDED(r)) app_suggested_touch = 1;  // the app's own Touch bindings win over a remap
+        return r;
+    }
+    if (r != XR_ERROR_PATH_UNSUPPORTED || app_suggested_touch || !IN(profile, NEWER_TOUCH)) return r;
+    XrResult remapped = remap_to_touch(instance, fn, to_string, suggested, profile);
+    return XR_SUCCEEDED(remapped) ? XR_SUCCESS : r;
 }
 
 static XRAPI_ATTR XrResult XRAPI_CALL hook_xrCreateActionSpace(XrSession session, const XrActionSpaceCreateInfo *info,

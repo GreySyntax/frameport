@@ -51,6 +51,13 @@ signatures:
     diagnosis: The game's OVRManager turns MSAA on at runtime (QualitySettings can't keep it off). On GLES this can
       hang the Frame's GPU or restart the headset; if it does, keep it off in the game's code.
     suggest: [frame.unity_runtime_msaa_off]
+  - id: controller-profile-rejected
+    pattern: 'PATH_UNSUPPORTED.*xrSuggestInteractionProfileBindings|xrSuggestInteractionProfileBindings.*(-48|PATH_UNSUPPORTED)'
+    severity: info
+    diagnosis: The runtime rejected controller bindings for a profile it doesn't know (Meta's Touch Plus/Pro). Usually
+      harmless (Meta's OVRPlugin suggests plain Touch too); a game that suggests only these gets them again as Touch
+      (profile_remap; log "controller profile ... -> oculus/touch_controller").
+    suggest: [adapter.profile_remap]
   - id: gl-shader-failed
     pattern: 'GLShim\s*: SHADER COMPILE FAILED|#extension directive is not allowed in the middle|could not implicitly convert operands'
     severity: error

@@ -76,6 +76,7 @@ static int no_equirect, no_equirect2, no_cylinder, no_cube;
 static int runtime_has_fb_passthrough, emulate_passthrough, alpha_blend_failed;
 static int controller_models;  // serve Frame controller models via XR_FB_render_model (render_model.c)
 // Per-game settings, all off by default (session_fixes.c, layer_emul_gl.c).
+static int profile_remap = 1; // Meta's newer controller profiles (rejected by the Frame) -> oculus/touch_controller
 static int layer_debug;      // diagnostics: layers, swapchains, session states, spaces, aim/grip, refresh rates
 static int stable_local;     // keep every LOCAL space the app creates on the session-start origin
 static int focus_hold;       // hide brief focus dips once the session has been focused for a while
@@ -115,6 +116,7 @@ static void read_settings(const char *path) {
         if (sscanf(line, "scene_depth=%f", &value) == 1 && value > 0.5f && value < 20.0f) scene_depth = value;
         if (sscanf(line, "controller_models=%f", &value) == 1) controller_models = value != 0;
         if (sscanf(line, "layer_debug=%f", &value) == 1) layer_debug = value != 0;
+        if (sscanf(line, "profile_remap=%f", &value) == 1) profile_remap = value != 0;
         if (sscanf(line, "stable_local=%f", &value) == 1) stable_local = value != 0;
         if (sscanf(line, "focus_hold=%f", &value) == 1) focus_hold = value != 0;
         if (sscanf(line, "aim_pitch=%f", &value) == 1 && fabsf(value) <= 90) aim_pitch = value;
@@ -1211,8 +1213,9 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance instance, const 
     if (layer_debug || refresh_rate > 0) {
         HOOK_AS(xrRequestDisplayRefreshRateFB, hook_request_refresh_rate)
     }
-    if (layer_debug || aim_correction_on()) {
+    if (layer_debug || aim_correction_on() || profile_remap)
         HOOK_AS(xrSuggestInteractionProfileBindings, hook_xrSuggestInteractionProfileBindings)
+    if (layer_debug || aim_correction_on()) {
         HOOK_AS(xrCreateActionSpace, hook_xrCreateActionSpace)
     }
 #undef HOOK_AS
