@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 38
+AGENT_VERSION = 39
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -965,6 +965,11 @@ def cmd_shortcuts(args):
               if isinstance(r, dict) and str(r.get("exe", "")).startswith('"' + ANCHORS)]
     if not packages and not remove:
         return {"started": False}
+    current = cmd_shortcut_status({})
+    alive = time.time() - float(current.get("started") or 0) < 60  # a waiting worker rewrites its status every 10 s
+    if current.get("state") == "waiting" and alive and set(packages) <= set(current.get("packages") or []) \
+            and not remove:
+        return {"started": False, "waiting": True}  # the update for these games already waits (Gaming Mode / game)
     os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
     with open(STATUS_FILE, "w") as f:
         json.dump({"state": "running", "packages": packages, "started": time.time()}, f)

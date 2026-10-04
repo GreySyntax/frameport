@@ -532,6 +532,11 @@ class FramePortApp:
         def run(job: Job):  # (jobs get the Job, not a reporter: this raised TypeError in 0.6.3)
             target = self._target_for("frame")
             status = target.add_to_library([pkg], job.reporter)
+            if status.get("state") == "waiting":  # Desktop Mode is open (FramePort on the Frame) or a game runs
+                return (tr("{title} will be in the Frame's Steam library when you're back in Gaming Mode: start it "
+                           "from there").format(title=title) if status.get("reason") == "desktop" else
+                        tr("{title} will be in the Frame's Steam library when the game that's running is closed")
+                        .format(title=title))
             if not any(a.get("package") == pkg for a in status.get("added", [])):
                 raise RuntimeError(tr("{title} couldn't be added to the Frame's Steam library: {why}").format(
                     title=title, why="; ".join(status.get("errors") or []) or tr("no answer from the Frame")))

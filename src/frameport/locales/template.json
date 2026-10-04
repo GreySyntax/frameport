@@ -1069,6 +1069,8 @@
  "{title} couldn't be added to the Frame's Steam library: {why}": "",
  "{title} failed: {error}": "",
  "{title} isn't in the Frame's Steam library yet: adding it (Steam restarts once)": "",
+ "{title} will be in the Frame's Steam library when the game that's running is closed": "",
+ "{title} will be in the Frame's Steam library when you're back in Gaming Mode: start it from there": "",
  "{title}: analyzed again": "",
  "{title}: details from {value}": "",
  "{title}: done": "",
