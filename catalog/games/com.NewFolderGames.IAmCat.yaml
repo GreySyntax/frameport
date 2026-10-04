@@ -1,0 +1,20 @@
+package: com.NewFolderGames.IAmCat
+title: I Am Cat
+status: issues
+notes: Renders each eye separately; with the default single-pass rendering the right eye showed only effects on grey.
+details: Unity 2022.3 with the Oculus XR Plugin falls back to GLES (Zink) on the Frame, where its multiview pass drew
+  the right eye's slice wrong (GitHub issue 8). frame.unity_multipass switches the game to multi-pass rendering; not
+  yet confirmed in a headset.
+tested_version: 1.4.0.0
+engine: Unity
+xr: OpenXR
+frame:
+- frame.unity_text_input
+- frame.unity_multipass
+device:
+- device.text_input_window
+verified:
+  date: '2026-10-03'
+  issue: 8
+updated: '2026-10-04'
+source_hint: I Am Cat

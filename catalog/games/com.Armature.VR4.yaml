@@ -1,7 +1,7 @@
 package: com.Armature.VR4
 title: VR4
-status: issues
-notes: Some cutscenes crash the game, which makes the main story unplayable. Installs the no-ForceQuit build.
+status: works
+notes: Installs the no-ForceQuit build (the regular one quits after the opening cutscene).
 details: The regular build quits itself when the first level loads after the opening cutscene (System.exit, GitHub
   issue 10), so the no-ForceQuit build is installed.
 tested_version: '2.3'
@@ -18,4 +18,5 @@ verified:
   frame_build: '20260930.6234839'
   agent: 26
   issue: 1
+updated: '2026-10-04'
 source_hint: Resident Evil 4

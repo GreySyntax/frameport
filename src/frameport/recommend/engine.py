@@ -15,7 +15,7 @@ FLAT_WINDOWS_PATCHES = ("pcvr.proton_tool", "pcvr.proton_env", "pcvr.proton_log"
 
 def suggest(analysis: Analysis, use_catalog: bool = True) -> Recipe:
     entry = catalog.lookup(analysis.package) if use_catalog else None
-    recipe = Recipe(analysis.package, title=analysis.label)
+    recipe = Recipe(analysis.package, title=analysis.label, catalog_rev=entry.rev() if entry else "")
     # 1. heuristics / defaults from every patch module
     rift = (analysis.extra or {}).get("kind") == "rift"
     for patch in base.all_patches():

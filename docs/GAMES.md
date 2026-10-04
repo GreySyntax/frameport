@@ -37,13 +37,15 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | The Climb 2 | Quest | ✅ Works |  |
 | Toy Master | Quest | ✅ Works |  |
 | Under Cover | Quest | ✅ Works |  |
+| VR4 | Quest | ✅ Works |  |
 | Wallace & Gromit in The Grand Getaway | Quest | ✅ Works |  |
 | Arcsmith | Quest | ⚠️ Works with issues | Right eye distorts during movement (unresolved; swap, tracking, Valve layers, depth and pacing ruled out). |
 | Assassin's Creed Nexus | Quest | ⚠️ Works with issues | Some launch warning text is still upside down; the rest of the UI is fixed by flip emulation. |
+| I Am Cat | Quest | ⚠️ Works with issues | Renders each eye separately; with the default single-pass rendering the right eye showed only effects on grey. |
+| Lucky's Tale | Quest | ⚠️ Works with issues | Keeps MSAA off; the game turned it on by itself and the whole Frame restarted in a menu. |
 | Phantom: Covert Ops | Quest | ⚠️ Works with issues | DLC/store button crashes (no Meta store). |
 | Silhouette | Quest | ⚠️ Works with issues | Hand-tracking game; the Frame synthesizes hands from controllers, so it is janky. |
 | Time Stall | Quest | ⚠️ Works with issues | Both eyes distort during movement (unresolved). |
-| VR4 | Quest | ⚠️ Works with issues | Some cutscenes crash the game, which makes the main story unplayable. |
 | Espire 1: VR Operative (Quest Edition) | Quest | ❌ Doesn't run | Mesa GL driver crash during texture upload. |
 | HITMAN 3 VR: Reloaded | Quest | ❌ Doesn't run | Vulkan driver crash (freedreno), even without Valve layers. |
 | Journey of the Gods | Quest | ❌ Doesn't run | 32-bit only; the Frame has no AArch32. |

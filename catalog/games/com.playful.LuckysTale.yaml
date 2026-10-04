@@ -1,0 +1,20 @@
+package: com.playful.LuckysTale
+title: Lucky's Tale
+status: issues
+notes: Keeps MSAA off; the game turned it on by itself and the whole Frame restarted in a menu.
+details: Meta's OVRManager raises MSAA to 4x at runtime ("Switching to the recommended level"); multisampled
+  render-to-texture on GLES (Zink) hung the Frame's GPU (GitHub issue 9). frame.unity_runtime_msaa_off keeps it at 0;
+  not yet confirmed in a headset.
+tested_version: 1.0.55
+engine: Unity
+xr: VrApi
+frame:
+- frame.unity_text_input
+- frame.unity_runtime_msaa_off
+device:
+- device.text_input_window
+verified:
+  date: '2026-10-03'
+  issue: 9
+updated: '2026-10-04'
+source_hint: Luckys Tale

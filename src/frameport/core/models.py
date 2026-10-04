@@ -82,6 +82,7 @@ class Recipe:
     as_is: bool = False  # install the game unchanged (already patched): no overport / Frame fixes / Revive
     overport: bool = True  # False: an ordinary Android app: no VR translation (overport) and no FrameBridge adapter
     reasons: dict[str, str] = field(default_factory=dict)  # patch id -> why it was suggested
+    catalog_rev: str = ""  # CatalogEntry.rev() it was derived from: a changed catalog entry re-derives the recipe
 
     def enabled(self, patch_id: str) -> bool:
         return patch_id in self.patches

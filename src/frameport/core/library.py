@@ -28,7 +28,7 @@ def load() -> dict:
             data = json.loads(_path().read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {"games": {}, "settings": {}}
-        if _migrate(data):
+        if _migrate(data) | _follow_catalog(data):
             save(data)
         return data
 
@@ -40,6 +40,27 @@ def edit() -> Iterator[dict]:
         data = load()
         yield data
         save(data)
+
+
+def _follow_catalog(data: dict) -> bool:
+    """Recipes FramePort derived (not ones the user edited) follow their catalog entry: when an entry is new or
+    changed (e.g. a fix shipped with an update), the game's recipe is derived again; Update on Frame applies it."""
+    from ..recommend import catalog, engine
+
+    changed = False
+    for pkg, g in (data.get("games") or {}).items():
+        r, a = g.get("recipe"), g.get("analysis")
+        if not isinstance(r, dict) or not isinstance(a, dict) or r.get("source") == "user":
+            continue
+        entry = catalog.lookup(pkg)
+        if entry is None or r.get("catalog_rev") == entry.rev():
+            continue
+        try:
+            g["recipe"] = recipe_to_dict(engine.suggest(analysis_from_dict(a)))
+        except Exception:  # noqa: BLE001 - a malformed entry keeps its recipe
+            continue
+        changed = True
+    return changed
 
 
 def _migrate(data: dict) -> bool:

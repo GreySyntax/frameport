@@ -49,6 +49,7 @@ class CatalogEntry:
     proton_tool: str = ""
     as_is: bool = False  # Rift: the dump runs unchanged (e.g. a SteamVR build: no Revive)
     verified: dict = field(default_factory=dict)
+    updated: str = ""  # date of the last maintainer change without a new headset test (e.g. a fix from a report)
     source_hint: str = ""
     origin: str = "bundled"
 
@@ -56,6 +57,14 @@ class CatalogEntry:
     def from_dict(cls, d: dict, origin: str) -> CatalogEntry:
         known = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
         return cls(**known, origin=origin)
+
+    def rev(self) -> str:
+        """Fingerprint of the recipe content: library recipes derived from this entry follow it when it changes."""
+        import hashlib
+        import json
+
+        d = {k: v for k, v in self.to_dict().items() if k != "origin"}
+        return hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
     def to_dict(self) -> dict:
         out = {}
@@ -114,9 +123,19 @@ def load(refresh: bool = False) -> dict[str, CatalogEntry]:
     if _cache is None or refresh:
         entries = _load_dir(catalog_dir() / "games", "bundled")
         entries.update(_load_remote())
-        entries.update(_load_dir(user_catalog_dir(), "user"))
+        for pkg, e in _load_dir(user_catalog_dir(), "user").items():
+            if not _newer(entries.get(pkg), e):  # the user's own recipe, unless a maintained one was verified later
+                entries[pkg] = e
         _cache = entries
     return _cache
+
+
+def _newer(maintained: CatalogEntry | None, user: CatalogEntry) -> bool:
+    """True when the bundled/remote entry was verified after the user's (e.g. a fix for a config the user shared)."""
+    if maintained is None:
+        return False
+    when = max(str(maintained.updated or ""), str(maintained.verified.get("date") or ""))
+    return when > str(user.verified.get("date") or "")
 
 
 def lookup(package: str) -> CatalogEntry | None:
