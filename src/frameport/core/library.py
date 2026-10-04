@@ -58,6 +58,8 @@ def _follow_catalog(data: dict) -> bool:
     settings["recipes.app_version"] = __version__
     for pkg, g in (data.get("games") or {}).items():
         r, a = g.get("recipe"), g.get("analysis")
+        if app_updated and isinstance(a, dict):
+            changed |= _refresh_data_fields(g, a)
         if not isinstance(r, dict) or not isinstance(a, dict) or r.get("source") == "user":
             continue
         entry = catalog.lookup(pkg)
@@ -69,6 +71,21 @@ def _follow_catalog(data: dict) -> bool:
             continue
         changed = True
     return changed
+
+
+def _refresh_data_fields(g: dict, a: dict) -> bool:
+    """Analysis fields read from the game's data folder (cheap, no APK analysis) that newer FramePort versions added:
+    filled in for games already in the library, so their patches are offered without a re-analysis."""
+    extra = a.setdefault("extra", {})
+    if "lang_packs" in extra or a.get("package", "").startswith("rift."):
+        return False
+    from ..analysis import langpacks
+
+    try:
+        extra["lang_packs"] = langpacks.find_tags(g.get("data_dir"))
+    except OSError:
+        return False
+    return True
 
 
 def _migrate(data: dict) -> bool:

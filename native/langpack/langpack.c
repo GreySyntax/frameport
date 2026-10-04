@@ -275,7 +275,7 @@ static int g_logged_dirs;
 // Tags to leave out of the list (comma separated, case-insensitive): env FRAMEPORT_LANGPACK_SKIP, plus the lines
 // of a file "fp_langpack_skip" in any scanned folder. For finding out which pack a game needs reported: e.g. a game
 // whose built-in language works without being a "pack".
-static char g_skip[160];
+static __thread char g_skip[160];  // per thread: scans may run on several game threads at once
 
 static void read_skip_file(const char *dir) {
     char path[PATHLEN], line[160];
@@ -481,7 +481,9 @@ static msg_t *g_all, *g_qhead, *g_qtail;
 static u64 g_next_req = 0x4650000000000001ULL;
 #define MAX_PENDING 16
 static u64 g_pending[MAX_PENDING];
-static u64 g_pending_ms[MAX_PENDING];  // when each one was asked  // dispatcher requests whose AssetFile_GetList answer we extend
+static u64 g_pending_ms[MAX_PENDING];
+static u64 g_expired[MAX_PENDING];  // requests we answered ourselves after the timeout: their late answer is dropped
+static int g_expired_next;  // when each one was asked  // dispatcher requests whose AssetFile_GetList answer we extend
 
 static msg_t *owner(const void *p) {
     msg_t *found = NULL;
@@ -561,6 +563,19 @@ static int take_pending(u64 req) {
     return hit;
 }
 
+static int take_expired(u64 req) {
+    int hit = 0;
+    pthread_mutex_lock(&g_lock);
+    for (int i = 0; i < MAX_PENDING; i++)
+        if (req && g_expired[i] == req) {
+            g_expired[i] = 0;
+            hit = 1;
+            break;
+        }
+    pthread_mutex_unlock(&g_lock);
+    return hit;
+}
+
 static void add_pending(u64 req) {
     pthread_mutex_lock(&g_lock);
     for (int i = 0; i < MAX_PENDING; i++)
@@ -594,7 +609,8 @@ static void *wrap_list(void *orig) {
 }
 
 // A GetList the dispatcher has not answered within FP_LIST_TIMEOUT_MS: answer with our packs alone (request id kept).
-// Returns NULL if nothing is overdue or no pack exists. A late answer from the dispatcher is passed on unchanged.
+// Returns NULL if nothing is overdue or no pack exists (then a late answer from the dispatcher still reaches the
+// game); once we answered, the dispatcher's late answer is dropped (ovr_PopMessage), so the game gets one answer.
 static msg_t *expire_pending(void) {
     u64 req = 0, now = now_ms();
     pthread_mutex_lock(&g_lock);
@@ -614,6 +630,10 @@ static msg_t *expire_pending(void) {
     msg_t *m = new_msg(MSG_ASSETFILE_GETLIST, req);
     if (!m) return NULL;
     fill_list(m, packs, n);
+    pthread_mutex_lock(&g_lock);
+    g_expired[g_expired_next] = req;
+    g_expired_next = (g_expired_next + 1) % MAX_PENDING;
+    pthread_mutex_unlock(&g_lock);
     return m;
 }
 
@@ -717,6 +737,12 @@ EXPORT void *ovr_PopMessage(void) {
     pthread_mutex_unlock(&g_lock);
     if (m) return m;
     void *o = o_PopMessage();
+    while (o && o_Message_GetType(o) == MSG_ASSETFILE_GETLIST && take_expired(o_Message_GetRequestID(o))) {
+        // we already answered this request (timeout): a second answer for the same request would reach the game twice
+        fplog("AssetFile_GetList %llu: late answer from the dispatcher dropped", (unsigned long long)o_Message_GetRequestID(o));
+        o_FreeMessage(o);
+        o = o_PopMessage();
+    }
     if (o && o_Message_GetType(o) == MSG_ASSETFILE_GETLIST) {
         u64 r = o_Message_GetRequestID(o);
         if (take_pending(r)) {

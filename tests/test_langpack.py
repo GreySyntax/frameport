@@ -357,6 +357,10 @@ def test_asset_list_the_loader_never_answers_gets_our_packs_after_the_timeout(ap
     assert tags == {b"de", b"en-us", b"fr"}
     api_fast.free(m)
     assert api_fast.pop() is None  # answered once
+    before = api_fast.loader.fake_freed()
+    api_fast.loader.fake_late_list(C.c_uint64(req))  # the dispatcher's answer arrives after all: dropped, not a 2nd answer
+    assert api_fast.pop() is None
+    assert api_fast.loader.fake_freed() == before + 1
 
 
 def test_find_tags_in_the_data_folder(tmp_path):
@@ -395,3 +399,16 @@ def test_patch_links_the_library_and_hides_the_loaders_functions(built, tmp_path
         assert all(ok for _, ok, _ in patch.validate(ctx))
         assert not patch.apply(base.ApkContext(ws, a, {}, Reporter(), {}))  # applied once is enough
         assert any("language packs" in n for n in ctx.notes)
+
+
+def test_games_already_in_the_library_get_their_language_packs_after_an_app_update(tmp_path):
+    """lang_packs is read from the data folder (no APK analysis): filled in once for existing entries."""
+    from frameport.core import library
+
+    data = tmp_path / "data"
+    (data / "obb").mkdir(parents=True)
+    (data / "obb" / "de.lang").write_bytes(b"x")
+    g = {"data_dir": str(data), "analysis": {"package": "com.x.y", "extra": {}}}
+    assert library._refresh_data_fields(g, g["analysis"])
+    assert g["analysis"]["extra"]["lang_packs"] == ["de"]
+    assert not library._refresh_data_fields(g, g["analysis"])  # once

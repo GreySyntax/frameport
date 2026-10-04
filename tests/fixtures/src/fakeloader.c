@@ -58,3 +58,9 @@ const char *ovr_AssetDetails_GetMetadata(const void *d) { (void)d; return ""; }
 
 // not part of the SDK: lets the test see that our wrapper frees the dispatcher's own message
 int fake_freed(void) { return freed; }
+void fake_late_list(u64 req) {  // the dispatcher answers a GetList after all (late)
+    fmsg *m = calloc(1, sizeof *m);
+    m->type = 0x4AFC6F74u;
+    m->req = req;
+    q[qn++] = m;
+}

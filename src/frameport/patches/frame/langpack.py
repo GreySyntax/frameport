@@ -52,9 +52,9 @@ class LanguagePacks(Patch):
                    "loader unchanged. Off by default: turn it on for a game whose data has such files (the game "
                    "page lists the patch only then).")
     order = 32
-    experimental = True  # written from the SDK documentation and the loader's code; not yet run in a headset
+    experimental = True  # opt-in: checked in a headset with Deadpool VR, AC Nexus and Asgard's Wrath 2 only
 
-    # never part of a default recipe (not yet run in a headset): shown under Customize for games whose data has
+    # never part of a default recipe (few games tested): shown under Customize for games whose data has
     # language packs, off until the user turns it on
 
     def applies(self, a):
