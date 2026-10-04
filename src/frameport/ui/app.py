@@ -529,9 +529,9 @@ class FramePortApp:
         self.run_bg(work)
 
     def _add_then_play(self, pkg: str, title: str) -> None:
-        def run(reporter):
+        def run(job: Job):  # (jobs get the Job, not a reporter: this raised TypeError in 0.6.3)
             target = self._target_for("frame")
-            status = target.add_to_library([pkg], reporter)
+            status = target.add_to_library([pkg], job.reporter)
             if not any(a.get("package") == pkg for a in status.get("added", [])):
                 raise RuntimeError(tr("{title} couldn't be added to the Frame's Steam library: {why}").format(
                     title=title, why="; ".join(status.get("errors") or []) or tr("no answer from the Frame")))

@@ -456,6 +456,10 @@ Accounting+: unity_oculus_check + native/ovrpshim (libfp_ovrp.so waits via ovrp_
 2017's ovrp_Update2) → VR in the headset at ~72 fps (2026-10-04), but stuck at "press any button" although input
 reaches its OVRInput cleanly (probe: both Touch connected 0x63, individual buttons, input focus 1) → works with issues.
 "outside of frame bounds" warnings stay (~2/frame) and are harmless.
+Steam library (GitHub #4/#21/#27, agent v38): shortcuts go to every Steam account (signed-in first; MostRecent isn't
+always the account on the Frame); stop_steam also waits for Steam's helpers; after the restart the agent re-reads
+shortcuts.vdf and writes once more if Steam put its old copy back (`shortcuts_lost`), else reports it. 0.6.3's Play
+auto-repair (`_add_then_play`) crashed (its job got a Job, not a reporter). Uploads resume on a transient OSError.
 Headset round 3 (owner's verdicts, 2026-10-04): Blade & Sorcery works — its freezes were the headset's wear sensor
 flickering off while worn (vrserver.txt "HMD off/on" 0.5-2 s) → per-game `focus_hold_ms=2500` (only this game reacts;
 not a default). BattleGlide works (focus_hold). Myst works with issues (object glitches; space warp ruled out, its

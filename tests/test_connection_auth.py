@@ -69,3 +69,20 @@ def test_network_errors_still_end_the_attempts(fake_ssh):
     with pytest.raises(paramiko.SSHException, match="banner"):
         C.Frame(C.FrameTarget("10.0.0.2"), password="x").connect()
     assert fake_ssh.tried == ["app_key"]
+
+
+def test_upload_resumes_after_a_transient_error(tmp_path, monkeypatch):
+    from frameport.frame.connection import Frame, FrameTarget
+
+    f = Frame(FrameTarget("h"))
+    calls = []
+
+    def flaky(local, remote, progress, resume, mkdir):
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError(22, "Invalid argument")
+    monkeypatch.setattr(f, "_put", flaky)
+    monkeypatch.setattr(f, "alive", lambda: True)
+    monkeypatch.setattr("frameport.frame.connection.time.sleep", lambda s: None)
+    f.put(tmp_path / "x.bin", "/r/x.bin")
+    assert len(calls) == 2

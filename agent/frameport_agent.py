@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 37
+AGENT_VERSION = 38
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -537,6 +537,11 @@ def stop_steam():
         time.sleep(1)
     if run(["pgrep", "-x", "steam"]).returncode == 0:
         raise AgentError("Steam did not close")
+    for _ in range(15):  # Steam's helpers can still be writing its config (shortcuts.vdf) for a moment
+        if run(["pgrep", "-f", "steamwebhelper|steam.sh|reaper SteamLaunch"]).returncode:
+            break
+        time.sleep(1)
+    time.sleep(2)
     return service
 
 
@@ -581,14 +586,14 @@ def active_steam_user():
 
 
 def library_users():
-    """Steam accounts whose library gets FramePort's shortcuts: the signed-in one, else every account on the Frame
-    (several accounts used to stop the shortcut step: "found 2 Steam users", and Play then failed with Steam's "Game
-    configuration unavailable")."""
+    """Steam accounts whose library gets FramePort's shortcuts: every account on the Frame, the signed-in one first
+    (loginusers.vdf's MostRecent isn't always the account signed in on the Frame: GitHub #4/#21 got shortcuts in the
+    other account; an extra shortcut in an unused account does no harm)."""
     users = steam_users()
     if not users:
         raise AgentError("Steam has no signed-in account on this Frame yet; sign in to Steam on the Frame first")
     active = active_steam_user()
-    return [active] if active else users
+    return [active] + [u for u in users if u != active] if active else users
 
 
 def shortcut_appid_for(exe):
@@ -991,6 +996,31 @@ def library_changes(users, packages):
     return False
 
 
+def shortcuts_lost(users, packages, wait=25):
+    """Packages whose shortcut isn't in any account's shortcuts.vdf once Steam has started again (Steam saving its own
+    copy over ours on the way out looked like a successful install with no game in the library, GitHub #27)."""
+    for _ in range(wait):  # until Steam runs again (it rewrites shortcuts.vdf while starting, too)
+        if run(["pgrep", "-x", "steam"]).returncode == 0:
+            break
+        time.sleep(1)
+    time.sleep(8)
+    lost = []
+    for pkg in packages:
+        exe = shortcut_args(pkg)[0]
+        found = False
+        for user in users:
+            vdf = os.path.join(STEAM, "userdata", user, "config/shortcuts.vdf")
+            try:
+                root = vdf_decode(open(vdf, "rb").read()) if os.path.exists(vdf) else {}
+            except (OSError, AgentError):
+                continue
+            entries = (root.get("shortcuts") or {}).values()
+            found = found or any(isinstance(v, dict) and v.get("Exe") == exe for v in entries)
+        if not found:
+            lost.append(pkg)
+    return lost
+
+
 def game_running():
     """A game is being played on the Frame (any Lepton game container, or a FramePort PC VR game)."""
     names = run(["podman", "ps", "--format", "{{.Names}}"]).stdout.split()
@@ -1030,6 +1060,16 @@ def shortcuts_worker(payload):
             update_library(user, args["packages"], result)
         if service or args.get("restart", True):
             start_steam(service)
+            lost = shortcuts_lost(users, args["packages"])
+            if lost:  # Steam wrote its old copy back over ours (it was still saving): once more, then report
+                result["retried"] = lost
+                service = stop_steam()
+                for user in users:
+                    update_library(user, lost, {"added": [], "errors": result["errors"]})
+                start_steam(service)
+                for pkg in shortcuts_lost(users, lost):
+                    result["added"] = [a for a in result["added"] if a["package"] != pkg]
+                    result["errors"].append(f"{pkg}: Steam removed the new library entry again after restarting")
     except Exception as exc:  # noqa: BLE001
         result["state"] = "failed"
         result["errors"].append(str(exc))

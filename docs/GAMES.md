@@ -35,10 +35,12 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Path of the Warrior | Quest | ✅ Works |  |
 | PowerWash Simulator VR | Quest | ✅ Works |  |
 | Rick and Morty: Virtual Rick-ality | PC VR | ✅ Works |  |
+| Riven | Quest | ✅ Works |  |
 | Robo Recall | Quest | ✅ Works |  |
 | Sniper Elite VR: Winter Warrior | Quest | ✅ Works |  |
 | Space Pirate Trainer Quest | Quest | ✅ Works |  |
 | Stremio | Quest | ✅ Works |  |
+| SUPERHOT VR | PC VR | ✅ Works |  |
 | The Climb 2 | Quest | ✅ Works |  |
 | Toy Master | Quest | ✅ Works |  |
 | Under Cover | Quest | ✅ Works |  |

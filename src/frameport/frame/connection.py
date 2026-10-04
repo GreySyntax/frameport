@@ -134,6 +134,11 @@ def saved_targets() -> list[FrameTarget]:
         return []
 
 
+def is_unreachable(exc: BaseException) -> bool:
+    """The Frame isn't there at all (asleep, off the network): retrying an upload at once won't help."""
+    return isinstance(exc, (ConnectionRefusedError, TimeoutError, paramiko.ssh_exception.NoValidConnectionsError))
+
+
 def replace_target(old_host: str, target: FrameTarget) -> None:
     """The remembered Frame at old_host is now at target.host (same device: its SSH host key matched)."""
     items = [FrameTarget(target.host, t.user, t.port, t.name) if t.host == old_host else t for t in saved_targets()]
@@ -512,10 +517,24 @@ class Frame:
         if dirs:
             self.run("xargs -0 mkdir -p", stdin="\0".join(dirs))
 
-    def put(self, local: Path, remote: str, progress=None, resume: bool = True, mkdir: bool = True) -> None:
+    def put(self, local: Path, remote: str, progress=None, resume: bool = True, mkdir: bool = True,
+            attempts: int = 3) -> None:
         """Upload with resume: data goes to <remote>.part, appended from the existing size, then renamed. progress may
-        raise (e.g. Cancelled): the .part stays and the next put continues from there."""
-        local = Path(local)
+        raise (e.g. Cancelled): the .part stays and the next put continues from there. A failed transfer is resumed
+        up to `attempts` times (Windows: an occasional OSError [Errno 22] mid-upload that the next try got past)."""
+        for attempt in range(attempts):
+            try:
+                return self._put(Path(local), remote, progress, resume, mkdir)
+            except OSError as exc:
+                if attempt == attempts - 1 or is_unreachable(exc):
+                    raise
+                log.warning("upload of %s failed (%s), resuming", Path(local).name, exc)
+                time.sleep(2)
+                if not self.alive():
+                    self.close()
+                    self.connect()
+
+    def _put(self, local: Path, remote: str, progress, resume: bool, mkdir: bool) -> None:
         size = local.stat().st_size
         part = remote + ".part"
         if mkdir:

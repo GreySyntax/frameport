@@ -392,7 +392,7 @@ def test_library_users_prefers_the_signed_in_account(monkeypatch, tmp_path):
     (steam / "config/loginusers.vdf").write_text(
         '"users"\n{\n\t"76561197960278073"\n\t{\n\t\t"MostRecent"\t\t"1"\n\t}\n'
         '\t"76561197960266727"\n\t{\n\t\t"MostRecent"\t\t"0"\n\t}\n}\n')
-    assert a.library_users() == ["12345"]
+    assert a.library_users() == ["12345", "999"]  # every account, the signed-in one first
 
 
 def test_uninstall_quest_keeping_saves_drops_the_install_record(monkeypatch, tmp_path):
@@ -881,3 +881,18 @@ def test_reinstall_with_unchanged_shortcut_does_not_restart_steam(monkeypatch, t
     assert not stops and status["state"] == "done" and status["unchanged"]
     assert status["added"][0]["package"] == "com.x.y"
     assert (cfg / "grid").is_dir() and any(p.name.endswith("p.jpg") for p in (cfg / "grid").iterdir())
+
+
+def test_shortcuts_lost_after_steam_restart(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "Applications/quest-frame/com.x.y"
+    anchor.mkdir(parents=True)
+    (anchor / "deployment.json").write_text(json.dumps({"package": "com.x.y", "appid": 1, "title": "X", "base": "b"}))
+    cfg = tmp_path / ".local/share/Steam/userdata/42/config"
+    cfg.mkdir(parents=True)
+    monkeypatch.setattr(a, "run", lambda cmd, **k: SimpleNamespace(returncode=0, stdout=""))
+    monkeypatch.setattr(a.time, "sleep", lambda s: None)
+    assert a.shortcuts_lost(["42"], ["com.x.y"]) == ["com.x.y"]  # Steam put its old shortcuts.vdf back
+    exe, title, start, icon, tag, tags, openvr = a.shortcut_args("com.x.y")
+    a.upsert_shortcut(str(cfg / "shortcuts.vdf"), exe, title, start, icon, tag, tags=tags, openvr=openvr)
+    assert a.shortcuts_lost(["42"], ["com.x.y"]) == []
