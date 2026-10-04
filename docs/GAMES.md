@@ -41,9 +41,9 @@ Generated from [catalog/games](../catalog/games) by `scripts/compat_list.py`.
 | Arcsmith | Quest | ⚠️ Works with issues | Right eye distorts during movement (unresolved; swap, tracking, Valve layers, depth and pacing ruled out). |
 | Assassin's Creed Nexus | Quest | ⚠️ Works with issues | Some launch warning text is still upside down; the rest of the UI is fixed by flip emulation. |
 | Phantom: Covert Ops | Quest | ⚠️ Works with issues | DLC/store button crashes (no Meta store). |
-| Resident Evil 4 | Quest | ⚠️ Works with issues | Some cutscenes crash the game, which makes the main story unplayable. |
 | Silhouette | Quest | ⚠️ Works with issues | Hand-tracking game; the Frame synthesizes hands from controllers, so it is janky. |
 | Time Stall | Quest | ⚠️ Works with issues | Both eyes distort during movement (unresolved). |
+| VR4 | Quest | ⚠️ Works with issues | Some cutscenes crash the game, which makes the main story unplayable. |
 | Espire 1: VR Operative (Quest Edition) | Quest | ❌ Doesn't run | Mesa GL driver crash during texture upload. |
 | HITMAN 3 VR: Reloaded | Quest | ❌ Doesn't run | Vulkan driver crash (freedreno), even without Valve layers. |
 | Journey of the Gods | Quest | ❌ Doesn't run | 32-bit only; the Frame has no AArch32. |

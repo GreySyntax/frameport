@@ -1,5 +1,5 @@
 package: com.Armature.VR4
-title: Resident Evil 4
+title: VR4
 status: issues
 notes: Some cutscenes crash the game, which makes the main story unplayable.
 tested_version: '2.3'
