@@ -58,6 +58,8 @@ def _follow_catalog(data: dict) -> bool:
     settings["recipes.app_version"] = __version__
     for pkg, g in (data.get("games") or {}).items():
         r, a = g.get("recipe"), g.get("analysis")
+        if g.get("kind") == "linux":  # installed as it is: no recipe to derive
+            continue
         if app_updated and isinstance(a, dict):
             changed |= _refresh_data_fields(g, a)
         if not isinstance(r, dict) or not isinstance(a, dict) or r.get("source") == "user":
@@ -223,7 +225,7 @@ def _migrate(data: dict) -> bool:
         # Android apps without VR gain the default-on "Hide Android's navigation bar" patch
         for g in (data.get("games") or {}).values():
             a, r = g.get("analysis") or {}, g.get("recipe")
-            if isinstance(r, dict) and (a.get("extra") or {}).get("vr_kind") == "none":
+            if isinstance(r, dict) and (a.get("extra") or {}).get("vr_kind") == "none" and g.get("kind") != "linux":
                 r.setdefault("patches", {}).setdefault("device.hide_navbar", {})
                 r.setdefault("reasons", {}).setdefault(
                     "device.hide_navbar", "2D app: Android's navigation buttons would cover the app's own controls.")

@@ -119,7 +119,7 @@ class FrameView:
             size = d.get("apk_size", 0)
             in_lib = pkg in games
             sub = (tr("PC VR · Proton") + (tr(" + Revive") if d.get("revive") else "")) if pcvr else \
-                (C.platform(games[pkg])[0] if in_lib else tr("Quest"))
+                (C.platform(games[pkg])[0] if in_lib else tr("Linux") if d.get("kind") == "linux" else tr("Quest"))
             sub += (tr(" · {value:.1f} GiB").format(value=size / 2**30) if size >= 2**30
                     else tr(" · {value:.0f} MiB").format(value=size / 2**20))
             title = display_title(games[pkg], tw) if in_lib else (d.get("title") or pkg)

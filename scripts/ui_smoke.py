@@ -3,6 +3,9 @@
 Chromium (Playwright). Any exception in a view shows up on stdout; screenshots land in --out.
 
     FRAMEPORT_HOME=<a test data dir> python scripts/ui_smoke.py --out /tmp/shots [--game <package>]
+
+--linux adds two pretend arm64 Linux apps (an AppImage and a VR folder app, tiny fake ELF files in FRAMEPORT_HOME)
+and renders their pages; with --fake-frame the AppImage is "installed" with a missing library.
 """
 from __future__ import annotations
 
@@ -123,6 +126,11 @@ class FakeTarget:
         self.games = [{"package": g["package"], "kind": "quest", "title": g.get("title"),
                        "apk_size": (g.get("data_bytes") or 0) + 2**28, "sha256": g["build"]["sha256"],
                        "recipe": {"patches": (g.get("recipe") or {}).get("patches", [])}} for g in works[:count]]
+        # --linux: the AppImage is on the Frame, but SteamOS lacks one of its libraries
+        self.games += [{"package": g["package"], "kind": "linux", "title": g.get("title"), "apk_size": 2**26,
+                        "apk_present": True, "recipe": None, "exe": g.get("exe"),
+                        "missing_libraries": ["libwebkit2gtk-4.1.so.0"]}
+                       for g in library.games() if g.get("kind") == "linux" and g["package"] == LINUX_APPIMAGE]
 
     def describe(self) -> dict:
         return {"hostname": "steamframe", "os": "SteamOS", "os_version": "3.8", "build_id": "20260922",
@@ -166,6 +174,36 @@ def open_type_dialog(app: FramePortApp) -> None:
     listener.on_key_down(SimpleNamespace(key="Enter"))
 
 
+LINUX_APPIMAGE = "linux.venera"  # --linux's packages
+LINUX_FOLDER = "linux.matineevr"
+
+
+def _elf(machine: int = 183, appimage: bool = False, extra: bytes = b"") -> bytes:
+    """A minimal ELF header (183 = aarch64): enough for FramePort's Linux app detection."""
+    head = bytearray(64)
+    head[:4], head[4], head[5] = b"\x7fELF", 2, 1
+    if appimage:
+        head[8:11] = b"AI\x02"
+    head[18:20] = machine.to_bytes(2, "little")
+    return bytes(head) + extra
+
+
+def add_fake_linux_apps() -> None:
+    """--linux: an AppImage and a VR app folder (with a helper program, so "Change program…" shows) in the library."""
+    from frameport import pipeline
+    from frameport.core.paths import user_data_dir
+
+    base = user_data_dir() / "smoke-linux"
+    app = base / "MatineeVR"
+    (app / "lib").mkdir(parents=True, exist_ok=True)
+    (base / "Venera-2.4.2-aarch64.AppImage").write_bytes(_elf(appimage=True, extra=b"\0" * 4096))
+    (app / "MatineeVR").write_bytes(_elf(extra=b"\0" * 8192))
+    (app / "crashpad_handler").write_bytes(_elf())
+    (app / "lib" / "libopenxr_loader.so.1").write_bytes(_elf(extra=b"xrCreateInstance"))
+    pipeline.add_linux_app(base / "Venera-2.4.2-aarch64.AppImage")
+    pipeline.add_linux_app(app)
+
+
 STEP_SECONDS = 4  # per screen (the screenshot is taken ~3 s in)
 
 
@@ -195,7 +233,10 @@ def main() -> int:
                     help="open the install questions for these games, then click each dialog's main button twice "
                          "(a double click must not duplicate dialogs); nothing is installed")
     ap.add_argument("--docs", action="store_true", help="only the screens used in the docs (Library, --game, Frame)")
+    ap.add_argument("--linux", action="store_true", help="add two pretend arm64 Linux apps and render their pages")
     args = ap.parse_args()
+    if args.linux:
+        add_fake_linux_apps()
     global STEP_SECONDS
     if args.hover:
         STEP_SECONDS = 7
@@ -229,6 +270,18 @@ def main() -> int:
         steps.append(("screenshots", lambda a: a.go("screenshots")))
         steps.append(("screenshot-viewer", lambda a: a.screenshots_view.viewer(0)))
         steps.append(("type-on-frame", lambda a: (a.page.pop_dialog(), open_type_dialog(a))))
+    if args.linux:
+        def linux_filter(a, value):
+            a.navigate(0)
+            time.sleep(2)
+            a.library_view._set("platform", value)
+        steps = [("library", lambda a: a.navigate(0)), ("library-linux", lambda a: linux_filter(a, "linux")),
+                 ("linux-appimage", lambda a: (a.library_view._set("platform", "all"), a.open_game(LINUX_APPIMAGE))),
+                 ("linux-folder", lambda a: a.open_game(LINUX_FOLDER)),
+                 ("linux-folder-customize", lambda a: a.open_game(LINUX_FOLDER, advanced=True)),
+                 ("linux-change-program", lambda a: a.choose_exe(LINUX_FOLDER)),
+                 ("frame", lambda a: (a.page.pop_dialog(), a.navigate(1))),
+                 ("linux-menu", lambda a: (a.navigate(0), time.sleep(3), a.library_view.open_menu(LINUX_APPIMAGE)))]
     if args.install_questions:
         queued: list[str] = []
 

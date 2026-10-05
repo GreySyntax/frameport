@@ -299,6 +299,8 @@ def _placeholder(out_dir: Path, title: str, icon_file: Path | None, apk) -> dict
 def original_platform(entry: dict) -> str:
     """What the game was made for (a Steam tag)."""
     extra = (entry.get("analysis") or {}).get("extra") or {}
+    if entry.get("kind") == "linux":
+        return "Linux"
     if entry.get("kind") == "rift":
         if extra.get("flat"):
             return "Windows"
@@ -315,7 +317,7 @@ def steam_tags(entry: dict, where: str = "frame") -> list[str]:
     kind = ((entry.get("analysis") or {}).get("extra") or {}).get("vr_kind") or "quest"
     flat = bool(((entry.get("analysis") or {}).get("extra") or {}).get("flat"))
     runs = TAG if where != "frame" else ("Windows game on Frame" if flat else "PC VR on Frame") \
-        if entry.get("kind") == "rift" else \
+        if entry.get("kind") == "rift" else "Linux app on Frame" if entry.get("kind") == "linux" else \
         "Quest on Frame" if kind == "quest" else "Android on Frame"
     base = [runs, original_platform(entry)]
     genres = ((entry.get("details") or {}).get("genres") or [])[:4]

@@ -170,6 +170,18 @@ def package_listing(g: dict) -> dict[str, object]:
                     pe[rel] = {"error": str(exc)}
             out["pe.json"] = pe
         return out
+    if g.get("kind") == "linux":  # the app's file list (a lone AppImage: only it, not the folder it's in)
+        root, extra = Path(g.get("game_dir") or ""), (g.get("analysis") or {}).get("extra") or {}
+        paths = [root / f for f in extra["files"]] if extra.get("files") else \
+            sorted(root.rglob("*")) if root.is_dir() else []
+        files = []
+        for p in paths:
+            if p.is_file():
+                files.append([p.relative_to(root).as_posix(), p.stat().st_size])
+                if len(files) >= 20000:
+                    break
+        out["files.json"] = files
+        return out
     apk = Path(g.get("apk") or "")
     if not apk.is_file():
         return out

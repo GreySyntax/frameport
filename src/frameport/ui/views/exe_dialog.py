@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import flet as ft
@@ -21,11 +22,24 @@ def _size(n: int) -> str:
     return fmt_size(n)
 
 
+def _file_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
 def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,
                     on_done: Callable[[], None] | None = None) -> None:
     g = library.game(package)
     extra = (g.get("analysis") or {}).get("extra") or {}
-    cands = extra.get("exe_candidates") or [{"path": g.get("exe"), "score": 0, "reasons": [], "size": 0}]
+    linux = g.get("kind") == "linux"
+    if linux:  # a Linux app: its arm64 programs, best guess first
+        root = Path(g.get("game_dir") or ".")
+        cands = [{"path": c, "score": 0, "reasons": [], "size": _file_size(root / c)}
+                 for c in extra.get("candidates") or [g.get("exe")]]
+    else:
+        cands = extra.get("exe_candidates") or [{"path": g.get("exe"), "score": 0, "reasons": [], "size": 0}]
     current = g.get("exe") or cands[0]["path"]
     group = ft.RadioGroup(value=current, content=ft.Column(spacing=T.S2))
     for i, c in enumerate(cands):
@@ -70,8 +84,10 @@ def show_exe_dialog(app: FramePortApp, package: str, remaining: int = 0,
 
     pick = C.one_choice()
     title = tr("Which program starts {get}?").format(get=g.get('title'))
-    lead = (tr("FramePort found more than one program that could start this game. Pick the one you'd double-click to "
-            "play it. Oculus builds usually work better with Revive than Steam builds."))
+    lead = (tr("FramePort found more than one arm64 program in this app. Pick the one that starts it (helpers such "
+               "as crash reporters or updaters are the wrong choice).") if linux else
+            tr("FramePort found more than one program that could start this game. Pick the one you'd double-click to "
+               "play it. Oculus builds usually work better with Revive than Steam builds."))
     app.page.show_dialog(ft.AlertDialog(
         title=ft.Row([ft.Text(title, weight=ft.FontWeight.W_600, expand=True)]
                      + ([C.meta(tr("{remaining} more after this").format(remaining=remaining))] if remaining else [])),

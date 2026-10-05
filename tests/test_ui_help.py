@@ -125,6 +125,81 @@ def test_untested_games_invite_sharing_their_recipe():
     assert not should_ask_to_share({**g, "kind": "rift"}, True)
 
 
+def _linux_app(**extra):
+    return {"package": "linux.tool", "kind": "linux", "title": "Tool", "apk": None, "game_dir": "/apps/tool",
+            "exe": "tool", "recipe": {"status": "unknown", "as_is": True, "overport": False},
+            "analysis": {"engine": "Linux", "xr": "none",
+                         "extra": {"vr_kind": "none", "appimage": False, "openxr": False, "files": None,
+                                   "candidates": ["tool"], **extra}}}
+
+
+def test_linux_app_menus_have_no_conversion_actions(monkeypatch):
+    g = _linux_app()
+    on_frame = {"installed": [{"package": "linux.tool", "kind": "linux"}]}
+    for quick in (True, False):
+        labels = _labels(_app(monkeypatch, g, on_frame).game_actions("linux.tool", quick=quick))
+        for gone in ("Analyze again", "Rebuild only (no install)", "Check game files", "Reset to suggested recipe",
+                     "Save as known-good recipe", "Share working config…", "Game settings…",
+                     "Add videos and files…", "Change program…"):
+            assert gone not in labels, gone
+        assert {"Find artwork…", "Report a problem…", "Collect logs", "Screenshots"} <= set(labels)
+        assert labels[-1] == "Remove from library"
+    quick = _labels(_app(monkeypatch, g, on_frame).game_actions("linux.tool"))
+    assert {"Play on Frame", "Reinstall on Frame", "Launch test on Frame", "Uninstall from Frame"} <= set(quick)
+    several = _linux_app(candidates=["tool", "tool-helper"])
+    assert "Change program…" in _labels(_app(monkeypatch, several, {"installed": []}).game_actions("linux.tool"))
+    lone = _linux_app(candidates=["a", "b"], files=["Tool.AppImage"])  # a lone AppImage: nothing to choose
+    assert "Change program…" not in _labels(_app(monkeypatch, lone, {"installed": []}).game_actions("linux.tool"))
+
+
+def test_linux_apps_install_on_the_frame_only(monkeypatch):
+    g = _linux_app()
+    app = _app(monkeypatch, g, {"installed": []})
+    assert [o[0] for o in app.install_options(g)] == ["Install on Frame"]
+    assert app.quick_action(g) == ("Install on Frame", "install")
+    assert not app.has_game_settings({**g, "analysis": {"extra": {"vr_kind": "openxr", "openxr": True}}})
+    installed = _app(monkeypatch, g, {"installed": [{"package": "linux.tool", "kind": "linux", "recipe": None}]})
+    assert C.install_state(g, installed.frame_info) == "installed"  # no build/recipe record: never "outdated"
+    assert installed.quick_action(g) == ("Play on Frame", "play")
+
+
+def test_linux_platform_badge_filter_and_tags():
+    from frameport.artwork.steam import steam_tags
+    from frameport.ui.views.library import filter_games, platform_filter_options
+
+    g, vr = _linux_app(), _linux_app(openxr=True, vr_kind="openxr")
+    assert C.platform(g)[0] == "Linux" and C.platform(g)[2] == "platform_linux"
+    assert "OpenXR" in C.platform(vr)[1]
+    q = {"package": "com.q", "title": "Q", "recipe": {}}
+    r = {"package": "rift.r", "kind": "rift", "title": "R", "recipe": {}}
+    assert platform_filter_options([q]) == []
+    assert [k for k, _ in platform_filter_options([q, g])] == ["all", "quest", "linux"]
+    assert [k for k, _ in platform_filter_options([q, r, g])] == ["all", "quest", "pcvr", "linux"]
+    games = [q, r, g]
+    pick = {p: [x["package"] for x in filter_games(games, {"platform": p})] for p in ("quest", "pcvr", "linux")}
+    assert pick == {"quest": ["com.q"], "pcvr": ["rift.r"], "linux": ["linux.tool"]}
+    assert steam_tags(g)[:2] == ["Linux app on Frame", "Linux"]
+
+
+def test_linux_missing_libraries_from_the_frame_or_the_last_install():
+    g = _linux_app()
+    assert C.missing_libraries(g, None) == []
+    dep = {"package": "linux.tool", "kind": "linux", "missing_libraries": ["libwebkit2gtk-4.1.so.0"]}
+    assert C.missing_libraries(g, {"installed": [dep]}) == ["libwebkit2gtk-4.1.so.0"]
+    assert C.missing_libraries(g, {"installed": []}) == []  # not on the connected Frame (any more)
+    rec = {**g, "installs": {"old": {"time": 1, "result": {"missing_libraries": ["libold.so"]}},
+                             "new": {"time": 2, "result": {"missing_libraries": ["libgtk-3.so.0"]}}}}
+    assert C.missing_libraries(rec, None) == ["libgtk-3.so.0"]  # offline: the last install's report
+
+
+def test_linux_apps_have_no_twins():
+    from frameport.core.titles import counterparts, twins
+
+    q = {"package": "com.tool", "title": "Tool", "recipe": {}}
+    g = _linux_app()
+    assert twins([q, g]) == set() and counterparts(g, [q, g]) == [] and counterparts(q, [q, g]) == []
+
+
 def test_patch_reasons_in_plain_words():
     from frameport.ui.views.game import plain_reason
 

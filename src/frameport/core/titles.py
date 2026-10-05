@@ -16,7 +16,7 @@ def twins(games: list[dict]) -> set[str]:
     by_pkg = {g["package"]: g for g in games}
     quest_by_title = {}
     for g in games:
-        if g.get("kind") != "rift":
+        if g.get("kind") not in ("rift", "linux"):  # (Linux apps have no Quest/Rift twin)
             quest_by_title.setdefault(_norm(g.get("title") or ""), []).append(g["package"])
     out = set()
     for g in games:
@@ -41,11 +41,13 @@ def display_title(game: dict, twin_set: set[str] | None = None) -> str:
 
 def counterparts(game: dict, games: list[dict]) -> list[dict]:
     """The other-platform versions of this game in the library."""
+    if game.get("kind") == "linux":
+        return []
     rift = game.get("kind") == "rift"
     t = _norm(game.get("title") or "")
     out = []
     for g in games:
-        if g["package"] == game["package"] or (g.get("kind") == "rift") == rift:
+        if g["package"] == game["package"] or (g.get("kind") == "rift") == rift or g.get("kind") == "linux":
             continue
         linked = (rift and game.get("quest_package") == g["package"]) or \
             (not rift and g.get("quest_package") == game["package"])
