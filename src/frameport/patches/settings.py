@@ -241,6 +241,11 @@ class AdapterSetting(Patch):
         if self.key == "equirect_emul" and uses_equirect_layers(a):
             return Suggestion(True, "The game draws 360° layers (e.g. a video player's theatre or 360° videos), which "
                                     "the Frame's runtime can't show: show them as panels around you.", {"value": 1})
+        if self.key == "hide_space_warp" and "libUnreal.so" in a.libs and "libOVRPlugin.so" in a.libs:
+            # Unreal Engine 5 + Meta's plugin: Application SpaceWarp is on by default (Into The Radius 2 flickered;
+            # OVRPort's patch_disable_space_warp doesn't reach UE5). Off until confirmed in more games.
+            return Suggestion(False, "Unreal Engine 5 game with Meta's space warp: turn on if the picture flickers or "
+                                     "smears (e.g. Into The Radius 2).", {"value": 1})
         if self.key == "scene_emul" and needs_scene(a):
             return Suggestion(True, "Mixed-reality game that builds its level from the room model: emulate a "
                                     "guardian-sized room (e.g. Demeter).", {"value": 1})

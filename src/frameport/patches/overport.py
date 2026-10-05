@@ -97,6 +97,10 @@ class OverportPatch(Patch):
                 return Suggestion(True, f"Very heavy game ({total / 2**30:.0f} GiB) using OVRPlugin: application space "
                                         "warp causes artifacts/hangs off-Quest.")
             return Suggestion(False, "Enable if the game shows warping artifacts or hangs (uses OVRPlugin space warp).")
+        if self.id == "patch_ac_nexus_no_appsw_90" and self.applies(a):
+            # verified in the headset (owner preferred 90 Hz over 72): the catalog default, now also without it
+            return Suggestion(True, "This Assassin's Creed Nexus build runs smoothly on the Frame without application "
+                                    "space warp, at 90 Hz.")
         if self.id == "patch_remove_unreal_force_quit" and ap.is_unreal(a):
             return Suggestion(False, "Built as the alternate APK for Unreal games (use it if the game quits itself).")
         return None
