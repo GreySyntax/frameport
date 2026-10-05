@@ -1118,3 +1118,46 @@ def test_upgrade_launchers_adds_watchdog(monkeypatch, tmp_path):
     text = (anchor / "launch.sh").read_text()
     assert "parent=$PPID" in text and a.OLD_WATCHDOG not in text and os.access(anchor / "launch.sh", os.X_OK)
     assert a.upgrade_launchers() == []  # once only
+
+
+def test_dashboard_worker_hides_dashboard_after_first_frames(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    monkeypatch.setattr(a.time, "sleep", lambda s: None)
+    log = tmp_path / "launch.log"
+    log.write_text("Lepton starting\n")
+    calls, visible = [], [True, True, False, True]
+
+    def js(expr, timeout=5):
+        calls.append(expr)
+        if expr.endswith("IsDashboardVisible()"):
+            if len(calls) == 1:  # the first frames arrive while it waits
+                pass
+            return visible.pop(0) if visible else False
+        return None
+    monkeypatch.setattr(a, "steam_js", js)
+    clock = iter(range(0, 10000))
+    monkeypatch.setattr(a.time, "time", lambda: next(clock))
+    log.write_text("Lepton starting\nI FrameBridge: pacing: 72.0 fps\n")
+    a.dashboard_worker(str(log), os.getpid(), wait_start=10, window=8)
+    assert calls.count("SteamClient.OpenVR.VROverlay.HideDashboard()") == 3  # at most three times
+
+
+def test_dashboard_worker_waits_for_vr_frames(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    monkeypatch.setattr(a.time, "sleep", lambda s: None)
+    clock = iter(range(0, 10000))
+    monkeypatch.setattr(a.time, "time", lambda: next(clock))
+    monkeypatch.setattr(a, "steam_js", lambda *x, **k: pytest.fail("no frames yet: must not touch Steam"))
+    log = tmp_path / "launch.log"
+    log.write_text("2D app, no FrameBridge\n")
+    a.dashboard_worker(str(log), os.getpid(), wait_start=5)
+
+
+def test_upgrade_launchers_adds_dashboard_helper(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "Applications/quest-frame/com.x.y"
+    anchor.mkdir(parents=True)
+    (anchor / "launch.sh").write_text(f'{a.OLD_WATCHDOG}\nsetsid lepton start &\nchild=$!\nwait "$child"\n')
+    assert a.upgrade_launchers() == ["com.x.y"]
+    text = (anchor / "launch.sh").read_text()
+    assert "_dashboard_worker" in text and text.index("_dashboard_worker") < text.index('wait "$child"')

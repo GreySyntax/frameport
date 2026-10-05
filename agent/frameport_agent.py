@@ -641,7 +641,7 @@ def ensure_host_fixes():
     except Exception:  # noqa: BLE001
         upgraded = []
     if upgraded:
-        changed.append(f"launchers: exit watchdog ({len(upgraded)})")
+        changed.append(f"launchers: exit watchdog, dashboard ({len(upgraded)})")
     return changed
 
 
@@ -1632,6 +1632,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 setsid {lepton_q} start >"$app_dir/launch.log" 2>&1 &
 child=$!
+{dashboard}
 wait "$child"
 """)
 
@@ -1640,9 +1641,18 @@ wait "$child"
 # under its "reaper"; when Steam stops only the reaper (seen: SIGTERM to the reaper left launch.sh, Lepton and the
 # container running), the game used to keep running with nothing in Steam to close it (GitHub #36).
 OLD_WATCHDOG = "( while sleep 2 && kill -0 $$ 2>/dev/null; do fix_perms; done ) & permfix=$!"
+# SteamVR's dashboard (Resume game / controller / VR options) is open when a FramePort game starts and has to be closed
+# by hand (also when Lepton shows its Android launcher first). Once the game's first VR frames are logged, the agent
+# closes it through Steam's UI (_dashboard_worker); opt out per game with FRAMEPORT_KEEP_DASHBOARD=1.
+DASHBOARD_LINE = ('[[ -n "${{FRAMEPORT_KEEP_DASHBOARD:-}}" ]] || python3 {agent_q} _dashboard_worker '
+                  '"$app_dir/launch.log" $$ >"$app_dir/dashboard.log" 2>&1 &')
 WATCHDOG = ("parent=$PPID\n"
             "( while sleep 2 && kill -0 $$ 2>/dev/null; do fix_perms;"
             " if [[ $parent -gt 1 ]] && ! kill -0 $parent 2>/dev/null; then kill -TERM $$; fi; done ) & permfix=$!")
+
+
+def dashboard_line():
+    return DASHBOARD_LINE.format(agent_q=shlex.quote(os.path.abspath(__file__)))
 
 
 def upgrade_launchers():
@@ -1654,11 +1664,16 @@ def upgrade_launchers():
             text = open(path).read()
         except OSError:
             continue
-        if OLD_WATCHDOG not in text or "parent=$PPID" in text:
+        new = text
+        if OLD_WATCHDOG in new and "parent=$PPID" not in new:
+            new = new.replace(OLD_WATCHDOG, WATCHDOG, 1)
+        if "_dashboard_worker" not in new and 'child=$!\nwait "$child"' in new:
+            new = new.replace('child=$!\nwait "$child"', 'child=$!\n' + dashboard_line() + '\nwait "$child"', 1)
+        if new == text:
             continue
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
-            f.write(text.replace(OLD_WATCHDOG, WATCHDOG, 1))
+            f.write(new)
         os.chmod(tmp, os.stat(path).st_mode)
         os.replace(tmp, path)
         changed.append(os.path.basename(os.path.dirname(path)))
@@ -1669,7 +1684,8 @@ def write_launcher(anchor, base, pkg, title, appid, lepton, env):
     extra = "".join(f"export {k}={shlex.quote(str(v))}\n" for k, v in (env or {}).items()
                     if re.fullmatch(r"[A-Z_][A-Z0-9_]*", k))
     text = LAUNCH_SH.format(title=title.replace("\n", " "), pkg=pkg, base_q=shlex.quote(base), appid=appid,
-                            lepton_q=shlex.quote(lepton), extra_env=extra, watchdog=WATCHDOG)
+                            lepton_q=shlex.quote(lepton), extra_env=extra, watchdog=WATCHDOG,
+                            dashboard=dashboard_line())
     path = os.path.join(anchor, "launch.sh")
     with open(path + ".tmp", "w") as f:
         f.write(text)
@@ -3011,6 +3027,85 @@ def keyboard_session(stdin, stdout, keyboard=None):
     return 0
 
 
+def steam_js(expression, timeout=5):
+    """Evaluate JavaScript in Steam's UI (SharedJSContext) through its CEF devtools port (127.0.0.1:8080, SteamOS
+    starts Steam with -cef-enable-debugging); returns the value. A minimal websocket client (stdlib only)."""
+    import base64
+    import socket
+    import urllib.request
+
+    targets = json.load(urllib.request.urlopen("http://127.0.0.1:8080/json", timeout=timeout))
+    url = next(t["webSocketDebuggerUrl"] for t in targets if t.get("title") == "SharedJSContext")
+    path = url.split("127.0.0.1:8080", 1)[1]
+    with socket.create_connection(("127.0.0.1", 8080), timeout=timeout) as sock:
+        key = base64.b64encode(os.urandom(16)).decode()
+        sock.sendall((f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUpgrade: websocket\r\n"
+                      f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
+        head = b""
+        while b"\r\n\r\n" not in head:
+            chunk = sock.recv(1)
+            if not chunk:
+                raise AgentError("Steam's devtools closed the connection")
+            head += chunk
+        data = json.dumps({"id": 1, "method": "Runtime.evaluate",
+                           "params": {"expression": expression, "awaitPromise": True,
+                                      "returnByValue": True}}).encode()
+        mask, n = os.urandom(4), len(data)
+        size = bytes([0x80 | n]) if n < 126 else bytes([0x80 | 126]) + struct.pack(">H", n)
+        sock.sendall(b"\x81" + size + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+
+        def exact(k):
+            buf = b""
+            while len(buf) < k:
+                chunk = sock.recv(k - len(buf))
+                if not chunk:
+                    raise AgentError("Steam's devtools closed the connection")
+                buf += chunk
+            return buf
+        while True:
+            _b1, b2 = exact(2)
+            k = b2 & 0x7F
+            k = struct.unpack(">H", exact(2))[0] if k == 126 else struct.unpack(">Q", exact(8))[0] if k == 127 else k
+            msg = json.loads(exact(k).decode("utf-8", "replace") or "{}")
+            if msg.get("id") == 1:
+                res = (msg.get("result") or {}).get("result") or {}
+                return res.get("value")
+
+
+def dashboard_worker(log, parent, wait_start=240, window=25):
+    """Close SteamVR's dashboard once the game's first VR frames are logged (FrameBridge's "pacing:" line), checking
+    for `window` seconds after that (Steam can open it a moment later; at most 3 times). Ends with the launcher."""
+    def alive():
+        try:
+            os.kill(int(parent), 0)
+            return True
+        except (OSError, ValueError):
+            return False
+    deadline = time.time() + wait_start
+    while time.time() < deadline and alive():
+        try:
+            with open(log, "rb") as f:
+                if b"FrameBridge: pacing:" in f.read():
+                    break
+        except OSError:
+            pass
+        time.sleep(1)
+    else:
+        print("no VR frames logged; dashboard left as it is")
+        return
+    hidden, end = 0, time.time() + window
+    while time.time() < end and hidden < 3 and alive():
+        try:
+            if steam_js("SteamClient.OpenVR.VROverlay.IsDashboardVisible()"):
+                steam_js("SteamClient.OpenVR.VROverlay.HideDashboard()")
+                hidden += 1
+                print(f"{time.strftime('%H:%M:%S')} dashboard hidden")
+        except Exception as exc:  # noqa: BLE001 (no devtools port, Steam restarting: leave it)
+            print(f"steam ui: {exc}")
+            return
+        time.sleep(1)
+
+
 COMMANDS = {n[4:]: f for n, f in globals().items() if n.startswith("cmd_")}
 
 
@@ -3025,6 +3120,9 @@ def main():
         return 0
     if len(sys.argv) >= 3 and sys.argv[1] == "_xr_probe":
         xr_probe(sys.argv[2])
+        return 0
+    if len(sys.argv) >= 4 and sys.argv[1] == "_dashboard_worker":
+        dashboard_worker(sys.argv[2], sys.argv[3])
         return 0
     if len(sys.argv) >= 3 and sys.argv[1] == "_tools_worker":
         tools_worker(sys.argv[2])
