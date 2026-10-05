@@ -954,3 +954,119 @@ def test_steam_library_report(monkeypatch, tmp_path):
     assert acc["frameport"] == [{"package": "com.x.y", "appid": appid, "title": "X", "start_dir": start,
                                  "openvr": acc["frameport"][0]["openvr"], "options": acc["frameport"][0]["options"]}]
     assert f"[AppID {appid}" in console and "noise" not in console and "path_shortcut" not in console
+
+
+def test_steam_launch_result_app_error(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    monkeypatch.setattr(a.time, "sleep", lambda s: None)
+    log = tmp_path / "console_log.txt"
+    log.write_text('[x] GameAction [AppID 3554078061, ActionID 3] : LaunchApp changed task to RequestingLicense\n'
+                   '[x] GameAction [AppID 3554078061, ActionID 3] : LaunchApp failed with AppError_9 with ""\n'
+                   '[x] GameAction [AppID 1234, ActionID 1] : LaunchApp failed with AppError_18 with ""\n')
+    got = a.steam_launch_result(str(log), 0, 3554078061, wait=0)  # GitHub #21: Steam didn't know the shortcut
+    assert got["result"] == "error" and got["code"] == 9
+    assert a.steam_launch_result(str(log), 0, 35540780, wait=0)["result"] == "silent"  # no prefix matches
+
+
+def _fake_steam(a, monkeypatch, tmp_path, appid=2772269798):
+    """Steam's devkit side: answers create/delete requests and writes/removes the shortcut like Steam does."""
+    sent = []
+    vdf = tmp_path / ".local/share/Steam/userdata/42/config/shortcuts.vdf"
+    vdf.parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".steam").mkdir(exist_ok=True)
+    (tmp_path / ".steam/steam.token").write_text("tok")
+    pipe = tmp_path / ".steam/steam.pipe"
+    pipe.write_text("")
+
+    real_open = open
+
+    def fake_open(path, mode="r", *args, **kw):
+        if str(path) == str(pipe) and "w" in mode:
+            class P:
+                def write(self, data):
+                    line = data.decode().strip()
+                    sent.append(line)
+                    from urllib.parse import parse_qs, urlparse
+                    url = urlparse(line.split(" ", 1)[1])
+                    q = parse_qs(url.query)
+                    cmd = url.path.rsplit("/", 1)[-1]
+                    if cmd == "create-shortcut":
+                        gid = q["gameid"][0]
+                        a.upsert_shortcut(str(vdf), f'"{a.DEVKIT_GAMES}/{gid}/launch.sh"', f"Devkit Game: {gid}",
+                                          f"{a.DEVKIT_GAMES}/{gid}", "")
+                        root = a.vdf_decode(vdf.read_bytes())
+                        for v in root["shortcuts"].values():
+                            if v["Exe"].endswith(f'/{gid}/launch.sh"'):
+                                v.update(appid=appid, Devkit=1, DevkitGameID=gid)
+                        vdf.write_bytes(a.vdf_encode(root))
+                    elif cmd == "delete-shortcut":
+                        a.remove_shortcut(str(vdf), f'"{a.DEVKIT_GAMES}/{q["gameid"][0]}/launch.sh"')
+                    real_open(q["response"][0], "w").write("ok")
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *e):
+                    return False
+            return P()
+        return real_open(path, mode, *args, **kw)
+    monkeypatch.setattr(a, "open", fake_open, raising=False)
+    monkeypatch.setattr("builtins.open", fake_open)
+    return sent, vdf
+
+
+def test_devkit_fallback_register_and_unregister(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "Applications/quest-frame/com.camouflaj.manta"
+    (anchor / "artwork").mkdir(parents=True)
+    (anchor / "launch.sh").write_text("#!/bin/sh\n")
+    (anchor / "artwork/portrait.jpg").write_bytes(b"jpg")
+    (anchor / "deployment.json").write_text(json.dumps({"package": "com.camouflaj.manta", "appid": 3554078061,
+                                                        "title": "Batman: Arkham Shadow", "base": str(anchor)}))
+    sent, vdf = _fake_steam(a, monkeypatch, tmp_path)
+    monkeypatch.setattr(a.time, "sleep", lambda s: None)
+    appid = a.devkit_register("com.camouflaj.manta")
+    assert appid == 2772269798 and a.devkit_gameid("com.camouflaj.manta") == "Batman_Arkham_Shadow"
+    assert "create-shortcut" in sent[0] and "gameid=Batman_Arkham_Shadow" in sent[0]  # no spaces in the id
+    dk = tmp_path / "devkit-game"
+    assert json.loads((dk / "Batman_Arkham_Shadow-argv.json").read_text()) == ["launch.sh"]
+    assert os.readlink(dk / "Batman_Arkham_Shadow/launch.sh") == str(anchor / "launch.sh")
+    grid = vdf.parent / "grid"
+    assert (grid / "2772269798p.jpg").exists()  # its art under Steam's new appid
+    assert a.devkit_register("com.camouflaj.manta") == appid  # registering again reuses the same id
+    assert a.devkit_unregister("com.camouflaj.manta")
+    assert not (dk / "Batman_Arkham_Shadow").exists() and not list(grid.iterdir())
+    assert a.devkit_appid("Batman_Arkham_Shadow") is None and not a.devkit_unregister("com.camouflaj.manta")
+    # Steam rejects ids that don't start with a letter (e.g. "4XVR_Video_Player")
+    dep = json.loads((anchor / "deployment.json").read_text())
+    (anchor / "deployment.json").write_text(json.dumps({**dep, "title": "4XVR Video-Player"}))
+    a.devkit_register("com.camouflaj.manta")
+    assert a.devkit_gameid("com.camouflaj.manta") == "Game_4XVR_Video_Player"
+
+
+def test_launch_falls_back_to_devkit_entry(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "Applications/quest-frame/com.x.y"
+    anchor.mkdir(parents=True)
+    (anchor / "deployment.json").write_text(json.dumps({"package": "com.x.y", "appid": 111, "title": "X",
+                                                        "base": str(anchor)}))
+    monkeypatch.setattr(a, "run", lambda cmd, **k: SimpleNamespace(returncode=0, stdout=""))
+    monkeypatch.setattr(a, "shortcut_appid_for", lambda exe: 111)
+    tried, registered = [], {}
+
+    def launch(appid, wait=10):
+        tried.append(appid)
+        return {"result": "error", "code": 9} if appid == 111 else {"result": "started"}
+
+    def register(pkg):
+        registered["id"] = 222
+        return 222
+    monkeypatch.setattr(a, "steam_launch", launch)
+    monkeypatch.setattr(a, "devkit_register", register)
+    monkeypatch.setattr(a, "devkit_gameid", lambda pkg: "X" if registered else None)
+    monkeypatch.setattr(a, "devkit_appid", lambda gid: registered.get("id"))
+    got = a.cmd_launch({"package": "com.x.y"})
+    assert tried == [111, 222] and got["via"] == "devkit" and got["steam"]["result"] == "started"
+    assert got["first_try"]["code"] == 9
+    got = a.cmd_launch({"package": "com.x.y"})  # next time the devkit entry is used right away
+    assert tried[-1] == 222 and got["via"] == "devkit" and "first_try" not in got

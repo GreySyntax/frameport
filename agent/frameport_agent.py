@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 42
+AGENT_VERSION = 43
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1189,6 +1189,151 @@ def steam_gameid(appid):
 
 NOT_IN_LIBRARY = "not in the Frame's Steam library"
 
+# Fallback library entry (GitHub #21/#30): on some Frames Steam never picks up the shortcuts FramePort writes into
+# shortcuts.vdf (Play: "Game configuration unavailable", Steam's log: RequestingLicense → AppError_9), while games
+# registered through Steam's devkit interface work there (Valve's Devkit Management Tool, MIT: the same pipe command,
+# ~/devkit-game/<gameid>/ + <gameid>-argv.json/-settings.json). Steam adds those live, without a restart, and runs
+# argv[0] relative to the game's folder: a link to the game's launch.sh. Steam names them "Devkit Game: <gameid>"
+# (no spaces allowed in the id), so they're only used where the normal entry fails.
+DEVKIT_GAMES = os.path.join(HOME, "devkit-game")
+
+
+def devkit_request(command, timeout=15):
+    """Send a devkit-1 command to the running Steam (its command pipe + session token) and wait for its answer file.
+    Returns the answer text; AgentError on an error answer or no answer."""
+    import tempfile
+    from urllib.parse import quote_plus
+
+    try:
+        token = open(os.path.join(HOME, ".steam/steam.token")).read().strip()
+    except OSError:
+        raise AgentError("Steam isn't running on the Frame (no session token)") from None
+    with tempfile.TemporaryDirectory(prefix="frameport-devkit") as tmp:
+        resp = os.path.join(tmp, "response")
+        line = f"devkit-1 steam://devkit-1/{token}/{command.format(response=quote_plus(resp))}\n"
+        with open(os.path.realpath(os.path.join(HOME, ".steam/steam.pipe")), "wb", 0) as pipe:
+            pipe.write(line.encode())
+        for _ in range(timeout * 4):
+            time.sleep(0.25)
+            if os.path.exists(resp + ".error"):
+                raise AgentError(f"Steam: {open(resp + '.error', errors='replace').read().strip()}")
+            if os.path.exists(resp) and not os.path.exists(resp + ".lock"):
+                return open(resp, errors="replace").read()
+    raise AgentError("Steam didn't answer the devkit request")
+
+
+def devkit_gameid(pkg):
+    """The devkit game id whose launcher links to this game's launch.sh, if it has one."""
+    target = os.path.join(ANCHORS, pkg, "launch.sh")
+    try:
+        names = sorted(os.listdir(DEVKIT_GAMES))
+    except OSError:
+        return None
+    for name in names:
+        link = os.path.join(DEVKIT_GAMES, name, "launch.sh")
+        if os.path.islink(link) and os.readlink(link) == target:
+            return name
+    return None
+
+
+def devkit_appid(gameid):
+    """The appid Steam gave a devkit game (it picks it itself), from any account's shortcuts.vdf."""
+    for user in steam_users():
+        vdf = os.path.join(STEAM, "userdata", user, "config/shortcuts.vdf")
+        try:
+            root = vdf_decode(open(vdf, "rb").read()) if os.path.exists(vdf) else {}
+        except (OSError, AgentError):
+            continue
+        for v in (root.get("shortcuts") or {}).values():
+            if isinstance(v, dict) and v.get("DevkitGameID") == gameid and v.get("appid"):
+                return v["appid"] & 0xFFFFFFFF
+    return None
+
+
+def devkit_register(pkg):
+    """Add the game to Steam through the devkit interface (Steam must run); copies its art. Returns the appid."""
+    dep = deployment(pkg) or {}
+    gameid = devkit_gameid(pkg)
+    if not gameid:
+        # Steam only accepts ids like identifiers: a letter first, then letters, digits and "_" (no spaces or "-")
+        slug = re.sub(r"[^A-Za-z0-9]+", "_", dep.get("title") or "").strip("_")[:60] or pkg.replace(".", "_")
+        slug = re.sub(r"[^A-Za-z0-9_]", "_", slug)
+        if not slug[:1].isalpha():
+            slug = "Game_" + slug
+        gameid, n = slug, 2
+        while os.path.exists(os.path.join(DEVKIT_GAMES, gameid)):
+            gameid, n = f"{slug}_{n}", n + 1
+    folder = os.path.join(DEVKIT_GAMES, gameid)
+    os.makedirs(folder, exist_ok=True)
+    link = os.path.join(folder, "launch.sh")
+    if os.path.lexists(link):
+        os.remove(link)
+    os.symlink(os.path.join(ANCHORS, pkg, "launch.sh"), link)
+    with open(os.path.join(DEVKIT_GAMES, f"{gameid}-argv.json"), "w") as f:
+        json.dump(["launch.sh"], f)
+    with open(os.path.join(DEVKIT_GAMES, f"{gameid}-settings.json"), "w") as f:
+        json.dump({"steam_play": "0", "compat_tool": ""}, f)
+    from urllib.parse import quote_plus
+
+    try:
+        devkit_request("create-shortcut?response={response}&gameid=" + gameid + "&directory=" +
+                       quote_plus(DEVKIT_GAMES))
+    except AgentError:
+        _devkit_remove_files(gameid)
+        raise
+    appid = None
+    for _ in range(20):  # Steam writes the new entry to shortcuts.vdf right after answering
+        appid = devkit_appid(gameid)
+        if appid:
+            break
+        time.sleep(0.5)
+    if not appid:
+        raise AgentError("Steam added the devkit entry but didn't save it")
+    anchor = os.path.join(ANCHORS, pkg)
+    for user in steam_users():
+        grid = os.path.join(STEAM, "userdata", user, "config/grid")
+        os.makedirs(grid, exist_ok=True)
+        for kind, suffix in (("portrait", "p"), ("landscape", ""), ("hero", "_hero"), ("logo", "_logo")):
+            img = next(iter(glob.glob(os.path.join(anchor, f"artwork/{kind}.*"))), None)
+            if img:
+                for old in grid_files(grid, appid):
+                    if re.match(rf"^{appid}{re.escape(suffix)}\.", os.path.basename(old)):
+                        os.remove(old)
+                shutil.copy(img, os.path.join(grid, f"{appid}{suffix}{os.path.splitext(img)[1]}"))
+    return appid
+
+
+def devkit_unregister(pkg, steam_running=True):
+    """Remove the game's devkit entry: Steam's entry (live when Steam runs; else from shortcuts.vdf), its art and
+    the ~/devkit-game files. Returns whether there was one."""
+    gameid = devkit_gameid(pkg)
+    if not gameid:
+        return False
+    appid = devkit_appid(gameid)
+    exe = f'"{os.path.join(DEVKIT_GAMES, gameid, "launch.sh")}"'
+    if steam_running:
+        try:
+            devkit_request("delete-shortcut?response={response}&gameid=" + gameid)
+        except AgentError:
+            pass
+    else:
+        for user in steam_users():
+            remove_shortcut(os.path.join(STEAM, "userdata", user, "config/shortcuts.vdf"), exe)
+    if appid:
+        for user in steam_users():
+            for art in grid_files(os.path.join(STEAM, "userdata", user, "config/grid"), appid):
+                os.remove(art)
+    _devkit_remove_files(gameid)
+    return True
+
+
+def _devkit_remove_files(gameid):
+    remove_tree(os.path.join(DEVKIT_GAMES, gameid))
+    for suffix in ("argv", "settings", "env"):
+        p = os.path.join(DEVKIT_GAMES, f"{gameid}-{suffix}.json")
+        if os.path.exists(p):
+            os.remove(p)
+
 
 def cmd_launch(args):
     """Start an installed game the way the headset's library does: ask the running Steam to launch its shortcut, so
@@ -1199,27 +1344,45 @@ def cmd_launch(args):
         raise AgentError(f"{pkg} is not installed")
     if run(["pgrep", "-x", "steam"]).returncode != 0:
         raise AgentError("Steam isn't running on the Frame")
-    appid = shortcut_appid_for(f'"{os.path.join(ANCHORS, pkg)}/launch.sh"')
+    devkit = devkit_gameid(pkg)
+    appid = devkit_appid(devkit) if devkit else None  # this Frame needed the fallback entry before: use it
+    via = "devkit" if appid else "shortcut"
+    appid = appid or shortcut_appid_for(f'"{os.path.join(ANCHORS, pkg)}/launch.sh"')
     if appid is None:  # Steam would only say "Game configuration unavailable"
         raise AgentError(f"{NOT_IN_LIBRARY}: {dep.get('title') or pkg}")
-    gid = steam_gameid(appid)  # the shortcut's own id (it keeps its first one when the title changes)
+    steam = steam_launch(appid, args.get("wait", 10))
+    out = {"package": pkg, "gameid": steam_gameid(appid), "title": dep.get("title"), "via": via, "steam": steam}
+    if via == "shortcut" and steam["result"] == "error" and steam.get("code") == 9 and args.get("fallback", True):
+        # Steam doesn't know the shortcut at all (it tried to license a store app with that id): devkit entry
+        try:
+            appid = devkit_register(pkg)
+        except AgentError as exc:
+            out["fallback_error"] = str(exc)
+            return out
+        out.update(via="devkit", gameid=steam_gameid(appid), first_try=steam,
+                   steam=steam_launch(appid, args.get("wait", 10)))
+    return out
+
+
+def steam_launch(appid, wait=10):
+    """Ask the running Steam to start shortcut `appid`; what its log says about it (steam_launch_result)."""
     log = os.path.join(STEAM, "logs/console_log.txt")
     start = os.path.getsize(log) if os.path.exists(log) else 0
     # systemd-run: the launch request must outlive this SSH session
-    run(["systemd-run", "--user", "--collect", "--quiet", f"--unit=frameport-launch-{int(time.time())}",
-         "steam", "-ifrunning", f"steam://rungameid/{gid}"])
-    return {"package": pkg, "gameid": gid, "title": dep.get("title"),
-            "steam": steam_launch_result(log, start, appid, wait=args.get("wait", 10))}
+    run(["systemd-run", "--user", "--collect", "--quiet", f"--unit=frameport-launch-{time.time_ns()}",
+         "steam", "-ifrunning", f"steam://rungameid/{steam_gameid(appid)}"])
+    return steam_launch_result(log, start, appid, wait=wait)
 
 
 STEAM_LAUNCH_ERROR = re.compile(r"launch error (\d+) (\d+)(.*)")
+STEAM_APP_ERROR = re.compile(r"LaunchApp failed with AppError_(\d+)")
 
 
 def steam_launch_result(log, start, appid, wait=10):
     """What Steam's console log says about the launch of shortcut `appid` (lines written after byte `start`): "started"
     (Steam created the process), "error" (e.g. "launch error 9 <appid>" = Steam's "Game configuration unavailable",
     GitHub #21/#30), "silent" (Steam logged nothing about this app: it didn't know the shortcut) or "unknown"."""
-    tag, lines = f"[AppID {appid}", []
+    tag, lines = f"[AppID {appid},", []
     deadline = time.time() + wait
     while True:
         try:
@@ -1229,9 +1392,14 @@ def steam_launch_result(log, start, appid, wait=10):
         except OSError:
             return {"result": "unknown", "lines": []}
         lines = [ln for ln in new if tag in ln or "launch error" in ln or "rungameid" in ln][-40:]
+        mine = [ln for ln in lines if tag in ln]
         err = next((m for m in map(STEAM_LAUNCH_ERROR.search, lines) if m and m.group(2) == str(appid)), None)
         if err:
             return {"result": "error", "code": int(err.group(1)), "detail": err.group(3).strip(), "lines": lines}
+        # e.g. "GameAction [AppID 3554078061, ActionID 3] : LaunchApp failed with AppError_9" (GitHub #21)
+        failed = next((m for m in map(STEAM_APP_ERROR.search, mine) if m), None)
+        if failed:
+            return {"result": "error", "code": int(failed.group(1)), "detail": failed.group(0), "lines": lines}
         if any(tag in ln and ("CreatingProcess" in ln or "WaitingGameWindow" in ln or "Completed" in ln)
                for ln in lines):
             return {"result": "started", "lines": lines}
@@ -2222,6 +2390,11 @@ def cmd_uninstall(args):
     if args.get("remove_shortcut") and steam_users():
         # Steam keeps its own copy of shortcuts.vdf and writes it back: change it only with Steam closed (worker)
         removed_sc = cmd_shortcuts({"remove": [{"exe": f'"{anchor}/launch.sh"', "appid": dep.get("appid")}]})["started"]
+    if args.get("remove_shortcut"):
+        try:
+            devkit_unregister(pkg, steam_running=run(["pgrep", "-x", "steam"]).returncode == 0)
+        except Exception:  # noqa: BLE001 (the files go anyway at the next purge)
+            pass
     if not keep_data or base != anchor:
         remove_tree(anchor)
     else:  # saves live next to the launcher (Quest games): keep them, drop what marks the game as installed
@@ -2434,7 +2607,12 @@ def steam_library_report():
             acc["error"] = f"shortcuts.vdf unreadable: {exc}"
         accounts.append(acc)
     rep["accounts"] = accounts
+    rep["devkit_games"] = sorted(n for n in os.listdir(DEVKIT_GAMES) if os.path.isdir(os.path.join(DEVKIT_GAMES, n))) \
+        if os.path.isdir(DEVKIT_GAMES) else []
     lines = []
+    shortcut_log = _tail(os.path.join(STEAM, "logs/shortcuts.previous.txt"), 200000)
+    if shortcut_log:
+        lines += ["==> shortcuts.previous.txt", shortcut_log]
     for name in ("console_log.previous.txt", "console_log.txt"):
         text = _tail(os.path.join(STEAM, "logs", name), 8 << 20) or ""
         keep = [ln for ln in text.splitlines() if "launch error" in ln or "rungameid" in ln
@@ -2580,6 +2758,12 @@ def purge_worker(payload):
         except AgentError as exc:
             result["errors"].append(str(exc))
             service = True
+        for d in games:  # devkit fallback entries (Steam is closed: removed from shortcuts.vdf)
+            try:
+                if devkit_unregister(d["package"], steam_running=False):
+                    result["removed"].append(f"Steam devkit entry: {d.get('title')}")
+            except Exception as exc:  # noqa: BLE001
+                result["errors"].append(f"{d.get('title')}: {exc}")
         for u in users:
             vdf = os.path.join(STEAM, "userdata", u, "config/shortcuts.vdf")
             grid = os.path.join(STEAM, "userdata", u, "config/grid")

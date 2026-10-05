@@ -554,8 +554,18 @@ class FramePortApp:
             library.upsert_game(pkg, last_played=time.time())
             steam = res.get("steam") or {}
             if to == "frame" and steam:  # what the Frame's Steam logged about this launch (GitHub #21/#30)
-                applog.log.info("Play %s: Steam %s %s", pkg, steam.get("result"), steam.get("lines"))
-            if to == "frame" and steam.get("result") == "error":  # 9 = "Game configuration unavailable"
+                if res.get("first_try"):
+                    applog.log.info("Play %s: Steam refused the library entry %s; devkit entry: %s", pkg,
+                                    res["first_try"].get("lines"), res.get("gameid"))
+                applog.log.info("Play %s (%s): Steam %s %s", pkg, res.get("via"), steam.get("result"),
+                                steam.get("lines"))
+            if to == "frame" and res.get("fallback_error"):
+                applog.log.info("Play %s: devkit entry failed: %s", pkg, res["fallback_error"])
+            if to == "frame" and res.get("first_try") and steam.get("result") != "error":
+                # Steam ignored FramePort's library entry: the game was added the way Valve's devkit tool does it
+                self.toast(tr("The Frame's Steam didn't accept {title}'s library entry, so FramePort added it as "
+                              "\"Devkit Game: …\" instead. Starting it now — put the headset on.").format(title=title))
+            elif to == "frame" and steam.get("result") == "error":  # 9 = "Game configuration unavailable"
                 self.toast(tr("The Frame's Steam couldn't start {title} (Steam error {code}). Please send a problem "
                               "report so we can see why.").format(title=title, code=steam.get("code")), error=True,
                            action=tr("Report a problem"), on_action=lambda e: self.report_problem_dialog(pkg))

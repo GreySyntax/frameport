@@ -860,6 +860,7 @@
  "The Frame's battery is at {pct} %: installs paused so it doesn't switch off mid-upload. Plug it in; the queue continues by itself.": "",
  "The Frame's desktop password, only needed the first time so FramePort can add its own key. After that it connects with the key.": "",
  "The Frame's Steam couldn't start {title} (Steam error {code}). Please send a problem report so we can see why.": "",
+ "The Frame's Steam didn't accept {title}'s library entry, so FramePort added it as \"Devkit Game: …\" instead. Starting it now — put the headset on.": "",
  "The Frame's Steam library still shows the old artwork.": "",
  "the game didn't pass its checks (see the list above)": "",
  "the installed game (APK and its data)": "",
