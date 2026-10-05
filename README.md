@@ -65,6 +65,16 @@ Unity apps whose text fields close the moment you select them on the Frame (no s
 fix, so Steam's on-screen keyboard and Type on Frame work in them too.
 [Details](docs/INSTALL.md#typing-on-the-frame).
 
+## Screenshots
+
+Screenshots you take in the headset show up in FramePort's **Screenshots** tab, grouped by day and matched to the game
+you were playing. Open one full size, step through them, and download single shots, a selection or all of them to
+your computer.
+
+![Screenshots](docs/images/screenshots.png)
+
+![Screenshot viewer](docs/images/screenshot-viewer.png)
+
 ## Compatibility
 
 If a game has already been tested with FramePort, it will automatically use the optimal game config. Otherwise, FramePort
