@@ -70,3 +70,39 @@ def test_add_linux_app_library_entry(tmp_path):
     g = pipeline.add_linux_app(p)
     assert g["package"] == "linux.tool" and g["kind"] == "linux" and pipeline.is_linux(g)
     assert g["exe"] == p.name and g["analysis"]["extra"]["appimage"]
+
+
+def test_local_files_of_a_lone_appimage_never_include_its_folder(tmp_path):
+    a, b = tmp_path / "Tool-1.2-aarch64.AppImage", tmp_path / "Other-1.0-aarch64.AppImage"
+    a.write_bytes(elf(linux.EM_AARCH64, appimage=True))
+    b.write_bytes(elf(linux.EM_AARCH64, appimage=True))
+    (tmp_path / "keep.txt").write_text("the user's file")
+    g = pipeline.add_linux_app(a)
+    pipeline.add_linux_app(b)
+    assert g["data_bytes"] == a.stat().st_size
+    assert pipeline.local_game_files(g["package"]) == [a]  # another AppImage in the same folder doesn't block it
+    pipeline.delete_local_files(g["package"])
+    assert not a.exists() and b.exists() and (tmp_path / "keep.txt").exists()
+
+
+def test_change_program_of_a_linux_folder(tmp_path):
+    root = tmp_path / "Matinee"
+    root.mkdir()
+    (root / "Matinee").write_bytes(elf(linux.EM_AARCH64))
+    (root / "helper").write_bytes(elf(linux.EM_AARCH64))
+    g = pipeline.add_linux_app(root)
+    assert g["exe"] == "Matinee" and pipeline.local_game_files(g["package"]) == [root]
+    assert pipeline.set_exe(g["package"], "helper")["exe"] == "helper"
+
+
+def test_linux_recipes_dont_follow_the_catalog(tmp_path, monkeypatch):
+    from frameport.core import library
+
+    p = tmp_path / "Tool-1.2-aarch64.AppImage"
+    p.write_bytes(elf(linux.EM_AARCH64, appimage=True))
+    g = pipeline.add_linux_app(p)
+    monkeypatch.setattr(library, "REFRESH_ON_UPDATE", True)
+    data = library.load()
+    data["settings"]["recipes.app_version"] = "0.0.0"  # as after an app update
+    library._follow_catalog(data)
+    assert data["games"][g["package"]]["recipe"]["as_is"] is True

@@ -49,6 +49,9 @@ def platform(g: dict) -> tuple[str, str, str]:
             return tr("Windows"), tr("Windows game (Proton)"), "platform_windows"
         oculus = extra.get("needs_revive") or extra.get("libovr")
         return tr("PC VR"), tr("PC VR · Oculus") if oculus else tr("PC VR"), "platform_pcvr"
+    if g.get("kind") == "linux":
+        vr = (((g.get("analysis") or {}).get("extra") or {}).get("openxr"))
+        return tr("Linux"), tr("Linux VR app · OpenXR") if vr else tr("Linux app (arm64)"), "platform_linux"
     kind = (((g.get("analysis") or {}).get("extra") or {}).get("vr_kind")) or "quest"
     if kind == "quest":
         return tr("Quest"), tr("Meta Quest"), "platform_quest"
@@ -56,6 +59,26 @@ def platform(g: dict) -> tuple[str, str, str]:
         return tr("Android"), tr("Android app"), "platform_android"
     return tr("Android VR"), {"openxr": "Android VR · OpenXR", "pico_sdk": "Pico", "wave": "HTC Vive (Wave)",
                           "android_xr": "Android XR"}.get(kind, "Android VR"), "platform_android_vr"
+
+
+def platform_icon(g: dict) -> str:
+    """The icon for a game's platform (card badge, artwork placeholder)."""
+    return ft.Icons.COMPUTER_ROUNDED if g.get("kind") == "rift" else \
+        ft.Icons.TERMINAL_ROUNDED if g.get("kind") == "linux" else ft.Icons.VIEW_IN_AR_ROUNDED
+
+
+def missing_libraries(game: dict, frame_info: dict | None) -> list[str]:
+    """A Linux app's shared libraries that the Frame lacks (the app won't start): from the Frame's install record when
+    connected, else from the last install FramePort did. Empty when the connected Frame doesn't have the app."""
+    dep = _deployment(game, frame_info)
+    if frame_info is not None and dep is None:
+        return []
+    if dep is not None and "missing_libraries" in dep:
+        return list(dep.get("missing_libraries") or [])
+    installs = [i for i in (game.get("installs") or {}).values() if isinstance(i, dict) and
+                isinstance(i.get("result"), dict)]
+    last = max(installs, key=lambda i: i.get("time") or 0, default=None)
+    return list((last or {}).get("result", {}).get("missing_libraries") or [])
 
 
 def install_state(game: dict, frame_info: dict | None) -> str | None:

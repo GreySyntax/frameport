@@ -36,6 +36,13 @@ HELP: dict[str, str] = _Translated({
                         "Android container.",
     "platform_android_vr": "A VR app made for another Android headset. OpenXR apps are translated like Quest games; "
                            "apps built on a headset maker's own SDK (Pico, HTC Wave) can't run on the Frame.",
+    "platform_linux": "A native Linux program built for arm64 (aarch64), like the Frame's own CPU. It's installed "
+                      "unchanged and runs directly on SteamOS (no Android container, no Proton), started from the "
+                      "Frame's Steam library. VR apps use the Frame's OpenXR runtime.",
+    "linux_app": "An AppImage, a folder or a .zip/.tar archive with a Linux program built for arm64 (aarch64). x86_64 "
+                 "builds can't run on the Frame. The app must bring the libraries SteamOS doesn't have.",
+    "appimage": "An AppImage is a Linux app packed into one file. FramePort unpacks it on the Frame once, so it starts "
+                "without FUSE.",
     "select": "Pick several games and install them in one go. FramePort asks every question first, then works through "
               "the queue in the background.",
     "tags": "Your own tags (filled) can be anything you like. Outlined tags are added automatically from the engine, "

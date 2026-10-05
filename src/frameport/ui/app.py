@@ -664,6 +664,7 @@ class FramePortApp:
         if not g:
             return []
         rift = g.get("kind") == "rift"
+        linux = g.get("kind") == "linux"  # installed as it is: nothing to analyze, convert or share as a recipe
         job = self.jobs.busy_with(pkg)
         out: list[tuple | None] = []
         if quick:
@@ -685,12 +686,12 @@ class FramePortApp:
                                 lambda e: self.test_game(pkg, "pc")))
                 if self.has_game_settings(g):
                     out.append((tr("Game settings…"), ft.Icons.TUNE_ROUNDED, lambda e: self.settings_dialog(pkg)))
-                if on_frame and not rift:
+                if on_frame and not rift and not linux:
                     out.append((tr("Add videos and files…"), ft.Icons.VIDEO_LIBRARY_OUTLINED,
                                 lambda e: self.go("files", pkg)))
                 if on_frame:
                     out.append((tr("Type on Frame…"), ft.Icons.KEYBOARD_ROUNDED, lambda e: self.type_on_frame()))
-                if not rift:
+                if not rift and not linux:
                     out.append((tr("Analyze again"), ft.Icons.MANAGE_SEARCH_ROUNDED, lambda e: self.reanalyze(pkg)))
                 if on_frame:
                     out.append((tr("Uninstall from Frame"), ft.Icons.DELETE_OUTLINE_ROUNDED,
@@ -705,6 +706,8 @@ class FramePortApp:
                             lambda e: (lv.selected.add(pkg), lv.set_select_mode(True))))
         if rift:
             out.append((tr("Change executable…"), ft.Icons.TERMINAL_ROUNDED, lambda e: self.choose_exe(pkg)))
+        if linux and self.linux_programs(g):
+            out.append((tr("Change program…"), ft.Icons.TERMINAL_ROUNDED, lambda e: self.choose_exe(pkg)))
         if self.frame_state == "connected":
             out.append((tr("Screenshots"), ft.Icons.PHOTO_LIBRARY_OUTLINED, lambda e: self.go("screenshots", pkg)))
         out.append((tr("Find artwork…"), ft.Icons.IMAGE_SEARCH_ROUNDED, lambda e: self.find_artwork(pkg)))
@@ -714,18 +717,26 @@ class FramePortApp:
             out.append((tr("Update Steam art on Frame"), ft.Icons.WALLPAPER_ROUNDED,
                         lambda e: self.update_steam_art(pkg)))
         out.append((tr("Refresh store details"), ft.Icons.SYNC_ROUNDED, lambda e: self.refresh_details(pkg)))
-        if not job:
+        if not job and not linux:
             out.append((tr("Rebuild only (no install)") if not rift else tr("Check game files"), ft.Icons.BUILD_ROUNDED,
                         lambda e: self.build_game(pkg)))
-        out += [(tr("Reset to suggested recipe"), ft.Icons.RESTART_ALT_ROUNDED,
-                 lambda e: (pipeline.reset_recipe(pkg), self.toast(tr("Recipe reset")), self.refresh_view())),
-                (tr("Save as known-good recipe"), ft.Icons.VERIFIED_ROUNDED, lambda e: self.save_known_good(pkg)),
-                (tr("Share working config…"), ft.Icons.SHARE_ROUNDED, lambda e: self.share_config_dialog(pkg)),
-                (tr("Collect logs"), ft.Icons.FOLDER_ZIP_OUTLINED, lambda e: self.collect_logs(pkg)),
+        if not linux:
+            out += [(tr("Reset to suggested recipe"), ft.Icons.RESTART_ALT_ROUNDED,
+                     lambda e: (pipeline.reset_recipe(pkg), self.toast(tr("Recipe reset")), self.refresh_view())),
+                    (tr("Save as known-good recipe"), ft.Icons.VERIFIED_ROUNDED, lambda e: self.save_known_good(pkg)),
+                    (tr("Share working config…"), ft.Icons.SHARE_ROUNDED, lambda e: self.share_config_dialog(pkg))]
+        out += [(tr("Collect logs"), ft.Icons.FOLDER_ZIP_OUTLINED, lambda e: self.collect_logs(pkg)),
                 (tr("Report a problem…"), ft.Icons.BUG_REPORT_OUTLINED, lambda e: self.report_problem_dialog(pkg)),
                 None,
                 (tr("Remove from library"), ft.Icons.DELETE_OUTLINE_ROUNDED, lambda e: self.remove_from_library(pkg))]
         return out
+
+    @staticmethod
+    def linux_programs(g: dict) -> list[str]:
+        """The other arm64 programs a Linux app could start with (empty for a lone AppImage/program)."""
+        extra = (g.get("analysis") or {}).get("extra") or {}
+        cands = [] if extra.get("files") else list(extra.get("candidates") or [])
+        return cands if len(cands) > 1 else []
 
     def install(self, pkg: str, to: str = "frame", confirmed: bool = False) -> Job | None:
         if confirmed:
@@ -1302,8 +1313,8 @@ class FramePortApp:
         """Quest games built with FramePort's adapter have game settings; PC VR games and 2D Android apps don't."""
         if not g:
             return True  # installed on the Frame but not in this library: a Quest game
-        if g.get("kind") == "rift" or not g.get("analysis"):
-            return g.get("kind") != "rift"
+        if g.get("kind") in ("rift", "linux") or not g.get("analysis"):
+            return g.get("kind") not in ("rift", "linux")
         return library.analysis_from_dict(g["analysis"]).vr_kind != "none"
 
     def settings_dialog(self, package: str) -> None:
@@ -1329,6 +1340,50 @@ class FramePortApp:
             if f.path:
                 self.scan(f.path)
 
+    async def pick_linux_app(self, e=None):
+        """An AppImage or an archive (.zip/.tar.*) with an arm64 Linux app. Any file can be picked: AppImages often
+        have no extension."""
+        from ..analysis import linux
+
+        files = await ft.FilePicker().pick_files(dialog_title=tr("A Linux app for arm64 (AppImage, .zip or .tar.gz)"),
+                                                 allow_multiple=True)
+        for f in files or []:
+            if not f.path:
+                continue
+            if linux.looks_like_linux_app(Path(f.path)):
+                self.add_linux(f.path)
+            else:
+                self.toast(tr("{name} isn't a Linux app (an AppImage, a Linux program or a .zip/.tar archive)")
+                           .format(name=Path(f.path).name), error=True)
+
+    async def pick_linux_folder(self, e=None):
+        path = await ft.FilePicker().get_directory_path(dialog_title=tr("Folder with a Linux app for arm64"))
+        if path:
+            self.add_linux(path)
+
+    def add_linux(self, path: str) -> Job:
+        """Add a native arm64 Linux app (GitHub #31) in the background, then open its page."""
+        name = Path(path).name
+
+        def run(job: Job):
+            job.reporter.stage("Looking at the app")
+            g = pipeline.add_linux_app(path, job.reporter)  # ValueError (e.g. an x86_64 build): the job fails with it
+            pkg = g["package"]
+            try:
+                from ..artwork import thumbs
+
+                thumbs.prewarm(pkg)  # the card's thumbnail of the placeholder cover
+            except Exception:  # noqa: BLE001 - artwork is optional
+                pass
+            library.set_setting("ui.welcome_done", True)
+            self.open_game(pkg)
+            extra = (g.get("analysis") or {}).get("extra") or {}
+            if len(extra.get("candidates") or []) > 1 and not extra.get("files"):  # (the page has "Change…")
+                return tr("Added {title}: it starts with {exe}. Not the right program? Change it on its page.").format(
+                    title=g.get("title"), exe=g.get("exe", "").rsplit("/", 1)[-1])
+            return tr("Added {title}").format(title=g.get("title"))
+        return self.submit(tr("Add {name}").format(name=name), run, None, "task")
+
     def scan_roots(self) -> list[str]:
         """Folders to rescan: the ones scanned before (remembered from now on), else the folders the library's games
         came from (one level up from each game folder)."""
@@ -1336,6 +1391,8 @@ class FramePortApp:
         if not roots:
             found = set()
             for g in library.load().get("games", {}).values():
+                if g.get("kind") == "linux":  # added one by one (its origin may be e.g. Downloads)
+                    continue
                 origin = g.get("origin") or (str(Path(g["apk"]).parent) if g.get("apk") else None)
                 if origin and Path(origin).parent.exists():
                     found.add(str(Path(origin).parent))

@@ -49,7 +49,7 @@ def should_ask_to_share(g: dict, installed: bool) -> bool:
     """Invite the user to share a recipe the built-in catalog doesn't have yet: an untested Quest/Android game that
     they have installed, launch-tested or played, and haven't shared (or dismissed) already."""
     r = g.get("recipe") or {}
-    if g.get("kind") == "rift" or r.get("status", "unknown") != "unknown" or \
+    if g.get("kind") in ("rift", "linux") or r.get("status", "unknown") != "unknown" or \
             str(r.get("source", "")).startswith("catalog") or g.get("shared_config") or g.get("share_dismissed"):
         return False
     return installed or (g.get("last_test") or {}).get("verdict") == "pass" or bool(g.get("last_played"))
@@ -72,6 +72,7 @@ class GameView:
         self.games = library.games()
         self.twins = twins(self.games)
         self.rift = bool(self.g) and self.g.get("kind") == "rift"
+        self.linux = bool(self.g) and self.g.get("kind") == "linux"  # native arm64 app: installed as it is
 
     # ---------------------------------------------------------------- hero
     def hero(self) -> ft.Control:
@@ -81,7 +82,8 @@ class GameView:
         a = g["analysis"]
         art = thumbs.url(pkg, ("hero", "landscape", "portrait", "square", "banner"), 1280, wait=False)
         platform = C.platform(g)[1]
-        facts = " · ".join(x for x in (platform, a.get("engine"), a.get("xr")) if x and x != "?")
+        facts = " · ".join(x for x in (platform, *(() if self.linux else (a.get("engine"), a.get("xr"))))
+                           if x and x not in ("?", "none"))
         recipe = g.get("recipe") or {}
         chips = [C.status_chip(recipe.get("status", "unknown"))]
         st = C.install_state(g, app.frame_info)
@@ -93,7 +95,7 @@ class GameView:
         return ft.Container(
             ft.Stack([
                 C.art_fill(art, radius=T.px(16), hero=True, left=0, right=0, top=0, bottom=0,
-                           placeholder_icon=ft.Icons.COMPUTER_ROUNDED if self.rift else ft.Icons.VIEW_IN_AR_ROUNDED),
+                           placeholder_icon=C.platform_icon(g)),
                 ft.Container(left=0, right=0, top=0, bottom=0, border_radius=T.px(16), gradient=ft.LinearGradient(
                     begin=ft.Alignment.CENTER_LEFT, end=ft.Alignment.CENTER_RIGHT,
                     colors=[T.soft(T.BG, 0.97), T.soft(T.BG, 0.80), T.soft(T.BG, 0.25)], stops=[0.0, 0.45, 1.0])),
@@ -173,7 +175,8 @@ class GameView:
                      tr("Uses the repack's bundled Revive — experimental on the Frame") if rift_repack and not last else
                      tr("Last launch test: {get} · furthest: {value}")
                      .format(get=last.get('verdict'), value=last.get('milestone') or '—') if last
-                     else tr("Runs directly — no Revive needed") if self.rift else "")
+                     else tr("Runs directly — no Revive needed") if self.rift else
+                     tr("Runs natively on SteamOS, started from the Frame's Steam library") if self.linux else "")
         cards.append(self.target_card(
             ft.Icons.VIEW_IN_AR_ROUNDED, tr("Steam Frame"), frame_line, frame_color, frame_sub,
             [C.icon_btn(ft.Icons.SCIENCE_OUTLINED, C.tip(tr("Launch test on the Frame. ") + HELP["launch_test"]),
@@ -212,6 +215,14 @@ class GameView:
         entry = catalog.lookup(pkg)
         out = []
         extra = g["analysis"].get("extra", {})
+        missing = C.missing_libraries(g, self.app.frame_info) if self.linux else []
+        if missing:
+            out.append(C.callout(ft.Column([
+                C.body(tr("It won't start on the Frame: SteamOS doesn't have these libraries and the app doesn't bring "
+                          "them. Look for a build of the app that includes them, then install that one."),
+                       T.TEXT),
+                C.meta(", ".join(missing), T.TEXT_2, selectable=True)], spacing=T.px(4)), "error",
+                ft.Icons.EXTENSION_OFF_ROUNDED))
         if self.rift and g.get("exe_confirmed") is False:
             out.append(C.callout(ft.Row([
                 C.body(tr("FramePort picked {value} to start this game, but there are other candidates. "
@@ -395,7 +406,31 @@ class GameView:
         fill()
         return C.section(tr("Tags"), row, subtitle=tr("Use tags to group and filter your library"), help="tags")
 
+    def linux_summary(self) -> ft.Control:
+        """A Linux app has nothing to patch: what FramePort installs, and how it starts."""
+        g, pkg = self.g, self.package
+        extra = (g.get("analysis") or {}).get("extra") or {}
+        vr = bool(extra.get("openxr"))
+        lead = tr("Installs the app as it is, unpacked on the Frame, with an entry in its Steam library") \
+            if extra.get("appimage") else tr("Installs the app as it is, with an entry in the Frame's Steam library")
+        change = C.ghost(tr("Change…"), ft.Icons.TERMINAL_ROUNDED, lambda e: self.app.choose_exe(pkg)) \
+            if self.app.linux_programs(g) else None
+        rows = [
+            C.kv(tr("Program"), ft.Row([C.body(g.get("exe") or "", T.TEXT, selectable=True)]
+                                       + ([change] if change else []), spacing=T.S2, wrap=True)),
+            C.kv(tr("AppImage"), tr("Yes") if extra.get("appimage") else tr("No"), "appimage"),
+            C.kv(tr("VR (OpenXR)"), tr("Yes: uses the Frame's OpenXR runtime") if vr else
+                 tr("No: a 2D app")),
+            C.kv(tr("Source"), extra.get("source") or g.get("game_dir") or ""),
+        ]
+        return C.section(tr("What FramePort will do"), C.card(ft.Column([
+            ft.Row([ft.Icon(ft.Icons.TERMINAL_ROUNDED, color=T.PC, size=T.px(18)),
+                    C.body(lead, T.TEXT, weight=ft.FontWeight.W_500, expand=True)], spacing=T.S2),
+            *rows], spacing=T.S3)), help="linux_app")
+
     def recipe_summary(self) -> ft.Control:
+        if self.linux:
+            return self.linux_summary()
         recipe = library.recipe_from_dict(self.g["recipe"])
         entry = catalog.lookup(self.package)
         on = [base.get(pid) for pid in recipe.patches if pid in base.REGISTRY or _known(pid)]
@@ -596,6 +631,14 @@ class GameView:
     def details(self) -> ft.Control:
         g, a = self.g, self.g["analysis"]
         rows = [C.kv(tr("Package"), g["package"])]
+        if self.linux:
+            rows += [C.kv(tr("Folder"), g.get("game_dir") or ""),
+                     C.kv(tr("Size"), tr("{value:.1f} GiB").format(value=(g.get("data_bytes") or 0) / 2**30)
+                          if (g.get("data_bytes") or 0) >= 2**30 else
+                          tr("{value:.0f} MiB").format(value=(g.get("data_bytes") or 0) / 2**20))]
+            return ft.ExpansionTile(title=C.body(tr("Details"), T.TEXT, weight=ft.FontWeight.W_600), controls=[
+                ft.Container(ft.Column(rows, spacing=T.S2), padding=ft.Padding(T.S4, 0, T.S4, T.S4))],
+                bgcolor=T.SURFACE, collapsed_bgcolor=T.SURFACE)
         if self.rift:
             rows += [C.kv(tr("Folder"), g.get("game_dir") or ""), C.kv(tr("Executable"), g.get("exe") or ""),
                      C.kv(tr("Type"), f"{a['abis'][0]} · {a['graphics']}"),
@@ -623,7 +666,7 @@ class GameView:
         about = self.about()
         body = [self.hero(), *self.notes(), self.where(), *([about] if about else []), self.tags(),
                 self.recipe_summary()]
-        if self.advanced:
+        if self.advanced and not self.linux:  # (a Linux app has no patches)
             body.append(self.advanced_panel())
         body.append(self.details())
         app = self.app

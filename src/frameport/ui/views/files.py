@@ -193,7 +193,7 @@ class FilesView:
 
         out = []
         for d in (self.app.frame_info or {}).get("installed", []):
-            if d.get("kind") == "pcvr":
+            if d.get("kind") in ("pcvr", "linux"):  # no Android storage
                 continue
             g = library.game(d["package"]) or {}
             out.append((d["package"], g.get("title") or d.get("title") or d["package"]))

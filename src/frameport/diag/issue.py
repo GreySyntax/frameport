@@ -55,7 +55,7 @@ def working_config_url(g: dict, recipe_yaml: str, status: str, notes: str, env: 
                        red: redact.Redactor | None = None) -> str:
     red = red or redact.Redactor()
     title = g.get("title") or g["package"]
-    kind = "Oculus Rift (PC VR)" if g.get("kind") == "rift" else "Meta Quest"
+    kind = {"rift": "Oculus Rift (PC VR)", "linux": "Linux app (arm64)"}.get(g.get("kind"), "Meta Quest")
     a = g.get("analysis") or {}
     game = f"{title} — {g['package']} ({kind}, version {a.get('version') or '?'}, {a.get('engine') or '?'} / " \
            f"{a.get('xr') or '?'})"

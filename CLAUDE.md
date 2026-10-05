@@ -96,6 +96,11 @@ Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
     set: the name on a colour from the title hash + the APK icon, `steam_set_for`; 2D Android apps get no store lookups) and tags: how it runs, the original platform
     (Meta Quest / Oculus Rift), genres, user tags — merged with tags set in Steam (non-Steam shortcuts can't hold a
     description).
+  - Linux apps (GitHub #31, library kind `linux`, `linux.<slug>`): GUI = Add games → "Add a Linux app (arm64)…" /
+    "…folder…" (`app.add_linux` job → `pipeline.add_linux_app`); game page `linux_summary` (program + Change…, AppImage,
+    OpenXR, source) instead of recipe/patches, `C.missing_libraries` callout (Frame deployment, else last install);
+    no Analyze/Rebuild/recipe/share/Game settings actions, Frame only; platform "Linux" badge + library filter; Steam
+    tags "Linux app on Frame"/"Linux"; `_follow_catalog` skips them; local files of a lone AppImage = the file only.
   - Quest/Rift twins stay separate entries, shown and named in Steam "Title (Quest)"/"(Rift)" (`core/titles.py`).
   - `Recipe.as_is` = install unchanged (pre-patched libraries): `pipeline.prepare_as_is`; auto for APKs that already
     contain FrameBridge (`frame_patched`). For Rift it changes nothing (the dump is never modified; the Frame copy

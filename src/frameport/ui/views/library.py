@@ -35,7 +35,7 @@ def auto_tags(game: dict) -> list[str]:
     if "patch_force_passthrough" in patches or "adapter.scene_emul" in patches:
         out.append(tr("Mixed reality"))
     out += ((game.get("details") or {}).get("genres") or [])[:4]  # from the store
-    return out
+    return list(dict.fromkeys(out))  # (a Linux app's platform and "engine" are both "Linux")
 
 
 def user_tags(game: dict) -> list[str]:
@@ -89,6 +89,26 @@ def location(game: dict, frame_info: dict | None, pc_installs: set[str]) -> set[
     return out
 
 
+def platform_matches(game: dict, platform: str) -> bool:
+    """The library's platform filter: all | quest (Android games and apps) | pcvr (PC VR and Windows) | linux."""
+    kind = game.get("kind") or "quest"
+    return platform == "all" or {"quest": kind not in ("rift", "linux"), "pcvr": kind == "rift",
+                                 "linux": kind == "linux"}.get(platform, True)
+
+
+def platform_filter_options(games: list[dict]) -> list[tuple[str, str]]:
+    """The platform filter's choices: only when the library has more than Android games; one per kind present."""
+    kinds = {g.get("kind") or "quest" for g in games}
+    if not kinds & {"rift", "linux"}:
+        return []
+    out = [("all", tr("All")), ("quest", tr("Android"))]
+    if "rift" in kinds:
+        out.append(("pcvr", tr("PC VR")))
+    if "linux" in kinds:
+        out.append(("linux", tr("Linux")))
+    return out
+
+
 def filter_games(games: list[dict], f: dict, frame_info: dict | None = None,
                  pc_installs: set[str] | frozenset = frozenset()) -> list[dict]:
     q = (f.get("q") or "").strip().lower()
@@ -99,8 +119,7 @@ def filter_games(games: list[dict], f: dict, frame_info: dict | None = None,
             continue
         if any(t.lower() not in tags for t in f.get("tags") or []):
             continue
-        rift = g.get("kind") == "rift"
-        if f.get("platform") == "quest" and rift or f.get("platform") == "pcvr" and not rift:
+        if not platform_matches(g, f.get("platform", "all")):
             continue
         if f.get("status", "all") != "all" and (g.get("recipe") or {}).get("status", "unknown") != f["status"]:
             continue
@@ -198,7 +217,12 @@ class LibraryView:
                    ft.PopupMenuItem(content=ft.Text(tr("Add one game folder…")),
                                     icon=ft.Icons.CREATE_NEW_FOLDER_ROUNDED, on_click=app.pick_game_folder),
                    ft.PopupMenuItem(content=ft.Text(tr("Add an APK file…")), icon=ft.Icons.ANDROID_ROUNDED,
-                                    on_click=app.pick_apk)],
+                                    on_click=app.pick_apk),
+                   ft.PopupMenuItem(),  # divider: native Linux apps (GitHub #31)
+                   ft.PopupMenuItem(content=ft.Text(tr("Add a Linux app (arm64)…")), icon=ft.Icons.TERMINAL_ROUNDED,
+                                    on_click=app.pick_linux_app),
+                   ft.PopupMenuItem(content=ft.Text(tr("Add a Linux app folder…")), icon=ft.Icons.FOLDER_ROUNDED,
+                                    on_click=app.pick_linux_folder)],
             bgcolor=T.SURFACE_2, tooltip="")
         self.rescan_btn = C.secondary(tr("Rescan folders"), ft.Icons.REFRESH_ROUNDED, app.rescan,
                                       tooltip=C.tip(HELP["rescan"]))
@@ -428,14 +452,14 @@ class LibraryView:
         C.update(self.update_all_btn)
         self._update_hint()
         has_rift = any(g.get("kind") == "rift" for g in games)
+        platforms = platform_filter_options(games)
         where = [("all", tr("All")), ("frame", tr("On Frame")), ("none", tr("Not installed"))]
         if has_rift:
             where.insert(2, ("pc", tr("On this PC")))
         # the filters wrap onto a second line in a narrow window; count and sort stay on the right
         left = ft.Row([
             self._seg("where", where),
-            *([self._seg("platform", [("all", tr("All")), ("quest", tr("Android")), ("pcvr", tr("PC VR"))])]
-              if has_rift else []),
+            *([self._seg("platform", platforms)] if platforms else []),
             C.with_help(self._menu_chip("status", tr("Status"), [("all", tr("Any")), ("works", tr("Works")),
                                                                  ("issues", tr("Works with issues")),
                                                                  ("unknown", tr("Untested")),
@@ -530,8 +554,7 @@ class LibraryView:
             badges.append(C.pill(tr("Check exe"), T.WARN, ft.Icons.HELP_OUTLINE_ROUNDED, overlay=True,
                                  tooltip=C.tip(HELP["check_exe"])))
         label, _, help_key = C.platform(g)
-        platform = C.pill(label, T.PC if rift else T.TEXT,
-                          ft.Icons.COMPUTER_ROUNDED if rift else ft.Icons.VIEW_IN_AR_ROUNDED, overlay=True,
+        platform = C.pill(label, T.PC if rift else T.TEXT, C.platform_icon(g), overlay=True,
                           tooltip=C.tip(HELP[help_key]))
         check = ft.Container(ft.Checkbox(value=pkg in self.selected, active_color=T.ACCENT, check_color=T.ON_ACCENT,
                                          on_change=lambda e: self.toggle_selected(pkg)),
@@ -554,7 +577,7 @@ class LibraryView:
         tile = ft.Container(
             ft.Stack([
                 C.art_fill(art, left=0, right=0, top=0, bottom=0, opacity=0.5 if dim else 1.0,
-                           placeholder_icon=ft.Icons.COMPUTER_ROUNDED if rift else ft.Icons.VIEW_IN_AR_ROUNDED),
+                           placeholder_icon=C.platform_icon(g)),
                 ft.Container(C.bottom_fade(None, 0.92), left=0, right=0, bottom=0, top=T.px(90)),
                 # platform + state badges in one row that wraps: on a narrow card "On Frame" covered "Android"
                 ft.Container(ft.Row([platform, *badges], spacing=T.px(4), run_spacing=T.px(4), wrap=True),

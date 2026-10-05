@@ -254,6 +254,12 @@ def fetch_details(package: str, reporter: Reporter | None = None) -> dict:
 def set_exe(package: str, exe: str) -> dict:
     """The user picked the program that starts a Rift game: re-analyze with it (keeps recipe choices and tags)."""
     entry = library.game(package)
+    if entry and is_linux(entry):  # a Linux app: the same source again, with this program
+        folder = Path(entry["game_dir"])
+        if not (folder / exe).is_file():
+            raise FileNotFoundError(folder / exe)
+        source = ((entry.get("analysis") or {}).get("extra") or {}).get("source") or entry["game_dir"]
+        return add_linux_app(source, exe=exe)
     if not entry or entry.get("kind") != "rift":
         raise ValueError(f"{package} is not a Rift game")
     folder = Path(entry["game_dir"])
@@ -301,16 +307,26 @@ def add_linux_app(path: Path | str, reporter: Reporter | None = None, exe: str |
                 else "none", "abis": ["arm64-v8a"], "libs": [], "extra": {**info, "vr_kind": "openxr" if info["openxr"]
                                                                             else "none", "source": str(path)}}
     old = library.game(package) or {}
+    root = Path(info["root"])
+    try:  # what an install uploads (the library's size sort, the Frame's free-space check)
+        size = sum((root / f).stat().st_size for f in info["files"]) if info["files"] else \
+            sum(f.stat().st_size for f in root.rglob("*") if f.is_file())
+    except OSError:
+        size = 0
     fields = dict(kind="linux", name=path.name, apk=None, game_dir=info["root"], exe=info["exe"], data_dir=None,
-                  origin=str(path.parent), analysis=analysis, suggested=library.recipe_to_dict(recipe))
+                  origin=str(path.parent), analysis=analysis, suggested=library.recipe_to_dict(recipe),
+                  data_bytes=size)
     if not old:
         fields.update(title=info["title"], recipe=library.recipe_to_dict(recipe), status="unknown")
     library.upsert_game(package, **fields)
     try:
         from .artwork import fetch
 
-        fetch.artwork_dir(package)  # placeholder art (name on a colour) until the user picks some
-    except Exception:  # noqa: BLE001
+        fetch.artwork_dir(package)
+        from .artwork import steam
+
+        steam.ensure_cover(package)  # placeholder art (name on a colour) until the user picks some
+    except Exception:  # noqa: BLE001 - artwork is optional
         pass
     return library.game(package)
 
@@ -541,18 +557,37 @@ def local_game_files(package: str) -> list[Path]:
     paths: list[Path] = []
     if g.get("kind") == "rift":
         paths += [Path(g["game_dir"])] if g.get("game_dir") else []
+    elif is_linux(g):
+        paths += linux_local_files(g)
     else:
         paths += [Path(p) for p in (g.get("apk"), g.get("data_dir")) if p]
     b = g.get("build") or {}
     out = output_dir().resolve()
     paths += [Path(b[k]) for k in ("apk", "alt_apk") if b.get(k) and out in Path(b[k]).resolve().parents]
     others = [o for o in library.games() if o.get("package") != package]
-    used = [Path(p).resolve() for o in others for p in (o.get("apk"), o.get("data_dir"), o.get("game_dir")) if p]
+    used = [Path(p).resolve() for o in others if not is_linux(o)
+            for p in (o.get("apk"), o.get("data_dir"), o.get("game_dir")) if p]
+    used += [p.resolve() for o in others if is_linux(o) for p in linux_local_files(o)]  # (lone AppImages: the file)
 
     def shared(p: Path) -> bool:  # the same path, a path inside it, or a folder around it belongs to another game
         rp = p.resolve()
         return any(u == rp or rp in u.parents or u in rp.parents for u in used)
     return [p for p in dict.fromkeys(paths) if p.exists() and not shared(p)]
+
+
+def linux_local_files(g: dict) -> list[Path]:
+    """A Linux app's own files: a lone AppImage/program (never the folder it sits in, e.g. Downloads), the app's
+    folder, or the archive it came from + FramePort's unpacked copy of it."""
+    extra = (g.get("analysis") or {}).get("extra") or {}
+    root = Path(g["game_dir"]) if g.get("game_dir") else None
+    if root is None:
+        return []
+    if extra.get("files"):
+        return [root / f for f in extra["files"]]
+    source = Path(extra["source"]) if extra.get("source") else None
+    if source is not None and source.is_file():  # an archive: it and its unpacked copy in FramePort's data folder
+        return [source, root]
+    return [root]
 
 
 def delete_local_files(package: str) -> tuple[list[str], int]:
@@ -562,7 +597,8 @@ def delete_local_files(package: str) -> tuple[list[str], int]:
 
     files = local_game_files(package)
     freed, done = 0, []
-    parents = {p.parent for p in files}
+    # (not for Linux apps: a lone AppImage's folder is the user's, e.g. Downloads)
+    parents = set() if is_linux(library.game(package) or {}) else {p.parent for p in files}
     for p in files:
         size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size
         shutil.rmtree(p) if p.is_dir() else p.unlink()

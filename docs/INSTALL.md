@@ -132,6 +132,20 @@ starts it if asked). FramePort installs it on the Frame and Proton runs it as a 
 it shows up in the Frame's Steam library tagged "Windows game on Frame". Whether a game runs depends on Proton on ARM
 (x86 games run through emulation).
 
+## Linux apps (arm64)
+
+The Frame runs SteamOS on an arm64 CPU, so native Linux apps built for **aarch64/arm64** run on it directly (no
+Android container, no Proton). **Add games → Add a Linux app (arm64)…** takes an AppImage or a `.zip`/`.tar.gz`/
+`.tar.xz` archive; **Add a Linux app folder…** takes an unpacked app. FramePort finds the program that starts it (the
+game page's **Change…** picks another one) and whether it's a VR (OpenXR) app. **Install on Frame** uploads it
+unchanged and adds it to the Frame's Steam library, tagged "Linux app on Frame"; Play, launch tests and Uninstall
+work like for other games.
+
+- x86_64 builds can't run on the Frame: FramePort says so when you add one. Look for an aarch64/arm64 download.
+- The app must bring the libraries SteamOS doesn't have. If some are missing, the install reports them and the game
+  page lists them: look for a build that includes them.
+- From the command line: `frameport add-linux <AppImage, folder or archive> [--exe <program>]`.
+
 ## Files on the Frame (videos, documents, mods, saves)
 
 The **Files** tab manages files on the Frame over the same connection as installs; no other transfer app is needed.
@@ -167,6 +181,7 @@ and `frameport <command> --help` describe every option. The main ones:
 | Command | What it does |
 |---|---|
 | `scan <folder>` / `list` / `show <game>` | add games, list the library, show a game's analysis and patches |
+| `add-linux <path>` | add an arm64 Linux app (AppImage, folder or archive) |
 | `recipe <game> --enable/--disable <patch>` | change a game's patches (`patches` lists them all) |
 | `build <game>` / `install <game>` / `test <game>` | build, install on the Frame (`--to pc` for PC VR on this PC), launch test |
 | `frame discover` / `frame connect` / `frame info` | find, pair with and describe the Frame |
