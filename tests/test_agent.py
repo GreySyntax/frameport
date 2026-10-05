@@ -1203,3 +1203,20 @@ def test_appimage_programs_and_missing_libraries(monkeypatch, tmp_path):
     (root / "libfoo.so").write_bytes(b"\x7fELF")
     assert a.appimage_programs(str(root)) == [str(root / "usr/bin/tool")]  # scripts and libraries skipped
     assert a.missing_libraries(str(root), [str(root / "usr/bin/tool")]) == []
+
+
+def test_power_schedules_systemctl_in_a_user_timer(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    calls = []
+    monkeypatch.setattr(a, "run", lambda cmd, **k: calls.append(cmd) or SimpleNamespace(returncode=0, stdout="",
+                                                                                         stderr=""))
+    monkeypatch.setattr(a, "game_running", lambda: False)
+    assert a.cmd_power({"action": "restart"}) == {"action": "restart", "in_seconds": 3}
+    assert calls[-1][:2] == ["systemd-run", "--user"] and calls[-1][-2:] == ["systemctl", "reboot"]
+    assert "--on-active=3" in calls[-1]
+    monkeypatch.setattr(a, "game_running", lambda: True)
+    with pytest.raises(a.AgentError, match="game is running"):
+        a.cmd_power({"action": "sleep"})
+    assert a.cmd_power({"action": "sleep", "force": True})["action"] == "sleep"
+    with pytest.raises(a.AgentError):
+        a.cmd_power({"action": "format"})

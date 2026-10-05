@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 46
+AGENT_VERSION = 47
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -2786,6 +2786,26 @@ def cmd_finalize_linux(args):
     with open(os.path.join(anchor, "deployment.json"), "w") as f:
         json.dump(dep, f, indent=2)
     return {"ok": True, "base": base, "appid": appid, "moved_files": moved, "missing_libraries": missing}
+
+
+POWER_ACTIONS = {"sleep": "suspend", "restart": "reboot", "shutdown": "poweroff"}
+
+
+def cmd_power(args):
+    """Put the Frame to sleep, restart or shut it down (the app's power button). logind only allows these from the
+    user's own units ("yes"), not an SSH session ("challenge" = a password prompt), so a transient user timer runs
+    systemctl a few seconds later: this command answers first. A running game is refused unless force."""
+    action = args.get("action")
+    if action not in POWER_ACTIONS:
+        raise AgentError(f"unknown power action {action!r}")
+    if game_running() and not args.get("force"):
+        raise AgentError("a game is running on the Frame")
+    delay = max(2, min(int(args.get("delay", 3)), 60))
+    p = run(["systemd-run", "--user", "--collect", "--quiet", f"--unit=frameport-power-{int(time.time())}",
+             f"--on-active={delay}", "systemctl", POWER_ACTIONS[action]])
+    if p.returncode:
+        raise AgentError(f"couldn't {action}: {(p.stderr or p.stdout).strip()[-300:]}")
+    return {"action": action, "in_seconds": delay}
 
 
 AWAKE_UNIT = "frameport-awake"

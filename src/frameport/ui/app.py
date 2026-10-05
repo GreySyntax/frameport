@@ -100,6 +100,7 @@ class FramePortApp:
         self.body = ft.Container(expand=True, padding=ft.Padding(T.S6, T.S5, T.S5, 0))
         self.nav_col = ft.Column(spacing=T.px(2))
         self.conn_card = ft.Container()
+        self.power_row = ft.Container(visible=False)  # the Frame's power button (sleep / restart / shut down)
         self.activity_card = ft.Container()
         self.activity = ActivityPanel(self)
         sidebar = ft.Container(ft.Column([
@@ -113,6 +114,7 @@ class FramePortApp:
             ft.Container(expand=True),
             self.updater.card,
             self.activity_card,
+            self.power_row,
             self.conn_card,
         ], spacing=T.S2), width=T.px(236), bgcolor=T.SIDEBAR, padding=T.S4,
             border=ft.Border(right=ft.BorderSide(1, T.BORDER)))
@@ -216,6 +218,24 @@ class FramePortApp:
                        self._conn_line, self._conn_extra], spacing=1, expand=True),
         ], spacing=T.S3), padding=T.S3, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE, ink=True,
             border=ft.Border.all(1, T.BORDER), on_click=lambda e: self.go("frame"))
+        # the Frame's power: three equal buttons in one bar styled like the cards around it (icon over a label)
+        def power_button(action: str, label: str, icon, tip: str) -> ft.Control:
+            return ft.Container(
+                ft.Column([ft.Icon(icon, size=T.px(17), color=T.TEXT_2),
+                           ft.Text(label, size=T.T_META, color=T.TEXT_2, max_lines=1, no_wrap=True)],
+                          spacing=T.px(2), tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                expand=True, alignment=ft.Alignment.CENTER, padding=ft.Padding(0, T.px(7), 0, T.px(6)),
+                border_radius=T.RADIUS_SM, ink=True, tooltip=C.tip(tip),
+                on_click=lambda e: self.frame_power(action))
+        divider = ft.Container(width=1, height=T.px(26), bgcolor=T.BORDER)
+        self.power_row.content = ft.Container(ft.Row([
+            power_button("sleep", tr("Sleep"), ft.Icons.BEDTIME_OUTLINED, tr("Put the Frame to sleep")),
+            divider,
+            power_button("restart", tr("Restart"), ft.Icons.RESTART_ALT_ROUNDED, tr("Restart the Frame")),
+            ft.Container(width=1, height=T.px(26), bgcolor=T.BORDER),
+            power_button("shutdown", tr("Shut down"), ft.Icons.POWER_SETTINGS_NEW_ROUNDED, tr("Turn the Frame off")),
+        ], spacing=0, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            bgcolor=T.SURFACE, border=ft.Border.all(1, T.BORDER), border_radius=T.RADIUS_SM, padding=T.px(2))
         self._nav = nav  # last: _refresh_sidebar (also called from job threads) treats it as "all built"
 
     def _refresh_sidebar(self, update: bool = True) -> None:
@@ -263,6 +283,7 @@ class FramePortApp:
         bat = (self.frame_info or {}).get("battery") if st == "connected" else None
         self._conn_bat.visible = bool(bat)
         self._conn_type.visible = st == "connected"
+        self.power_row.visible = st == "connected"
         if bat:
             from .battery import charging, icon, low
 
@@ -282,7 +303,7 @@ class FramePortApp:
         else:
             self._conn_extra.visible = False
         if update:
-            C.update(self.nav_col, self.activity_card, self.conn_card)
+            C.update(self.nav_col, self.activity_card, self.power_row, self.conn_card)
 
     def _saved_name(self) -> str | None:
         from ..frame.connection import saved_targets
@@ -1383,6 +1404,36 @@ class FramePortApp:
             pipeline.reanalyze(pkg, job.reporter)
             return tr("{title}: analyzed again").format(title=self._title(pkg))
         self.submit(tr("Analyze {title} again").format(title=self._title(pkg)), run, pkg, "task")
+
+    def frame_power(self, action: str, force: bool = False) -> None:
+        """Sleep / restart / shut down the Frame (agent `power`, run a few seconds later so the answer arrives)."""
+        heading = {"sleep": tr("Put the Frame to sleep?"), "restart": tr("Restart the Frame?"),
+                   "shutdown": tr("Shut down the Frame?")}[action]
+        text = {"sleep": tr("The Frame goes to sleep in a few seconds. Wake it with its power button."),
+                "restart": tr("The Frame restarts in a few seconds; FramePort reconnects when it's back."),
+                "shutdown": tr("The Frame turns off in a few seconds. Turn it on again with its power button.")}[action]
+        if force:
+            heading, text = tr("A game is running on the Frame"), tr("It will be closed without saving. Continue?")
+        label = {"sleep": tr("Sleep"), "restart": tr("Restart"), "shutdown": tr("Shut down")}[action]
+
+        def go():
+            def work():
+                target = self.target
+                if not target:
+                    self.toast(tr("The Frame isn't connected"), error=True)
+                    return
+                try:
+                    target.frame.agent("power", action=action, force=force, timeout=30)
+                except AgentFailed as exc:
+                    if "game is running" in str(exc) and not force:
+                        self.page.run_thread(lambda: self.frame_power(action, force=True))
+                        return
+                    raise
+                done = {"sleep": tr("The Frame goes to sleep now."), "restart": tr("The Frame is restarting."),
+                        "shutdown": tr("The Frame is shutting down.")}[action]
+                self.toast(done)
+            self.run_bg(work)
+        C.confirm(self.page, heading, text, label, go, danger=action != "sleep" or force)
 
     def type_on_frame(self) -> None:
         from .views.type_dialog import show_type_dialog

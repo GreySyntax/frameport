@@ -21,7 +21,7 @@ import flet as ft  # noqa: E402
 from frameport.core import library  # noqa: E402
 from frameport.ui.app import FramePortApp  # noqa: E402
 
-PORT = 8557
+PORT = int(os.environ.get("FRAMEPORT_SMOKE_PORT", "8557"))  # two smoke runs at once need different ports
 ERRORS: list[str] = []
 
 
@@ -250,6 +250,7 @@ def main() -> int:
         steps.append(("screenshots", lambda a: a.go("screenshots")))
         steps.append(("screenshot-viewer", lambda a: a.screenshots_view.viewer(0)))
         steps.append(("type-on-frame", lambda a: (a.page.pop_dialog(), open_type_dialog(a))))
+        steps.append(("power-confirm", lambda a: (a.page.pop_dialog(), a.frame_power("restart"))))
     if args.install_questions:
         queued: list[str] = []
 
