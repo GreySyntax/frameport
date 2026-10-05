@@ -1220,3 +1220,17 @@ def test_power_schedules_systemctl_in_a_user_timer(monkeypatch, tmp_path):
     assert a.cmd_power({"action": "sleep", "force": True})["action"] == "sleep"
     with pytest.raises(a.AgentError):
         a.cmd_power({"action": "format"})
+
+
+def test_incomplete_deployment_records_dont_break_listing(monkeypatch, tmp_path):
+    """GitHub #40: a deployment.json without "base" made every connection fail with KeyError: 'base'."""
+    a = load_agent(monkeypatch, tmp_path)
+    good = tmp_path / "Applications/quest-frame/com.x.ok"
+    good.mkdir(parents=True)
+    (good / "deployment.json").write_text(json.dumps({"package": "com.x.ok", "appid": 5}))  # no base / title
+    junk = tmp_path / "Applications/quest-frame/other"
+    junk.mkdir(parents=True)
+    (junk / "deployment.json").write_text(json.dumps({"name": "something else"}))
+    games = a.cmd_list_installed({})["games"]
+    assert [g["package"] for g in games] == ["com.x.ok"] and games[0]["base"] == str(good)
+    assert a.deployment("com.x.ok")["base"] == str(good)

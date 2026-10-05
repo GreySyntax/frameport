@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 47
+AGENT_VERSION = 48
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1163,9 +1163,14 @@ def cmd_shortcut_status(args):
 def deployment(pkg):
     path = os.path.join(ANCHORS, pkg, "deployment.json")
     try:
-        return json.load(open(path))
+        dep = json.load(open(path))
     except (OSError, ValueError):
         return None
+    if not isinstance(dep, dict):
+        return None
+    dep.setdefault("base", os.path.dirname(path))
+    dep.setdefault("title", pkg)
+    return dep
 
 
 def cmd_list_installed(args):
@@ -1175,6 +1180,12 @@ def cmd_list_installed(args):
             dep = json.load(open(dep_path))
         except (OSError, ValueError):
             continue
+        # incomplete records (an interrupted install, another tool's files in this folder) are skipped or completed
+        # instead of failing every connection with a KeyError (GitHub #40)
+        if not isinstance(dep, dict) or not dep.get("package") or not dep.get("appid"):
+            continue
+        dep.setdefault("base", os.path.dirname(dep_path))
+        dep.setdefault("title", dep["package"])
         dep.setdefault("kind", "quest")
         dep["anchor"] = os.path.dirname(dep_path)  # its artwork/ feeds the Steam grid (shortcuts)
         if dep["kind"] == "linux":

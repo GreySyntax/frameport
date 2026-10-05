@@ -1746,6 +1746,8 @@ class FramePortApp:
                 self.frame_info = None
                 # reachable, but it doesn't let FramePort in: the Frame page points at the first-time setup
                 self._not_paired = isinstance(exc, FrameNotPaired)
+                if not isinstance(exc, (FrameNotPaired, OSError)):  # unexpected: keep the traceback for reports
+                    applog.log.exception("connect to %s failed", target.label)
                 if not quiet:
                     self.toast(tr("Couldn't connect: {exc}").format(exc=explain(exc)), error=True)
             if self.route[0] in ("frame", "library", "game", "welcome"):
