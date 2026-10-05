@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 43
+AGENT_VERSION = 44
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -636,6 +636,12 @@ def ensure_host_fixes():
         with open(CONTAINERS_CONF, "w") as f:
             f.write(text)
         changed.append("podman keyring=false")
+    try:
+        upgraded = upgrade_launchers()
+    except Exception:  # noqa: BLE001
+        upgraded = []
+    if upgraded:
+        changed.append(f"launchers: exit watchdog ({len(upgraded)})")
     return changed
 
 
@@ -1603,7 +1609,7 @@ r""" here.
 mkdir -p "$app_dir/lepton-data/external/Android/data/{pkg}/files" """
 r""""$app_dir/lepton-data/external/Android/data/{pkg}/cache" 2>/dev/null || true
 fix_perms
-( while sleep 2 && kill -0 $$ 2>/dev/null; do fix_perms; done ) & permfix=$!
+{watchdog}
 export SteamAppId={appid}
 export STEAM_COMPAT_INSTALL_PATH="$app_dir/lepton-app"
 export STEAM_COMPAT_DATA_PATH="$app_dir/lepton-data"
@@ -1630,11 +1636,40 @@ wait "$child"
 """)
 
 
+# Every 2 s: repair folder permissions, and end the game when whoever started this launcher is gone. Steam starts it
+# under its "reaper"; when Steam stops only the reaper (seen: SIGTERM to the reaper left launch.sh, Lepton and the
+# container running), the game used to keep running with nothing in Steam to close it (GitHub #36).
+OLD_WATCHDOG = "( while sleep 2 && kill -0 $$ 2>/dev/null; do fix_perms; done ) & permfix=$!"
+WATCHDOG = ("parent=$PPID\n"
+            "( while sleep 2 && kill -0 $$ 2>/dev/null; do fix_perms;"
+            " if [[ $parent -gt 1 ]] && ! kill -0 $parent 2>/dev/null; then kill -TERM $$; fi; done ) & permfix=$!")
+
+
+def upgrade_launchers():
+    """Give launchers written by older agents the parent watchdog (in place: a new file, so a running launcher keeps
+    reading the old one). Returns the packages changed."""
+    changed = []
+    for path in glob.glob(os.path.join(ANCHORS, "*/launch.sh")):
+        try:
+            text = open(path).read()
+        except OSError:
+            continue
+        if OLD_WATCHDOG not in text or "parent=$PPID" in text:
+            continue
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            f.write(text.replace(OLD_WATCHDOG, WATCHDOG, 1))
+        os.chmod(tmp, os.stat(path).st_mode)
+        os.replace(tmp, path)
+        changed.append(os.path.basename(os.path.dirname(path)))
+    return changed
+
+
 def write_launcher(anchor, base, pkg, title, appid, lepton, env):
     extra = "".join(f"export {k}={shlex.quote(str(v))}\n" for k, v in (env or {}).items()
                     if re.fullmatch(r"[A-Z_][A-Z0-9_]*", k))
     text = LAUNCH_SH.format(title=title.replace("\n", " "), pkg=pkg, base_q=shlex.quote(base), appid=appid,
-                            lepton_q=shlex.quote(lepton), extra_env=extra)
+                            lepton_q=shlex.quote(lepton), extra_env=extra, watchdog=WATCHDOG)
     path = os.path.join(anchor, "launch.sh")
     with open(path + ".tmp", "w") as f:
         f.write(text)

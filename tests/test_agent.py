@@ -1070,3 +1070,51 @@ def test_launch_falls_back_to_devkit_entry(monkeypatch, tmp_path):
     assert got["first_try"]["code"] == 9
     got = a.cmd_launch({"package": "com.x.y"})  # next time the devkit entry is used right away
     assert tried[-1] == 222 and got["via"] == "devkit" and "first_try" not in got
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="bash launcher")
+def test_launcher_ends_game_when_its_parent_is_gone(monkeypatch, tmp_path):
+    """GitHub #36: Steam stopping only its reaper left launch.sh + Lepton running; the watchdog stops them."""
+    import signal
+    import time
+
+    a = load_agent(monkeypatch, tmp_path)
+    base, anchor = tmp_path / "base", tmp_path / "anchor"
+    (base / "lepton-app").mkdir(parents=True)
+    anchor.mkdir()
+    marker = tmp_path / "lepton-pid"
+    lepton = tmp_path / "lepton"
+    lepton.write_text(f"#!/bin/bash\necho $$ > {marker}\nexec sleep 300\n")
+    lepton.chmod(0o755)
+    a.write_launcher(str(anchor), str(base), "com.x.y", "X", 123, str(lepton), {})
+    # the reaper stand-in: starts the launcher and waits; then it alone is killed
+    parent = subprocess.Popen(["bash", "-c", f"bash {anchor / 'launch.sh'} & wait"], start_new_session=True)
+    for _ in range(50):
+        if marker.exists() and marker.read_text().strip():
+            break
+        time.sleep(0.1)
+    game = int(marker.read_text())
+    os.kill(parent.pid, signal.SIGKILL)
+    parent.wait()
+    for _ in range(80):  # the watchdog checks every 2 s
+        try:
+            os.kill(game, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        os.killpg(game, signal.SIGKILL)
+        pytest.fail("the game kept running after its parent was gone")
+
+
+def test_upgrade_launchers_adds_watchdog(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "Applications/quest-frame/com.x.y"
+    anchor.mkdir(parents=True)
+    old = f"#!/bin/bash\nfix_perms\n{a.OLD_WATCHDOG}\nexport SteamAppId=1\n"
+    (anchor / "launch.sh").write_text(old)
+    (anchor / "launch.sh").chmod(0o755)
+    assert a.upgrade_launchers() == ["com.x.y"]
+    text = (anchor / "launch.sh").read_text()
+    assert "parent=$PPID" in text and a.OLD_WATCHDOG not in text and os.access(anchor / "launch.sh", os.X_OK)
+    assert a.upgrade_launchers() == []  # once only
