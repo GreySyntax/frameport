@@ -28,6 +28,12 @@ log = logging.getLogger(__name__)
 REMOTE_AGENT_DIR = ".local/share/frameport/agent"
 
 
+def agent_version_of(text: str) -> int:
+    """AGENT_VERSION from an agent's source (0 if missing)."""
+    m = re.search(r"^AGENT_VERSION\s*=\s*(\d+)", text, re.M)
+    return int(m.group(1)) if m else 0
+
+
 class FrameNotPaired(ConnectionError):
     """SSH works but none of FramePort's ways in was accepted: the Frame hasn't run the first-time setup (or the
     password was wrong). The message keeps "authentication failed" for older callers."""
@@ -512,8 +518,17 @@ class Frame:
         remote = posixpath.join(remote_dir, "frameport_agent.py")
         if self._agent_digest == digest:
             return remote
-        code, out, _ = self.run(f"sha256sum {sh_quote(remote)} 2>/dev/null | cut -c1-16")
-        if out.strip() != digest:
+        code, out, _ = self.run(f"sha256sum {sh_quote(remote)} 2>/dev/null | cut -c1-16; "
+                                f"grep -m1 '^AGENT_VERSION' {sh_quote(remote)} 2>/dev/null")
+        lines = out.split("\n")
+        remote_version = agent_version_of(lines[1] if len(lines) > 1 else "")
+        if lines[0].strip() != digest and remote_version > agent_version_of(text.decode("utf-8", "replace")):
+            # a newer FramePort (another PC, or FramePort on the Frame) installed a newer agent: keep it. Agents
+            # stay compatible with older apps; replacing it broke the newer one's launchers (2026-10-04: an older
+            # app put agent 43 back over 45 every few seconds)
+            self._agent_digest = digest
+            return remote
+        if lines[0].strip() != digest:
             self.run(f"mkdir -p {sh_quote(remote_dir)}")
             tmp = f"{remote}.{os.getpid()}.{threading.get_ident()}.tmp"  # two threads never share a temp file
             with self.sftp.open(tmp, "wb") as f:

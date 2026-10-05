@@ -1161,3 +1161,45 @@ def test_upgrade_launchers_adds_dashboard_helper(monkeypatch, tmp_path):
     assert a.upgrade_launchers() == ["com.x.y"]
     text = (anchor / "launch.sh").read_text()
     assert "_dashboard_worker" in text and text.index("_dashboard_worker") < text.index('wait "$child"')
+
+
+def test_linux_app_finalize_launcher_and_libraries(monkeypatch, tmp_path):
+    """GitHub #31: an arm64 Linux app (here: a copy of a host ELF) goes to <base>/app with a launcher; the library
+    check runs on the program, uninstall removes it."""
+    import shutil
+
+    a = load_agent(monkeypatch, tmp_path)
+    prep = a.cmd_prepare_linux({"package": "linux.true", "title": "True"})
+    app_in = os.path.join(prep["incoming"], "app", "bin")
+    os.makedirs(app_in)
+    shutil.copy("/bin/true", os.path.join(app_in, "true"))
+    size = os.path.getsize(os.path.join(app_in, "true"))
+    res = a.cmd_finalize_linux({"package": "linux.true", "title": "True", "exe": "bin/true",
+                                "manifests": {"app": {"bin/true": size}}, "openxr": False})
+    assert res["missing_libraries"] == [] and res["moved_files"] == 1
+    dep = a.deployment("linux.true")
+    assert dep["kind"] == "linux" and dep["vr"] is False
+    text = open(os.path.join(prep["anchor"], "launch.sh")).read()
+    assert os.path.join(prep["base"], "app", "bin", "true") in text and "kill -0 $parent" in text
+    assert a.shortcut_args("linux.true")[4] == "Linux app on Frame" and a.shortcut_args("linux.true")[6] is False
+    listed = [g for g in a.cmd_list_installed({})["games"] if g["package"] == "linux.true"]
+    assert listed and listed[0]["apk_present"]
+    monkeypatch.setattr(a, "pcvr_pids", lambda base: [])
+    assert a.cmd_uninstall({"package": "linux.true", "keep_data": False})["removed"]
+    assert not os.path.exists(os.path.join(prep["base"], "app"))
+    with pytest.raises(a.AgentError):
+        a.cmd_finalize_linux({"package": "linux.true", "title": "True", "exe": "../etc/passwd"})
+
+
+def test_appimage_programs_and_missing_libraries(monkeypatch, tmp_path):
+    import shutil
+
+    a = load_agent(monkeypatch, tmp_path)
+    root = tmp_path / "squashfs-root"
+    (root / "usr/bin").mkdir(parents=True)
+    shutil.copy("/bin/true", root / "usr/bin/tool")
+    (root / "AppRun").write_text("#!/bin/sh\n")
+    (root / "AppRun").chmod(0o755)
+    (root / "libfoo.so").write_bytes(b"\x7fELF")
+    assert a.appimage_programs(str(root)) == [str(root / "usr/bin/tool")]  # scripts and libraries skipped
+    assert a.missing_libraries(str(root), [str(root / "usr/bin/tool")]) == []

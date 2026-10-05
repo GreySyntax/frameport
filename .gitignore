@@ -19,3 +19,4 @@ CLAUDE.local.md
 # outputs of `frameport report` / `parity` / ruff
 REPORT.md
 .ruff_cache/
+.claude/worktrees/
