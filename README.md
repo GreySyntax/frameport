@@ -28,6 +28,8 @@ Install games that target the Meta Quest, Android, or general PCVR onto your **V
   curved and 360° layers); game settings as simple switches.
 - **Beyond Quest:** Android apps as windows, PC VR via Proton or Revive, Windows (non-VR) games via Proton, a Files
   tab with drag and drop.
+- **Screenshots tab:** the screenshots you took in the headset, sorted by game (matched by play time) and day;
+  view them and download them to your computer.
 - **Self-updating** releases, redacted diagnostics, one-click problem reports and working-config sharing.
 
 ## Quick start

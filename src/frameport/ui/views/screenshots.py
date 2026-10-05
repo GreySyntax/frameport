@@ -1,0 +1,362 @@
+"""Screenshots: the Steam screenshots taken on the Frame, newest first, grouped by day, filterable by game.
+
+The Frame files every headset screenshot under SteamVR; the agent matches them to FramePort games by play session
+(install/screenshots.py). Persistent like the Library: the filter survives switching tabs. Thumbnails are downloaded
+once into the cache and shown by asset URL; cards stream in batches from a background thread. Downloads are jobs.
+"""
+from __future__ import annotations
+
+import threading
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import flet as ft
+
+from ...artwork import thumbs
+from ...errors import explain
+from ...i18n import tr, tr_n
+from .. import components as C
+from .. import theme as T
+from .files_dialog import human
+
+if TYPE_CHECKING:
+    from ..app import FramePortApp
+
+BATCH = 12
+ALL = "__all__"
+OTHER = "__other__"  # shots of no FramePort game (SteamVR home, Steam games)
+
+
+def day_label(t: float | None, now: float | None = None) -> str:
+    if not t:
+        return tr("Unknown date")
+    now = now or time.time()
+    day = time.strftime("%Y-%m-%d", time.localtime(t))
+    if day == time.strftime("%Y-%m-%d", time.localtime(now)):
+        return tr("Today")
+    if day == time.strftime("%Y-%m-%d", time.localtime(now - 86400)):
+        return tr("Yesterday")
+    return day
+
+
+def group_by_day(shots: list[dict], now: float | None = None) -> list[tuple[str, list[dict]]]:
+    """[(day label, shots)] in the order given (newest first)."""
+    out: list[tuple[str, list[dict]]] = []
+    for s in shots:
+        label = day_label(s.get("time"), now)
+        if out and out[-1][0] == label:
+            out[-1][1].append(s)
+        else:
+            out.append((label, [s]))
+    return out
+
+
+def filter_key(package: str | None) -> str:
+    return ALL if package is None else (package or OTHER)
+
+
+def agent_filter(key: str) -> str | None:
+    """The agent's `package` argument for a dropdown key."""
+    return None if key == ALL else "" if key == OTHER else key
+
+
+class ScreenshotsView:
+    def __init__(self, app: FramePortApp):
+        self.app = app
+        self.filter = ALL
+        self.shots: list[dict] = []
+        self.games: list[dict] = []
+        self.selected: set[str] = set()  # paths
+        self.checks: dict[str, ft.Checkbox] = {}
+        self._gen = 0
+        self._loaded = False
+        self._lock = threading.Lock()
+        self.dropdown = ft.Dropdown(label=tr("Game"), value=ALL, width=T.px(300), dense=True,
+                                    options=[ft.DropdownOption(key=ALL, text=tr("All games"))],
+                                    on_select=lambda e: self.set_filter(e.control.value))
+        self.select_all = ft.Checkbox(value=False, active_color=T.ACCENT, check_color=T.ON_ACCENT,
+                                      tooltip=tr("Select all"), on_change=self._toggle_all)
+        self.toolbar = ft.Row([
+            self.dropdown, self.select_all, ft.Container(expand=True),
+            C.secondary(tr("Download all"), ft.Icons.DOWNLOAD_ROUNDED, self._download_all),
+            C.icon_btn(ft.Icons.REFRESH_ROUNDED, tr("Refresh"), lambda e: self.load()),
+        ], spacing=T.S2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        self.sel_label = C.body("", T.TEXT, weight=ft.FontWeight.W_500)
+        self.sel_bar = ft.Container(ft.Row([
+            self.sel_label, ft.Container(expand=True),
+            C.secondary(tr("Download selected"), ft.Icons.DOWNLOAD_ROUNDED, self._download_selected),
+            C.ghost(tr("Delete"), ft.Icons.DELETE_OUTLINE_ROUNDED, lambda e: self.delete(self._chosen())),
+            C.ghost(tr("Clear"), ft.Icons.CLOSE_ROUNDED, lambda e: self._clear_selection()),
+        ], spacing=T.S2), padding=ft.Padding(T.S3, T.px(6), T.S2, T.px(6)), border_radius=T.RADIUS_SM,
+            bgcolor=T.ACCENT_SOFT, visible=False)
+        self.grid = ft.Column(spacing=T.S3, scroll=ft.ScrollMode.AUTO, expand=True)
+        self.status = C.meta("")
+        self.root = None
+
+    # ---------------------------------------------------------------- building
+    def mount(self, package: str | None = None) -> ft.Control:
+        app = self.app
+        heading, sub = tr("Screenshots"), tr("Pictures you took in the headset (Steam screenshots on the Frame)")
+        if not (app.target and app.frame_state == "connected"):
+            self._loaded = False  # load again once connected
+            return ft.Column([
+                app.top_bar(heading, sub),
+                C.empty_state(ft.Icons.PHOTO_LIBRARY_OUTLINED, tr("Connect your Frame first"),
+                              tr("Screenshots on the Frame can be shown once FramePort is connected to it."),
+                              C.primary(tr("Connect"), ft.Icons.LINK_ROUNDED, lambda e: app.go("frame")))], expand=True)
+        if self.root is None:
+            self.root = ft.Column([app.top_bar(heading, sub), self.toolbar, self.sel_bar,
+                                   C.card(self.grid, padding=T.S3, expand=True), self.status],
+                                  spacing=T.S3, expand=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+        if package is not None and filter_key(package) != self.filter:
+            self.filter = filter_key(package)
+            self.dropdown.value = self.filter
+            self.selected.clear()
+            self._loaded = False
+        if not self._loaded:  # later visits keep what was shown (Refresh reloads)
+            self._loaded = True
+            self.load()
+        return self.root
+
+    def set_filter(self, key: str | None) -> None:
+        self.filter = key or ALL
+        self.selected.clear()
+        self.load()
+
+    # ---------------------------------------------------------------- loading (background thread)
+    def load(self) -> None:
+        self._gen += 1
+        self.status.value = tr("Loading…")
+        C.update(self.status)
+        self.app.run_bg(self._load, self._gen, self.filter)
+
+    def _load(self, gen: int, key: str) -> None:
+        from ...install import screenshots
+
+        frame = self.app.target.frame
+        with self._lock:
+            if gen != self._gen:
+                return
+            try:
+                r = screenshots.list_shots(frame, package=agent_filter(key))
+            except Exception as exc:  # noqa: BLE001
+                self.status.value = tr("Couldn't list the screenshots: {exc}").format(exc=explain(exc))
+                C.update(self.status)
+                return
+            if gen != self._gen:
+                return
+            self.shots, self.games = r.get("shots") or [], r.get("games") or []
+            self.selected &= {s["path"] for s in self.shots}
+            self._fill_dropdown()
+            self.checks = {}
+            self.grid.controls = []
+            if not self.shots:
+                empty = C.empty_state(
+                    ft.Icons.PHOTO_CAMERA_OUTLINED, tr("No screenshots yet"),
+                    tr("Take one in the headset with Steam's screenshot shortcut; it shows up here. Screenshots "
+                       "are matched to the FramePort game that was running."))
+                empty.expand, empty.padding = False, T.px(48)  # (expand inside a scrolling column: invalid layout)
+                self.grid.controls = [empty]
+            self._update_selection(render=False)
+            self.status.value = tr_n("{n} screenshot", "{n} screenshots", len(self.shots)) + \
+                ((" · " + human(sum(s.get("size") or 0 for s in self.shots))) if self.shots else "")
+            for c in (self.grid, self.status, self.dropdown):
+                C.update(c)
+            sections: dict[str, ft.Row] = {}
+            index = {s["path"]: i for i, s in enumerate(self.shots)}
+            for start in range(0, len(self.shots), BATCH):
+                if gen != self._gen:
+                    return  # the filter changed or a refresh started: that load takes over
+                batch = self.shots[start:start + BATCH]
+                for s in batch:
+                    try:
+                        screenshots.thumb_path(frame, s)
+                    except Exception:  # noqa: BLE001  (the card shows a placeholder)
+                        pass
+                for label, shots in group_by_day(batch):
+                    row = sections.get(label)
+                    if row is None:
+                        row = sections[label] = ft.Row(spacing=T.S3, run_spacing=T.S3, wrap=True)
+                        self.grid.controls += [C.h2(label), row]
+                    row.controls += [self.card(s, index[s["path"]]) for s in shots]
+                C.update(self.grid)
+
+    def _fill_dropdown(self) -> None:
+        opts = [ft.DropdownOption(key=ALL, text=tr("All games"))]
+        for g in self.games:
+            key = g.get("package") or OTHER
+            title = g.get("title") if g.get("package") else tr("Not from a FramePort game")
+            opts.append(ft.DropdownOption(key=key, text=f"{title} ({g.get('count', 0)})"))
+        if self.filter not in {o.key for o in opts}:  # a game without screenshots (opened from its page)
+            from ...core import library
+
+            pkg = agent_filter(self.filter) or ""
+            opts.append(ft.DropdownOption(key=self.filter, text=(library.game(pkg) or {}).get("title") or pkg))
+        self.dropdown.options = opts  # the agent counts `games` before filtering: the same list for every filter
+        self.dropdown.value = self.filter
+
+    # ---------------------------------------------------------------- cards
+    def _thumb_url(self, s: dict) -> str | None:
+        from ...install import screenshots
+
+        p = screenshots.cached(self.app.target.frame, s, "thumb")
+        return thumbs.asset_url(p) if p else None
+
+    def card(self, s: dict, i: int) -> ft.Control:
+        when = time.strftime("%H:%M", time.localtime(s["time"])) if s.get("time") else ""
+        check = ft.Checkbox(value=s["path"] in self.selected, active_color=T.ACCENT, check_color=T.ON_ACCENT,
+                            on_change=lambda e, p=s["path"]: self._toggle(p, e.control.value))
+        self.checks[s["path"]] = check
+        caption = ft.Container(ft.Row([C.meta(s.get("title") or "", T.TEXT, expand=True, max_lines=1,
+                                              overflow=ft.TextOverflow.ELLIPSIS), C.meta(when, T.TEXT_2)],
+                                      spacing=T.S2),
+                               left=0, right=0, bottom=0, padding=ft.Padding(T.S2, T.px(14), T.S2, T.px(6)),
+                               gradient=ft.LinearGradient(begin=ft.Alignment.TOP_CENTER,
+                                                          end=ft.Alignment.BOTTOM_CENTER,
+                                                          colors=[ft.Colors.TRANSPARENT, T.soft("#000000", 0.8)]),
+                               border_radius=ft.BorderRadius(0, 0, T.RADIUS_SM, T.RADIUS_SM))
+        return ft.Container(
+            ft.Stack([C.art_fill(self._thumb_url(s), radius=T.RADIUS_SM, placeholder_icon=ft.Icons.IMAGE_OUTLINED,
+                                 left=0, right=0, top=0, bottom=0),
+                      caption, ft.Container(check, left=0, top=0)]),
+            width=T.px(256), height=T.px(144), border_radius=T.RADIUS_SM, ink=True,
+            tooltip=f"{s.get('title') or ''} · {day_label(s.get('time'))} {when}",
+            on_click=lambda e, i=i: self.viewer(i))
+
+    # ---------------------------------------------------------------- selection
+    def _toggle(self, path: str, on: bool) -> None:
+        (self.selected.add if on else self.selected.discard)(path)
+        check = self.checks.get(path)
+        if check is not None and check.value != on:
+            check.value = on
+            C.update(check)
+        self._update_selection()
+
+    def _toggle_all(self, e) -> None:
+        on = bool(e.control.value)
+        self.selected = {s["path"] for s in self.shots} if on else set()
+        for check in self.checks.values():
+            if check.value != on:
+                check.value = on
+                C.update(check)
+        self._update_selection()
+
+    def _clear_selection(self) -> None:
+        self.selected.clear()
+        for check in self.checks.values():
+            if check.value:
+                check.value = False
+                C.update(check)
+        self._update_selection()
+
+    def _update_selection(self, render: bool = True) -> None:
+        n = len(self.selected)
+        size = sum(s.get("size") or 0 for s in self._chosen())
+        self.sel_label.value = tr("{n} selected").format(n=n) + (f" · {human(size)}" if size else "")
+        self.sel_bar.visible = bool(n)
+        self.select_all.value = bool(self.shots) and n == len(self.shots)
+        if render:
+            for c in (self.sel_bar, self.select_all):
+                C.update(c)
+
+    def _chosen(self) -> list[dict]:
+        return [s for s in self.shots if s["path"] in self.selected]
+
+    # ---------------------------------------------------------------- viewer
+    def viewer(self, index: int) -> None:
+        if not self.shots:
+            return
+        page, shots = self.app.page, list(self.shots)
+        state = {"i": index}
+        img = ft.Image(src=self._thumb_url(shots[index]) or "", fit=ft.BoxFit.CONTAIN, width=T.px(1100),
+                       height=T.px(620), border_radius=T.RADIUS_SM)
+        caption = C.body("", T.TEXT, weight=ft.FontWeight.W_500)
+        details = C.meta("")
+
+        def show(delta: int = 0) -> None:
+            state["i"] = (state["i"] + delta) % len(shots)
+            s = shots[state["i"]]
+            img.src = self._thumb_url(s) or img.src
+            caption.value = s.get("title") or ""
+            dims = f"{s['width']}×{s['height']} · " if s.get("width") and s.get("height") else ""
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(s["time"])) if s.get("time") else ""
+            details.value = f"{state['i'] + 1} / {len(shots)} · {when} · {dims}{human(s.get('size') or 0)}"
+            C.update(img, caption, details)
+            self.app.run_bg(full, state["i"])
+
+        def full(i: int) -> None:
+            from ...install import screenshots
+
+            try:
+                p = screenshots.image_path(self.app.target.frame, shots[i])
+            except Exception as exc:  # noqa: BLE001
+                details.value += " · " + tr("couldn't load the full image: {exc}").format(exc=explain(exc))
+                C.update(details)
+                return
+            if state["i"] == i:
+                img.src = thumbs.asset_url(p)
+                C.update(img)
+
+        async def download(e):
+            await self.download([shots[state["i"]]])
+
+        def delete(e):
+            page.pop_dialog()
+            self.delete([shots[state["i"]]])
+        page.show_dialog(ft.AlertDialog(
+            content=ft.Container(ft.Column([img, ft.Row([
+                C.icon_btn(ft.Icons.CHEVRON_LEFT_ROUNDED, tr("Previous"), lambda e: show(-1)),
+                ft.Column([caption, details], spacing=0, expand=True),
+                C.icon_btn(ft.Icons.CHEVRON_RIGHT_ROUNDED, tr("Next"), lambda e: show(1)),
+                C.secondary(tr("Download"), ft.Icons.DOWNLOAD_ROUNDED, download),
+                C.icon_btn(ft.Icons.DELETE_OUTLINE_ROUNDED, tr("Delete"), delete),
+                C.ghost(tr("Close"), on_click=lambda e: page.pop_dialog())], spacing=T.S2,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER)], spacing=T.S2, tight=True), width=T.px(1100)),
+            bgcolor=T.BG, shape=ft.RoundedRectangleBorder(radius=T.RADIUS), content_padding=T.S3))
+        show()
+
+    # ---------------------------------------------------------------- actions
+    async def _download_selected(self, e=None):
+        if self.selected:
+            await self.download(self._chosen())
+
+    async def _download_all(self, e=None):
+        if self.shots:
+            await self.download(list(self.shots))
+
+    async def download(self, shots: list[dict]) -> None:
+        folder = await ft.FilePicker().get_directory_path(
+            dialog_title=tr("Save the screenshots to which folder on this PC?"))
+        if not folder:
+            return
+        app = self.app
+
+        def run(job):
+            from ...install import screenshots
+
+            r = screenshots.download(app.target.frame, shots, Path(folder), job.reporter)
+            return tr_n("Downloaded {n} screenshot to {folder}", "Downloaded {n} screenshots to {folder}",
+                        r["files"], folder=r["folder"])
+        app.submit(tr_n("Download {n} screenshot", "Download {n} screenshots", len(shots)), run, None,
+                   kind="tool-frame", open_panel=True)
+
+    def delete(self, shots: list[dict]) -> None:
+        if not shots:
+            return
+
+        def go():
+            def work():
+                from ...install import screenshots
+
+                try:
+                    n = screenshots.delete(self.app.target.frame, shots)
+                    self.app.toast(tr_n("Deleted {n} screenshot", "Deleted {n} screenshots", n))
+                except Exception as exc:  # noqa: BLE001
+                    self.app.toast(explain(exc), error=True)
+                self.selected.difference_update(s["path"] for s in shots)
+                self.load()
+            self.app.run_bg(work)
+        C.confirm(self.app.page, tr_n("Delete {n} screenshot?", "Delete {n} screenshots?", len(shots)),
+                  tr("They are deleted on the Frame and can't be restored. Steam's own screenshot list may still "
+                     "show them until Steam restarts."), tr("Delete"), go, danger=True)

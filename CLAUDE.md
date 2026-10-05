@@ -21,7 +21,12 @@ Read `docs/PLAYBOOK.md` (symptom → fix) before debugging a game, and `docs/FRA
     the "Send files" dialog, game menu → "Add videos & files…" = `go("files", pkg)`; multi-select bar (download/
     delete); drag-and-drop from the OS via the `flet-dropzone` extension (Apache-2.0, Flutter `desktop_drop`), which
     only a `flet build` bundle contains: `files.dropzone_available()` keeps it out of source runs and the PyInstaller
-    fallback, which would show an unknown control); settings; welcome; activity panel).
+    fallback, which would show an unknown control); screenshots (Steam screenshots on the Frame, `install/screenshots.py`
+    + agent v45 `list_screenshots`/`delete_screenshots`: the Frame files every headset shot under SteamVR 250820, so
+    launch.sh logs `start/end <unix>` to `<anchor>/plays.log` (upgrade_launchers adds it; Proton launchers exec → start
+    only) and shots are matched by time; thumbnails cached in `<data>/screenshots-cache/<frame>/`, shown by asset URL;
+    delete leaves screenshots.vdf alone (Steam rewrites it at exit); game menu → "Screenshots" = `go("screenshots",
+    pkg)`); settings; welcome; activity panel).
     User tags live in library entries (`tags`), filters in library setting `ui.library`.
     **Performance rules** (the app froze before): never put image bytes in controls — artwork is served by URL from the
     GUI assets dir (= user data dir; `ft.run(assets_dir=…)`), as thumbnails (`artwork/thumbs.py`, Pillow); the
