@@ -47,23 +47,44 @@ class FakeFS:
         self.shots = self._screenshots()
 
     def _screenshots(self) -> list[dict]:
-        """Sample Steam screenshots (colour gradients) for the Screenshots tab, two days, two games + SteamVR."""
-        from PIL import Image
+        """Sample Steam screenshots for the Screenshots tab, two days, a few games + SteamVR: crops of the games' own
+        store art (hero/landscape) when the library has some (docs screenshots), else colour gradients."""
+        from PIL import Image, ImageOps
+
+        from frameport.artwork import fetch
 
         folder = os.path.join(self.home, "shots")
         os.makedirs(folder, exist_ok=True)
-        games = [g for g in library.games() if g.get("kind") != "rift"][:2]
-        owners = [(g["package"], g.get("title") or g["package"]) for g in games] + [(None, "SteamVR")]
+        games = []
+        for g in library.games():
+            if g.get("kind") == "rift":
+                continue
+            # the store's own screenshots look like real captures; else hero/wide art
+            shots_art = sorted(fetch.artwork_dir(g["package"]).glob("shot_*.jpg"))
+            games.append((g, shots_art or [p for p in fetch.files(g["package"]) if p.stem in ("hero", "landscape")],
+                          bool(shots_art)))
+        games.sort(key=lambda ga: (not ga[2], -len(ga[1])))
+        owners = [(g["package"], g.get("title") or g["package"], arts) for g, arts, _real in games[:3]]
+        spare = games[3][1] if len(games) > 3 else []  # SteamVR's own shots (taken outside a FramePort game)
+        owners.append((None, "SteamVR", spare))
         now, shots = time.time(), []
-        for i in range(9):
-            t = now - i * 2400 - (86400 if i >= 5 else 0)
+        for i in range(10):
+            t = now - i * 2400 - (86400 if i >= 6 else 0)
             name = time.strftime("%Y%m%d%H%M%S", time.localtime(t)) + "_1.jpg"
             path = os.path.join(folder, name)
-            im = Image.linear_gradient("L").resize((640, 360)).convert("RGB")
-            im = Image.merge("RGB", (im.getchannel(0).point(lambda v, i=i: (v + 40 * i) % 256),
-                                     im.getchannel(1).point(lambda v: 255 - v), im.getchannel(2)))
-            im.save(path, "JPEG", quality=80)
-            pkg, title = owners[i % len(owners)]
+            pkg, title, arts = owners[i % len(owners)]
+            if arts:  # a different crop of the game's art per shot, so they don't all look alike
+                with Image.open(arts[i % len(arts)]) as src:
+                    src = src.convert("RGB")
+                    zoom = 1.0 + 0.15 * (i % 3) * (src.width < 2 * src.height)
+                    w, h = int(src.width / zoom), int(src.height / zoom)
+                    x, y = (src.width - w) * (i % 2), (src.height - h) // 2
+                    im = ImageOps.fit(src.crop((x, y, x + w, y + h)), (1280, 720))
+            else:
+                im = Image.linear_gradient("L").resize((640, 360)).convert("RGB")
+                im = Image.merge("RGB", (im.getchannel(0).point(lambda v, i=i: (v + 40 * i) % 256),
+                                         im.getchannel(1).point(lambda v: 255 - v), im.getchannel(2)))
+            im.save(path, "JPEG", quality=85)
             shots.append({"path": path, "thumb": None, "time": int(t), "width": 1920, "height": 1080,
                           "size": os.path.getsize(path), "account": "1", "appid": "250820", "package": pkg,
                           "title": title})
