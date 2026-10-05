@@ -1,0 +1,20 @@
+package: com.CMGames.IntoTheRadius2
+title: Into The Radius 2
+status: issues
+notes: Flickering textures were reported; space warp is turned off to address them (not yet confirmed in a headset).
+details: Unreal Engine 5 game that uses Meta's Application SpaceWarp (extra motion-vector and depth swapchains). OVRPort's
+  patch_disable_space_warp doesn't reach Unreal Engine 5, so FrameBridge's hide_space_warp hides XR_FB_space_warp and
+  removes the space warp info from the eye images. Working config shared in GitHub issue 35.
+tested_version: 1.2.4
+engine: Unreal
+xr: OpenXR
+alt_overport:
+- patch_remove_unreal_force_quit
+adapter:
+  equirect_emul: 1
+  hide_space_warp: 1
+verified:
+  date: '2026-10-04'
+  issue: 35
+updated: '2026-10-04'
+source_hint: Into The Radius 2
