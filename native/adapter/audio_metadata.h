@@ -8,6 +8,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <time.h>
 #include <link.h>
 #include <string.h>
 static size_t mx_audio_page;
@@ -33,6 +34,8 @@ static void *mx_audio_detour(unsigned char *address,void *replacement,const uint
 #include "audio_metadata_queue.h"
 typedef struct {float previous,current;} MxAudioRamp;
 static uintptr_t mx_audio_base;
+// set once the library was found but isn't the verified build: stop looking (xrPollEvent runs several times a frame)
+static int mx_audio_checked;
 static uint64_t (*mx_audio_consume_original)(void*,void*,void*,const void*,MxAudioRamp);
 static void mx_audio_kill(unsigned experimental) {
     void *mutex=(void*)(mx_audio_base+(experimental?0x5fe2e0:0x5fe380));
@@ -71,11 +74,13 @@ static int mx_audio_find(struct dl_phdr_info *info,size_t size,void *unused) {
             p=next;
         }
     }
-    if(!match)return 1;
+    if(!match){__atomic_store_n(&mx_audio_checked,1,__ATOMIC_RELEASE);return 1;}
     const uint32_t consume[4]={0xd10743ff,0x6d1623e9,0xa9177bfd,0xa9186ffc};
     const uint32_t kill[4]={0xa9bd7bfd,0xf9000bf5,0xa9024ff4,0x910003fd};
     unsigned char *base=(void*)info->dlpi_addr;
-    if(memcmp(base+0x2c8fac,consume,16) || memcmp(base+0x2be2c0,kill,16) || memcmp(base+0x2be7b0,kill,16))return 1;
+    if(memcmp(base+0x2c8fac,consume,16) || memcmp(base+0x2be2c0,kill,16) || memcmp(base+0x2be7b0,kill,16)) {
+        __atomic_store_n(&mx_audio_checked,1,__ATOMIC_RELEASE);return 1;
+    }
     __atomic_store_n(&mx_audio_base,info->dlpi_addr,__ATOMIC_RELEASE);
     void *original=mx_audio_detour(base+0x2c8fac,(void*)mx_audio_consume,consume);
     __atomic_store_n(&mx_audio_consume_original,original,__ATOMIC_RELEASE);
@@ -90,7 +95,12 @@ static int mx_audio_find(struct dl_phdr_info *info,size_t size,void *unused) {
 }
 static pthread_mutex_t mx_audio_install_mutex=PTHREAD_MUTEX_INITIALIZER;
 static void mx_audio_initialize(void) {
-    if(__atomic_load_n(&mx_audio_base,__ATOMIC_ACQUIRE))return;
+    if(__atomic_load_n(&mx_audio_base,__ATOMIC_ACQUIRE) || __atomic_load_n(&mx_audio_checked,__ATOMIC_ACQUIRE))return;
+    // until the game loads the library: look at most once a second (dl_iterate_phdr takes the linker's lock)
+    static _Atomic long mx_audio_last_scan;
+    struct timespec now;clock_gettime(CLOCK_MONOTONIC,&now);
+    if(now.tv_sec==mx_audio_last_scan)return;
+    mx_audio_last_scan=now.tv_sec;
     if(pthread_mutex_trylock(&mx_audio_install_mutex))return;
     if(!mx_audio_page)mx_audio_page=(size_t)sysconf(_SC_PAGESIZE);
     if(!mx_audio_base)dl_iterate_phdr(mx_audio_find,NULL);
