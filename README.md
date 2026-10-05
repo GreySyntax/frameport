@@ -22,7 +22,7 @@ Install games that target the Meta Quest, Android, or general PCVR onto your **V
   [What it changes](docs/FRAME_SETUP.md).
 - **Type on Frame:** use your computer's keyboard on the Frame: in VR apps, Android apps, Steam and the desktop.
   [More](#type-on-frame).
-- **One click per game:** convert, patch, sign, upload, add to Steam with artwork, launch test.
+- **One click per game:** convert, patch, sign, upload, add to Steam with artwork, launch test. Artwork that can't be found automatically can be picked from the stores or replaced with your own images.
 - **Per-game recipes:** a tested catalog plus detection rules; every patch explained in plain words.
 - **FrameBridge:** FramePort's OpenXR adapter emulates what the Frame natively lacks (passthrough, room, controller models,
   curved and 360° layers); game settings as simple switches.

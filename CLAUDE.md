@@ -76,6 +76,11 @@ Rick and Morty runs on the Frame via its catalog recipe (OpenVR, no Revive),
     auto-start SteamVR on Play (`winhost.start_steamvr`); the Frame launcher always uses `/openxr`. UI (`game.py`
     where()) states per-game where it runs; installing an Oculus game on the Frame shows a warning. Migration
     `rift_frame_native` re-analyzes + re-derives existing entries.
+  - Own artwork (0.8.0): game menu → "Use your own artwork…" (also from the Find artwork dialog) =
+    `views/art_dialog.show_custom_art_dialog`: one slot per kind (portrait/landscape/hero/logo/icon), FilePicker →
+    `sources.apply_custom` (Pillow check, ≥64 px, ≤40 MB, scaled to ≤3840 px, PNG if alpha/logo/icon else JPEG,
+    replaces only that kind + its thumbnails, drops the generated cover/banner, writes `.picked` = "custom") /
+    `remove_custom`; Steam shapes are still composed from what exists (`steam.py` PREFER).
   - Art for Rift games: `artwork/sources.py` — Quest version package (OculusDB packageName, exact name or +
     "Unplugged"-type suffix, never sequels) → Meta art; OculusDB square cover; Steam (exact names only); exe icon.
   - Store details (`artwork/details.py`, entry `details`): OculusDB (description, genres, publisher, website; by Quest

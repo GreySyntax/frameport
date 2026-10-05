@@ -663,6 +663,7 @@ class FramePortApp:
         if rift:
             out.append((tr("Change executable…"), ft.Icons.TERMINAL_ROUNDED, lambda e: self.choose_exe(pkg)))
         out.append((tr("Find artwork…"), ft.Icons.IMAGE_SEARCH_ROUNDED, lambda e: self.find_artwork(pkg)))
+        out.append((tr("Use your own artwork…"), ft.Icons.UPLOAD_FILE_ROUNDED, lambda e: self.custom_artwork(pkg)))
         if not job and self.frame_state == "connected" and \
                 C.install_state(g, self.frame_info) in ("installed", "outdated"):
             out.append((tr("Update Steam art on Frame"), ft.Icons.WALLPAPER_ROUNDED,
@@ -1382,6 +1383,11 @@ class FramePortApp:
         from .views.art_dialog import show_art_dialog
 
         show_art_dialog(self, pkg)
+
+    def custom_artwork(self, pkg: str) -> None:
+        from .views.art_dialog import show_custom_art_dialog
+
+        show_custom_art_dialog(self, pkg)
 
     # ================================================================== Frame
     def _startup(self):

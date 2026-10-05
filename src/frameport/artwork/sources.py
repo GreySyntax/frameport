@@ -251,3 +251,68 @@ def apply_choice(package: str, choice: dict) -> bool:
         return True
     finally:
         shutil.rmtree(stage, ignore_errors=True)
+
+
+# The user's own images (Artwork dialog → "Your own images"), for games whose art can't be found automatically.
+CUSTOM_KINDS = ("portrait", "landscape", "hero", "logo", "icon")
+CUSTOM_MAX_BYTES = 40 << 20
+CUSTOM_MIN_PX = 64
+CUSTOM_MAX_PX = 3840  # larger images are scaled down (Steam's biggest shape is 1920 px wide)
+
+
+class ArtError(ValueError):
+    """The chosen file can't be used as artwork (the message says why, for the GUI)."""
+
+
+def apply_custom(package: str, kind: str, path: str | Path) -> Path:
+    """Store an image file the user chose as one kind of artwork, replacing that kind only. It is checked and
+    re-encoded (PNG when it has transparency, else JPEG; logos and icons always PNG), marked as the user's pick so
+    automatic fetches never replace it, and the old thumbnails go. FramePort's generated cover/banner (games without
+    store art) are dropped once a real cover shape exists. Returns the stored file."""
+    from PIL import Image, UnidentifiedImageError
+
+    if kind not in CUSTOM_KINDS:
+        raise ArtError(f"unknown artwork kind {kind!r}")
+    path = Path(path)
+    try:
+        if path.stat().st_size > CUSTOM_MAX_BYTES:
+            raise ArtError(f"{path.name} is larger than {CUSTOM_MAX_BYTES >> 20} MB")
+        with Image.open(path) as im:
+            im.load()
+            im = im.copy()
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+        raise ArtError(f"{path.name} isn't an image FramePort can read (use PNG, JPEG or WebP)") from None
+    if min(im.size) < CUSTOM_MIN_PX:
+        raise ArtError(f"{path.name} is too small ({im.width}×{im.height}); use at least {CUSTOM_MIN_PX} px")
+    if max(im.size) > CUSTOM_MAX_PX:
+        im.thumbnail((CUSTOM_MAX_PX, CUSTOM_MAX_PX), Image.LANCZOS)
+    alpha = im.mode in ("RGBA", "LA", "PA") or (im.mode == "P" and "transparency" in im.info)
+    png = alpha or kind in ("logo", "icon")
+    d = fetch.artwork_dir(package)
+    tmp = d / f".custom-{kind}.tmp"
+    if png:
+        im.convert("RGBA" if alpha else "RGB").save(tmp, "PNG", optimize=True)
+    else:
+        im.convert("RGB").save(tmp, "JPEG", quality=92, optimize=True)
+    _drop_kind(d, kind)
+    out = d / f"{kind}{'.png' if png else '.jpg'}"
+    tmp.replace(out)
+    if kind in ("portrait", "landscape", "hero"):
+        for stem in ("cover", "banner"):
+            _drop_kind(d, stem)
+    (d / fetch.PICKED).write_text("custom", encoding="utf-8")  # automatic fetches leave the art alone
+    return out
+
+
+def remove_custom(package: str, kind: str) -> None:
+    """Remove one kind of artwork (the Steam set then composes it from the other kinds, or uses a placeholder)."""
+    if kind not in CUSTOM_KINDS:
+        raise ArtError(f"unknown artwork kind {kind!r}")
+    d = fetch.artwork_dir(package)
+    _drop_kind(d, kind)
+    (d / fetch.PICKED).write_text("custom", encoding="utf-8")  # "Find automatically" brings store art back
+
+
+def _drop_kind(d: Path, kind: str) -> None:
+    for f in list(d.glob(f"{kind}.*")) + list(d.glob(f"t_{kind}_*")):
+        f.unlink(missing_ok=True)

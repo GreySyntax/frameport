@@ -371,3 +371,41 @@ def test_converted_copies_are_removed_after_installing(tmp_path, monkeypatch):
     assert pipeline.remove_converted_copies("com.g") == 0
     library.set_setting("build.keep_copies", False)
     assert pipeline.remove_converted_copies("com.g") == 15 and not out.exists()
+
+
+def test_custom_art_replaces_one_kind_and_is_kept(tmp_path):
+    from PIL import Image
+
+    pkg = "com.custom.art"
+    d = fetch.artwork_dir(pkg)
+    (d / "portrait.jpg").write_bytes(png(600, 900))
+    (d / "icon.png").write_bytes(png(128, 128))
+    (d / "cover.jpg").write_bytes(png(600, 900))  # FramePort's generated cover (no store art)
+    src = tmp_path / "mine.png"
+    Image.new("RGB", (1000, 1500), (200, 10, 10)).save(src)
+    out = sources.apply_custom(pkg, "portrait", src)
+    assert out.name == "portrait.jpg" and Image.open(out).size == (1000, 1500)  # no alpha → JPEG
+    assert (d / "icon.png").exists() and not (d / "cover.jpg").exists()  # only that kind is replaced
+    assert (d / fetch.PICKED).read_text() == "custom"  # automatic fetches skip it
+
+    logo = tmp_path / "logo.webp"
+    Image.new("RGBA", (5000, 1000), (0, 0, 0, 0)).save(logo)
+    out = sources.apply_custom(pkg, "logo", logo)
+    assert out.name == "logo.png" and max(Image.open(out).size) == sources.CUSTOM_MAX_PX  # scaled down, PNG
+
+    thumbs.thumb(d / "icon.png", 96)
+    sources.remove_custom(pkg, "icon")
+    assert not list(d.glob("icon.*")) and not list(d.glob("t_icon_*"))
+
+
+@pytest.mark.parametrize("make, why", [
+    (lambda p: p.write_bytes(b"not an image"), "isn't an image"),
+    (lambda p: __import__("PIL.Image").Image.new("RGB", (20, 20)).save(p, "PNG"), "too small"),
+])
+def test_custom_art_rejects_bad_files(tmp_path, make, why):
+    bad = tmp_path / "bad.png"
+    make(bad)
+    with pytest.raises(sources.ArtError, match=why):
+        sources.apply_custom("com.custom.bad", "portrait", bad)
+    with pytest.raises(sources.ArtError):
+        sources.apply_custom("com.custom.bad", "screenshot", bad)
