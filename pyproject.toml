@@ -82,7 +82,7 @@ module = "main"
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-extend-exclude = ["native", "src/frameport/_data"]
+extend-exclude = ["native", "src/frameport/_data", ".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]

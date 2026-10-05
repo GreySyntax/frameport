@@ -273,6 +273,65 @@ def is_rift(entry: dict) -> bool:
     return entry.get("kind") == "rift"
 
 
+def is_linux(entry: dict) -> bool:
+    """A native arm64 Linux app (AppImage / folder / archive), installed as it is (GitHub #31)."""
+    return entry.get("kind") == "linux"
+
+
+def add_linux_app(path: Path | str, reporter: Reporter | None = None, exe: str | None = None) -> dict:
+    """Add an arm64 Linux app to the library (no conversion: it's installed as it is). `exe` overrides the program
+    FramePort picked (relative to the app's folder)."""
+    from .analysis import linux
+    from .core.models import Recipe
+
+    path = Path(path)
+    info = linux.inspect(path)
+    if exe:
+        info["exe"] = exe
+    if not info["arch_ok"]:
+        arch = "x86_64" if info["machine"] == linux.EM_X86_64 else f"machine {info['machine']}"
+        raise ValueError(f"{path.name} is built for {arch}, not arm64 (aarch64): it can't run on the Frame. Look for "
+                         "an aarch64/arm64 download of it.")
+    package = f"linux.{linux.slug(info['title'])}"
+    if reporter:
+        reporter.log(f"{info['title']}: program {info['exe']}{' (AppImage)' if info['appimage'] else ''}"
+                     f"{', OpenXR (VR)' if info['openxr'] else ''}")
+    recipe = Recipe(package=package, title=info["title"], overport=False, as_is=True, source="heuristics")
+    analysis = {"package": package, "label": info["title"], "engine": "Linux", "xr": "OpenXR" if info["openxr"]
+                else "none", "abis": ["arm64-v8a"], "libs": [], "extra": {**info, "vr_kind": "openxr" if info["openxr"]
+                                                                            else "none", "source": str(path)}}
+    old = library.game(package) or {}
+    fields = dict(kind="linux", name=path.name, apk=None, game_dir=info["root"], exe=info["exe"], data_dir=None,
+                  origin=str(path.parent), analysis=analysis, suggested=library.recipe_to_dict(recipe))
+    if not old:
+        fields.update(title=info["title"], recipe=library.recipe_to_dict(recipe), status="unknown")
+    library.upsert_game(package, **fields)
+    try:
+        from .artwork import fetch
+
+        fetch.artwork_dir(package)  # placeholder art (name on a colour) until the user picks some
+    except Exception:  # noqa: BLE001
+        pass
+    return library.game(package)
+
+
+def install_linux(package: str, target: Target, reporter: Reporter, add_to_library: bool = True) -> dict:
+    entry = library.game(package)
+    extra = (entry.get("analysis") or {}).get("extra") or {}
+    result = target.install_linux(package, steam_title(entry), Path(entry["game_dir"]), entry["exe"],
+                                  extra.get("files"), bool(extra.get("appimage")), bool(extra.get("openxr")),
+                                  reporter)
+    if result.get("missing_libraries"):
+        reporter.check("Libraries on the Frame", False, "missing: " + ", ".join(result["missing_libraries"]) +
+                       " (SteamOS doesn't have them and the app doesn't bundle them: it won't start)")
+    else:
+        reporter.check("Libraries on the Frame", True, "everything the app needs is there")
+    if add_to_library:
+        target.add_to_library([package], reporter)
+    _record_install(package, target.label, {"exe": entry["exe"], "result": result, "time": time.time()})
+    return result
+
+
 def add_game(src: SourceGame, reporter: Reporter | None = None) -> dict:
     if reporter:
         reporter.log(f"analyzing {src.apk.name}")
@@ -414,6 +473,8 @@ def _build_lock(package: str) -> threading.Lock:
 
 def build_game(package: str, reporter: Reporter, outdir: Path | None = None) -> dict:
     entry = library.game(package)
+    if is_linux(entry):  # nothing to convert: installed as it is
+        return {"ok": True, "linux": True}
     if is_rift(entry):
         return prepare_rift(package, reporter)
     if library.recipe_from_dict(entry["recipe"]).as_is:
@@ -436,6 +497,8 @@ def install_game(package: str, target: Target, reporter: Reporter, apk_only: boo
                  add_to_library: bool = True, apk: Path | None = None) -> dict:
     """Install the game's last build (or `apk`, e.g. a test build of the same package signed with the same key)."""
     entry = library.game(package)
+    if is_linux(entry):
+        return install_linux(package, target, reporter, add_to_library)
     if is_rift(entry):
         return install_rift(package, target, reporter, add_to_library)
     test_build = apk is not None

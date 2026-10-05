@@ -217,6 +217,57 @@ def install_pcvr(frame: Frame, plan: PcvrPlan, reporter: Reporter) -> dict:
     return result
 
 
+@dataclass
+class LinuxPlan:
+    package: str  # "linux.<slug>"
+    title: str
+    root: Path  # the app's folder (for a lone AppImage: the folder it's in, with files = [its name])
+    exe: str  # relative to root
+    files: list[str] | None = None  # only these files of root (a lone AppImage), else the whole folder
+    appimage: bool = False
+    openxr: bool = False
+
+
+def install_linux(frame: Frame, plan: LinuxPlan, reporter: Reporter) -> dict:
+    """Upload an arm64 Linux app to the Frame (resumable, unchanged files aren't re-sent); the agent extracts
+    AppImages, checks the app's libraries and writes its launcher (GitHub #31)."""
+    reporter.stage("Prepare Frame")
+    prep = frame.agent("prepare_linux", package=plan.package, title=plan.title)
+    if plan.files:
+        manifest = {name: (plan.root / name).stat().st_size for name in plan.files}
+    else:
+        manifest = local_data_manifest(plan.root)
+        manifest = {k: v for k, v in manifest.items() if not k.startswith(".unpacked")}
+    to_send = [rel for rel, size in manifest.items() if prep["existing"].get("app", {}).get(rel) != size]
+    need = sum(manifest[rel] for rel in to_send)
+    if need > prep["free_bytes"] - (1 << 30):
+        raise RuntimeError(f"not enough space on the Frame: need {need / 2**30:.1f} GiB + 1 GiB headroom, "
+                           f"have {prep['free_bytes'] / 2**30:.1f} GiB")
+    if to_send:
+        reporter.stage(f"Upload app ({len(to_send)} files, {need / 2**20:.0f} MiB)")
+        with transfer_link(frame, reporter, need) as xfer:
+            upload_files(xfer, [(plan.root / rel, f"app/{rel}", manifest[rel]) for rel in to_send],
+                         prep["incoming"], reporter, max(need, 1), 0)
+    else:
+        reporter.log("all app files already on the Frame; not re-sending")
+    upload_steam_art(frame, plan.package, prep["base"], reporter)
+    reporter.stage("Finalize install")
+    executables = [rel for rel in manifest if rel != plan.exe and _is_elf(plan.root / rel)][:200]
+    result = frame.agent("finalize_linux", package=plan.package, title=plan.title, exe=plan.exe,
+                         appimage=plan.appimage, openxr=plan.openxr, manifests={"app": manifest},
+                         executables=executables, tags=_tags(plan.package), timeout=900)
+    reporter.log(f"installed at {result['base']} (Steam shortcut id {result['appid']})")
+    return result
+
+
+def _is_elf(path: Path) -> bool:
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) == b"\x7fELF"
+    except OSError:
+        return False
+
+
 def ensure_proton(frame: Frame, reporter: Reporter, tool: str | None = None, timeout: float = 45 * 60) -> dict:
     """Install Proton (ARM64) + its runtime on the Frame without user interaction: the agent writes Steam appmanifest
     stubs and restarts Steam, which downloads them. Waits until they're installed (progress from the appmanifests)."""

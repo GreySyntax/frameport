@@ -227,6 +227,19 @@ def scan(path: Path = typer.Argument(..., help="a folder with game backups (APKs
         typer.echo(f"{g['package']:40} {g.get('title', '')[:34]:34} {r['status']:11} {r['source']}")
 
 
+@app.command("add-linux")
+def add_linux(path: Path = typer.Argument(..., help="an arm64 AppImage, a folder, or a .zip/.tar.gz with the app"),
+              exe: Optional[str] = typer.Option(None, help="the program to start (relative to the app's folder)")):
+    """Add a native arm64 Linux app to the library (installed on the Frame as it is, with a Steam shortcut)."""
+    try:
+        g = pipeline.add_linux_app(path, printing_reporter(verbose=False), exe=exe)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from None
+    extra = g["analysis"]["extra"]
+    typer.echo(f"{g['package']:40} {g.get('title', '')[:34]:34} program {extra['exe']}"
+               f"{' (AppImage)' if extra['appimage'] else ''}{' VR' if extra['openxr'] else ''}")
+
+
 @app.command("list")
 def list_games():
     """The games in the library."""

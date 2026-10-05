@@ -1,0 +1,72 @@
+"""Native arm64 Linux apps (GitHub #31): detection of AppImages, folders and archives."""
+import tarfile
+import zipfile
+
+import pytest
+
+from frameport import pipeline
+from frameport.analysis import linux
+
+
+def elf(machine: int, appimage: bool = False, extra: bytes = b"") -> bytes:
+    head = bytearray(64)
+    head[:4] = b"\x7fELF"
+    head[4], head[5] = 2, 1  # 64-bit, little endian
+    if appimage:
+        head[8:11] = b"AI\x02"
+    head[18:20] = machine.to_bytes(2, "little")
+    return bytes(head) + extra
+
+
+def test_appimage_detection_and_title(tmp_path):
+    p = tmp_path / "Venera-Prime-2.4.2-aarch64.AppImage"
+    p.write_bytes(elf(linux.EM_AARCH64, appimage=True))
+    info = linux.inspect(p)
+    assert info["appimage"] and info["arch_ok"] and info["files"] == [p.name] and info["title"] == "Venera Prime"
+    assert not info["openxr"]
+
+
+def test_x86_64_builds_are_refused(tmp_path):
+    p = tmp_path / "Thing-1.0-x86_64.AppImage"
+    p.write_bytes(elf(linux.EM_X86_64, appimage=True))
+    with pytest.raises(ValueError, match="x86_64"):
+        pipeline.add_linux_app(p)
+
+
+def test_archive_program_ranking_and_openxr(tmp_path):
+    src = tmp_path / "src" / "MatineeVR"
+    (src / "lib").mkdir(parents=True)
+    (src / "MatineeVR").write_bytes(elf(linux.EM_AARCH64))
+    (src / "crashpad_handler").write_bytes(elf(linux.EM_AARCH64))
+    (src / "lib" / "libopenxr_loader.so.1").write_bytes(elf(linux.EM_AARCH64, extra=b"xrCreateInstance"))
+    (src / "data" / "deep").mkdir(parents=True)
+    archive = tmp_path / "MatineeVR-0.8-linux-arm64.tar.gz"
+    with tarfile.open(archive, "w:gz") as t:
+        t.add(src, arcname="MatineeVR")
+    info = linux.inspect(archive)
+    assert info["exe"] == "MatineeVR/MatineeVR" and info["openxr"] and info["arch_ok"]
+    assert linux.inspect(archive)["root"] == info["root"]  # unpacked once
+
+
+def test_bundled_data_libraries_dont_make_an_app_vr(tmp_path):
+    root = tmp_path / "FramePort"
+    (root / "data" / "artifacts" / "arm64-v8a").mkdir(parents=True)
+    (root / "FramePort").write_bytes(elf(linux.EM_AARCH64))
+    (root / "data" / "artifacts" / "arm64-v8a" / "libopenxr_loader.so").write_bytes(b"xrCreateInstance")
+    assert not linux.inspect(root)["openxr"]
+
+
+def test_zip_with_unsafe_paths_is_refused(tmp_path):
+    archive = tmp_path / "bad.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("../evil", b"x")
+    with pytest.raises(ValueError, match="unsafe"):
+        linux.inspect(archive)
+
+
+def test_add_linux_app_library_entry(tmp_path):
+    p = tmp_path / "Tool-1.2-aarch64.AppImage"
+    p.write_bytes(elf(linux.EM_AARCH64, appimage=True))
+    g = pipeline.add_linux_app(p)
+    assert g["package"] == "linux.tool" and g["kind"] == "linux" and pipeline.is_linux(g)
+    assert g["exe"] == p.name and g["analysis"]["extra"]["appimage"]
