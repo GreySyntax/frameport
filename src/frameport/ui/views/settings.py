@@ -133,6 +133,10 @@ class SettingsView:
             C.switch(tr("Install updates automatically (downloads in the background, installs when FramePort "
                             "next starts)"), value=bool(library.setting("update.auto_install", False)),
                       on_change=auto_install),
+            ft.Row([C.meta(tr("Asked to test a fix? Dev builds come before the next release."), expand=True),
+                    C.ghost(tr("Install the latest dev build…"), ft.Icons.SCIENCE_OUTLINED,
+                            lambda e: app.updater.install_dev())],
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
         ], spacing=T.S3)
 
     def appearance(self) -> ft.Control:

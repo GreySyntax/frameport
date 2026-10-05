@@ -110,6 +110,10 @@ Settings → **Updates**: turn the check off, or turn on **Install updates autom
 installs at the next start). If FramePort's folder isn't writable, **Update now** opens the release page instead. The
 update log is `logs/update.log` in the data folder.
 
+**Dev builds:** when you're asked to test a fix before it's released, use Settings → Updates → **Install the latest
+dev build…**. It shows what to test, then installs like an update (same checks). Dev builds are less tested; the next
+release is offered to you as a normal update.
+
 Command line: `frameport update` (`--check` only checks, exit code 10 = update available; `--yes` doesn't ask).
 `FRAMEPORT_NO_UPDATE_CHECK=1` turns all checks off.
 

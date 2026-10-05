@@ -38,6 +38,7 @@ _log = logging.getLogger("frameport.updates")
 
 REPO = REPO_URL.removeprefix("https://github.com/").strip("/")
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
+DEV_API = f"https://api.github.com/repos/{REPO}/releases/tags/dev"  # the rolling pre-release CI publishes on demand
 CHECK_EVERY = 6 * 3600          # seconds between automatic checks
 ASSETS = {"win32": "FramePort-windows-x64.zip", "darwin": "FramePort-macos-arm64.zip",
           "linux": "FramePort-linux-x64.tar.gz", "linux-arm64": "FramePort-linux-arm64.tar.gz"}  # never rename
@@ -63,11 +64,15 @@ class Update:
 
 # ------------------------------------------------------------------------------------------------- versions
 def parse_version(text: str) -> tuple:
-    """(major, minor, patch, final) from "v1.2.3" / "1.2.3-rc1"; pre-releases sort before the final release."""
+    """(major, minor, patch, final, dev) from "v1.2.3" / "1.2.3-rc1" / "1.2.4.dev57": pre-releases and dev builds sort
+    before the final release, dev builds among themselves by build number."""
     m = re.match(r"v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(.*)$", (text or "").strip())
     if not m:
-        return (0, 0, 0, 0)
-    return (int(m.group(1)), int(m.group(2) or 0), int(m.group(3) or 0), 0 if m.group(4).strip() else 1)
+        return (0, 0, 0, 0, 0)
+    rest = m.group(4).strip()
+    dev = re.match(r"[.-]?dev(\d+)", rest)
+    return (int(m.group(1)), int(m.group(2) or 0), int(m.group(3) or 0), 0 if rest else 1,
+            int(dev.group(1)) if dev else 0)
 
 
 def is_newer(candidate: str, current: str = __version__) -> bool:
@@ -81,16 +86,24 @@ def platform_asset() -> str | None:
     return ASSETS.get(key)
 
 
-def update_from_release(release: dict, asset_name: str | None = None) -> Update | None:
-    """The Update a GitHub "latest release" JSON describes (None for drafts/pre-releases or unusable data)."""
-    if (not isinstance(release, dict) or release.get("draft") or release.get("prerelease")
+def update_from_release(release: dict, asset_name: str | None = None, dev: bool = False) -> Update | None:
+    """The Update a GitHub "latest release" JSON describes (None for drafts/pre-releases or unusable data). dev=True:
+    the rolling `dev` pre-release, whose version comes from its wheel (frameport-0.9.1.dev57-py3-none-any.whl)."""
+    if (not isinstance(release, dict) or release.get("draft") or (release.get("prerelease") and not dev)
             or not release.get("tag_name")):
         return None
     assets = {a.get("name"): a.get("browser_download_url") for a in release.get("assets") or [] if isinstance(a, dict)}
     asset_name = asset_name if asset_name is not None else platform_asset()
-    wheel = next((u for n, u in assets.items() if n and n.endswith(".whl")), None)
+    wheel_name = next((n for n in assets if n and n.endswith(".whl")), None)
+    wheel = assets.get(wheel_name) if wheel_name else None
     tag = release["tag_name"]
-    return Update(version=tag.lstrip("v"), tag=tag, notes=release.get("body") or "", page=release.get("html_url") or "",
+    version = tag.lstrip("v")
+    if dev:
+        m = re.match(r"frameport-([^-]+)-", wheel_name or "")
+        if not m:
+            return None
+        version = m.group(1)
+    return Update(version=version, tag=tag, notes=release.get("body") or "", page=release.get("html_url") or "",
                   asset=asset_name if asset_name in assets else None, asset_url=assets.get(asset_name),
                   sums_url=assets.get(SUMS), wheel_url=wheel, published=release.get("published_at") or "")
 
@@ -114,6 +127,16 @@ def check(force: bool = False) -> Update | None:
     if not force and library.setting("update.skipped") == up.version:
         return None
     return up
+
+
+def check_dev() -> Update | None:
+    """The latest dev build (Settings → "Install the latest dev build"), or None when none is published or GitHub
+    can't be reached. Returned even when it isn't newer: the caller says so."""
+    try:
+        data = cache.cached_json("app-dev-release.json", DEV_API, max_age=0)
+    except Exception:  # noqa: BLE001
+        return None
+    return update_from_release(data, dev=True) if data else None
 
 
 def refresh_cache() -> None:

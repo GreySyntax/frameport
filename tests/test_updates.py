@@ -254,3 +254,27 @@ def test_platform_asset_picks_the_arm64_linux_bundle(monkeypatch):
     assert updates.platform_asset() == "FramePort-linux-arm64.tar.gz"
     monkeypatch.setattr(updates.platform, "machine", lambda: "x86_64")
     assert updates.platform_asset() == "FramePort-linux-x64.tar.gz"
+
+
+def test_dev_build_versions_sort_between_releases():
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("dev_version", Path(__file__).parents[1] / "scripts/dev_version.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.dev_version("0.9.0", 57) == "0.9.1.dev57"
+    pv = updates.parse_version
+    assert pv("0.9.0") < pv("0.9.1.dev57") < pv("0.9.1.dev58") < pv("0.9.1")
+    assert updates.is_newer("0.9.1", "0.9.1.dev58") and not updates.is_newer("0.9.0", "0.9.1.dev58")
+
+
+def test_dev_release_is_only_read_on_request():
+    release = {"tag_name": "dev", "prerelease": True, "html_url": "https://example/dev", "body": "try X",
+               "assets": [{"name": "frameport-0.9.1.dev57-py3-none-any.whl", "browser_download_url": "w"},
+                          {"name": "FramePort-windows-x64.zip", "browser_download_url": "z"},
+                          {"name": "SHA256SUMS.txt", "browser_download_url": "s"}]}
+    assert updates.update_from_release(release, "FramePort-windows-x64.zip") is None  # automatic checks skip it
+    up = updates.update_from_release(release, "FramePort-windows-x64.zip", dev=True)
+    assert up.version == "0.9.1.dev57" and up.asset_url == "z" and up.sums_url == "s" and up.notes == "try X"
+    assert updates.update_from_release({**release, "assets": []}, dev=True) is None  # no wheel: no version

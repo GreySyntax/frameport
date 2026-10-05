@@ -124,6 +124,48 @@ class Updater:
                      C.ghost(tr("Release page"), ft.Icons.OPEN_IN_NEW_ROUNDED, lambda e: page.launch_url(up.page)),
                      C.primary(tr("Update now"), ft.Icons.SYSTEM_UPDATE_ROUNDED, go)]))
 
+    # ---------------------------------------------------------------- dev builds
+    def install_dev(self) -> None:
+        """Settings → "Install the latest dev build": the rolling `dev` pre-release the maintainer publishes for
+        testing a fix before a release (CI "Run workflow", dev build)."""
+        def work():
+            up = updates.check_dev()
+            if not up:
+                self.app.toast(tr("No dev build is published right now"), error=True)
+                return
+            if up.version == __version__:
+                self.app.toast(tr("You already have the latest dev build ({version})").format(version=up.version))
+                return
+            self.app.page.run_thread(lambda: self._confirm_dev(up))
+        self.app.run_bg(work)
+
+    def _confirm_dev(self, up: updates.Update) -> None:
+        page = self.app.page
+        notes = up.notes.strip() or tr("No notes.")
+
+        def go(e):
+            page.pop_dialog()
+            self.found = up
+            self.install()
+        page.show_dialog(ft.AlertDialog(
+            title=ft.Text(tr("Install dev build {version}?").format(version=up.version), color=T.TEXT,
+                          weight=ft.FontWeight.W_600),
+            bgcolor=T.SURFACE_2,
+            content=ft.Container(ft.Column([
+                C.callout(C.body(tr("Dev builds let you test fixes before they're released. They're less tested "
+                                    "than releases and may have bugs. You get the next release as a normal update "
+                                    "(you have {version}).").format(version=__version__), T.TEXT), "warn"),
+                ft.Container(ft.Markdown(notes, selectable=True, extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                                         md_style_sheet=_notes_style(),
+                                         on_tap_link=lambda e: page.launch_url(e.data)),
+                             padding=T.S3, border_radius=T.RADIUS_SM, bgcolor=T.SURFACE,
+                             border=ft.Border.all(1, T.BORDER)),
+            ], spacing=T.S3, scroll=ft.ScrollMode.AUTO, tight=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+                width=T.px(560), height=T.px(min(440, 190 + 26 * len(notes.splitlines())))),
+            actions=[C.ghost(tr("Cancel"), on_click=lambda e: page.pop_dialog()),
+                     C.ghost(tr("Build page"), ft.Icons.OPEN_IN_NEW_ROUNDED, lambda e: page.launch_url(up.page)),
+                     C.primary(tr("Install dev build"), ft.Icons.SCIENCE_OUTLINED, go)]))
+
     # ---------------------------------------------------------------- installing
     def install(self) -> None:
         up = self.found or updates.ready_update_info()
