@@ -16,6 +16,10 @@ SETTINGS = [
     ("scale", "float", 1.0, "Resolution scale",
      "Multiplies the recommended eye-buffer width and height (0.5–2.0). 1.5 ≈ 2.25× pixels."),
     ("foveation_fix", "int", 1, "Hide Quest foveation", "Hides Quest foveation extensions the Frame runtime lacks."),
+    ("hide_space_warp", "int", 0, "Turn off space warp",
+     "Hides XR_FB_space_warp, so the game renders every frame itself instead of half of them plus motion vectors "
+     "(Application SpaceWarp). For games whose picture flickers or smears on the Frame (e.g. Unreal Engine 5 games "
+     "such as Into The Radius 2)."),
     ("controller_fix", "int", 1, "Report Touch controllers",
      "Reports Frame controllers as Oculus Touch and hides synthetic hand tracking. Set 0 for games that require hand "
      "tracking (e.g. Silhouette)."),
@@ -206,7 +210,8 @@ UI: dict[str, dict] = {
                             help="Shows 3D 360° pictures flat if they look doubled.",
                             control=("choice", [(0, "As the game sends it"), (2, "Flat")])),
     **{key: dict(group="troubleshooting", level="advanced", control=("switch",)) for key in (
-        "foveation_fix", "swapchain_fix", "layer_fix", "gl_hide_multiview", "mutable_fix", "flip_quads", "swap_eyes",
+        "foveation_fix", "hide_space_warp", "swapchain_fix", "layer_fix", "gl_hide_multiview", "mutable_fix",
+        "flip_quads", "swap_eyes",
         "strip_depth", "respace_kick", "layer_debug", "eye_debug", "release_wait")},
 }
 

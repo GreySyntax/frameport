@@ -82,6 +82,9 @@ static void surf_on_destroy(XrSwapchain handle);
 
 static float scale = 1.0f;
 static int foveation_fix = 1;
+// hide XR_FB_space_warp: games then render every frame themselves (UE5 Application SpaceWarp flickered on the Frame,
+// e.g. Into The Radius 2; OVRPort's patch_disable_space_warp doesn't reach UE5's OpenXR plugin)
+static int hide_space_warp = 0;
 static int controller_fix = 1;
 static int swapchain_fix = 1;
 static int layer_fix = 1;
@@ -129,6 +132,7 @@ static void read_settings(const char *path) {
     while (fgets(line, sizeof(line), f)) {
         if (sscanf(line, "scale=%f", &value) == 1 && value >= 0.5f && value <= 2.0f) scale = value;
         if (sscanf(line, "foveation_fix=%f", &value) == 1) foveation_fix = value != 0;
+        if (sscanf(line, "hide_space_warp=%f", &value) == 1) hide_space_warp = value != 0;
         if (sscanf(line, "controller_fix=%f", &value) == 1) controller_fix = value != 0;
         if (sscanf(line, "swapchain_fix=%f", &value) == 1) swapchain_fix = value != 0;
         if (sscanf(line, "layer_fix=%f", &value) == 1) layer_fix = value != 0;
@@ -204,6 +208,7 @@ static void initialize(void) {
         snprintf(path, sizeof(path), "/sdcard/Android/data/%s/files/framebridge.log", process);
         log_file = fopen(path, "a");
     }
+    if (hide_space_warp) LOG("per-game: hide_space_warp=1 (XR_FB_space_warp hidden, space warp info removed)");
     if (eye_debug || release_wait) LOG("per-game: eye_debug=%d release_wait=%d log_file=%s", eye_debug, release_wait,
                                        log_file ? path : "none");
     if (controller_models && *process && !strchr(process, '/')) render_model_init(process);
@@ -269,6 +274,10 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateInstance(const XrInstanceCreateInfo *info
         int supported = !available;  // if we could not enumerate, pass everything through
         for (uint32_t j = 0; available && j < available_count && !supported; ++j)
             supported = !strcmp(available[j].extensionName, ext);
+        if (hide_space_warp && !strcmp(ext, "XR_FB_space_warp")) {
+            LOG("hide_space_warp: XR_FB_space_warp not enabled");
+            continue;
+        }
         if (supported) names[kept++] = ext;
         else if (scene_emul && is_scene_extension(ext)) {
             if (!emulate_scene) LOG("emulating Meta scene/spatial-entity extensions from the guardian bounds");
@@ -1056,6 +1065,31 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession session, const XrFrameEndInf
             if (!logged++) LOG("strip_depth: removed depth info from projection layer");
             ++swapped;
         }
+        if (hide_space_warp && layer->type == XR_TYPE_COMPOSITION_LAYER_PROJECTION &&
+            ((const XrCompositionLayerProjection *)layer)->viewCount == 2) {
+            // The game may still attach XrCompositionLayerSpaceWarpInfoFB (1000171000) to its views: OVRPort's
+            // dispatcher offers XR_FB_space_warp itself even when hidden here. Unlink it (keeping what follows when
+            // it heads the chain, else the whole chain) so the runtime never uses the motion vectors.
+            const XrCompositionLayerProjection *src = (const XrCompositionLayerProjection *)layer;
+            int found = 0;
+            for (uint32_t v = 0; v < 2; ++v)
+                for (const XrBaseInStructure *n = (const XrBaseInStructure *)src->views[v].next; n; n = n->next)
+                    found |= n->type == 1000171000;
+            if (found) {
+                if (layer != (const XrCompositionLayerBaseHeader *)&projections[count]) projections[count] = *src;
+                for (uint32_t v = 0; v < 2; ++v) {
+                    views[count][v] = src->views[v];
+                    const XrBaseInStructure *head = (const XrBaseInStructure *)src->views[v].next;
+                    if (head && head->type == 1000171000) views[count][v].next = head->next;
+                    else if (head) views[count][v].next = NULL;
+                }
+                projections[count].views = views[count];
+                layer = (const XrCompositionLayerBaseHeader *)&projections[count];
+                static int logged;
+                if (!logged++) LOG("hide_space_warp: removed space warp info from the eye images");
+                ++swapped;
+            }
+        }
         if (swap_eyes && layer->type == XR_TYPE_COMPOSITION_LAYER_PROJECTION &&
             ((const XrCompositionLayerProjection *)layer)->viewCount == 2) {
             // Show each eye the image the game rendered for it: keep poses/FOVs, swap sub-images.
@@ -1179,7 +1213,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateInstanceExtensionProperties(const char
         XR_NULL_HANDLE, "xrEnumerateInstanceExtensionProperties");
     if (!fn) return XR_ERROR_INITIALIZATION_FAILED;
     if (!count) return XR_ERROR_VALIDATION_FAILURE;
-    if ((!foveation_fix && !passthrough_emul && !scene_emul && !controller_models) || layer)
+    if ((!foveation_fix && !hide_space_warp && !passthrough_emul && !scene_emul && !controller_models) || layer)
         return fn(layer, capacity, count, properties);
 
     uint32_t total = 0;
@@ -1196,6 +1230,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateInstanceExtensionProperties(const char
         if (!strcmp(all[i].extensionName, "XR_FB_passthrough")) runtime_has_fb_passthrough = 1;
         if (!strcmp(all[i].extensionName, XR_FB_RENDER_MODEL_EXTENSION_NAME)) runtime_has_render_model = 1;
         if (foveation_fix && strstr(all[i].extensionName, "foveation")) continue;
+        if (hide_space_warp && !strcmp(all[i].extensionName, "XR_FB_space_warp")) continue;
         if (properties && kept < capacity) properties[kept] = all[i];
         ++kept;
     }
