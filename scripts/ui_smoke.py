@@ -44,12 +44,44 @@ class FakeFS:
                 else:
                     with open(os.path.join(base, n), "wb") as f:
                         f.truncate(sizes.get(os.path.splitext(n)[1], 48_000))  # sparse: no real disk use
+        self.shots = self._screenshots()
+
+    def _screenshots(self) -> list[dict]:
+        """Sample Steam screenshots (colour gradients) for the Screenshots tab, two days, two games + SteamVR."""
+        from PIL import Image
+
+        folder = os.path.join(self.home, "shots")
+        os.makedirs(folder, exist_ok=True)
+        games = [g for g in library.games() if g.get("kind") != "rift"][:2]
+        owners = [(g["package"], g.get("title") or g["package"]) for g in games] + [(None, "SteamVR")]
+        now, shots = time.time(), []
+        for i in range(9):
+            t = now - i * 2400 - (86400 if i >= 5 else 0)
+            name = time.strftime("%Y%m%d%H%M%S", time.localtime(t)) + "_1.jpg"
+            path = os.path.join(folder, name)
+            im = Image.linear_gradient("L").resize((640, 360)).convert("RGB")
+            im = Image.merge("RGB", (im.getchannel(0).point(lambda v, i=i: (v + 40 * i) % 256),
+                                     im.getchannel(1).point(lambda v: 255 - v), im.getchannel(2)))
+            im.save(path, "JPEG", quality=80)
+            pkg, title = owners[i % len(owners)]
+            shots.append({"path": path, "thumb": None, "time": int(t), "width": 1920, "height": 1080,
+                          "size": os.path.getsize(path), "account": "1", "appid": "250820", "package": pkg,
+                          "title": title})
+        return shots
 
     def agent(self, command, **args):
         if command == "storage_targets":
             return {"targets": [{"id": n.lower(), "path": os.path.join(self.home, n), "android": a, "shared": True}
                                 for n, a in (("Videos", "/sdcard/Movies"), ("Downloads", "/sdcard/Download"),
                                              ("Documents", "/sdcard/Documents"))]}
+        if command == "list_screenshots":
+            want = args.get("package")
+            shots = [s for s in self.shots if want is None or (s["package"] or "") == want]
+            games = {}
+            for s in self.shots:
+                games.setdefault(s["package"] or "", {"package": s["package"], "title": s["title"], "count": 0})
+                games[s["package"] or ""]["count"] += 1
+            return {"shots": shots, "total": len(shots), "games": list(games.values())}
         raise RuntimeError(f"fake Frame: {command} not available")
 
     @property
@@ -67,6 +99,11 @@ class FakeFS:
 
             def stat(self, path):
                 return paramiko.SFTPAttributes.from_stat(os.stat(path))
+
+            def get(self, remote, local, callback=None):
+                import shutil
+
+                shutil.copyfile(remote, local)
         return SFTP()
 
 
@@ -169,7 +206,8 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     game = args.game or (library.games()[0]["package"] if library.games() else None)
     steps = [("library", lambda a: a.navigate(0)), ("frame", lambda a: a.navigate(1)),
-             ("files", lambda a: a.go("files")), ("tools", lambda a: a.go("settings"))]
+             ("files", lambda a: a.go("files")), ("screenshots", lambda a: a.go("screenshots")),
+             ("tools", lambda a: a.go("settings"))]
     if game:
         steps.insert(1, ("game", lambda a: a.open_game(game)))
         steps.insert(2, ("game-customize", lambda a: a.open_game(game, advanced=True)))
@@ -188,7 +226,9 @@ def main() -> int:
         steps.append(("files", lambda a: a.go("files")))
         steps.append(("files-select", lambda a: [a.files_view._toggle(e.path, True)
                                                  for e in a.files_view.entries[1:3]]))
-        steps.append(("type-on-frame", open_type_dialog))
+        steps.append(("screenshots", lambda a: a.go("screenshots")))
+        steps.append(("screenshot-viewer", lambda a: a.screenshots_view.viewer(0)))
+        steps.append(("type-on-frame", lambda a: (a.page.pop_dialog(), open_type_dialog(a))))
     if args.install_questions:
         queued: list[str] = []
 

@@ -6,7 +6,7 @@ The PC app uploads this file to ~/.local/share/frameport/agent/ and calls:
 
 Commands: info, prepare, finalize, shortcuts, shortcut_status, launch_test, stop, set_settings, uninstall,
           install_lepton, list_installed, proton_status, install_proton, prepare_pcvr, finalize_pcvr,
-          controller_models.
+          controller_models, list_screenshots, delete_screenshots (and more: see the cmd_* functions).
 Streaming: python3 frameport_agent.py _keyboard   (a virtual keyboard: JSON lines on stdin, see keyboard_session)
 
 Install layout (one Lepton container per game; same as the manual installs from 2026-09):
@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 45
+AGENT_VERSION = 46
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -641,7 +641,7 @@ def ensure_host_fixes():
     except Exception:  # noqa: BLE001
         upgraded = []
     if upgraded:
-        changed.append(f"launchers: exit watchdog, dashboard ({len(upgraded)})")
+        changed.append(f"launchers: exit watchdog, dashboard, play log ({len(upgraded)})")
     return changed
 
 
@@ -1565,6 +1565,237 @@ def cmd_list_files(args):
     return {"roots": roots, "missing": missing[:1000], "truncated": truncated, "kind": dep.get("kind", "quest")}
 
 
+# ------------------------------------------------------------------------------------------ screenshots
+STEAMVR_APPID = "250820"  # the Frame files every headset screenshot under SteamVR, whatever game was shown
+PLAYS_LOG = "plays.log"  # <anchor>/plays.log: "start <unix>" / "end <unix>" lines written by launch.sh
+OPEN_SESSION = 12 * 3600  # a session without an "end" (Proton launchers exec the game; power loss) lasts at most this
+SESSION_GRACE = 5  # s after "end": the screenshot's time can trail the key press slightly
+SHOT_NAME = re.compile(r"^(\d{14})_\d+\.(jpe?g|png)$", re.I)
+KV_TOKEN = re.compile(r'"((?:[^"\\]|\\.)*)"|([{}])|//[^\n]*|([^\s"{}]+)')
+
+
+def kv_parse(text):
+    """Steam's text KeyValues (screenshots.vdf, ...) as nested dicts. Tolerant: an unbalanced or cut-off file gives
+    what was read so far."""
+    root, stack, key = {}, [], None
+    cur = root
+    for m in KV_TOKEN.finditer(text):
+        quoted, brace, bare = m.groups()
+        if brace == "{":
+            new = {}
+            if key is not None:
+                cur[key] = new
+            stack.append(cur)
+            cur, key = new, None
+        elif brace == "}":
+            if not stack:
+                break
+            cur, key = stack.pop(), None
+        elif quoted is not None or bare is not None:
+            tok = quoted.replace('\\"', '"').replace("\\\\", "\\") if quoted is not None else bare
+            if key is None:
+                key = tok
+            else:
+                cur[key], key = tok, None
+    return root
+
+
+def play_sessions():
+    """[(start, end, package)] from every FramePort game's plays.log, by start time. A start without an end (Proton
+    launchers exec the game, so they log no end; a crash or power loss) lasts until the next game's start (one game
+    runs at a time), at most OPEN_SESSION."""
+    events = []
+    for path in glob.glob(os.path.join(ANCHORS, "*", PLAYS_LOG)):
+        pkg = os.path.basename(os.path.dirname(path))
+        try:
+            lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] in ("start", "end") and parts[1].isdigit():
+                events.append((int(parts[1]), parts[0], pkg))
+    sessions, open_ = [], {}  # open_: pkg -> start
+    for t, kind, pkg in sorted(events):
+        if kind == "start":
+            if pkg in open_:  # an earlier start never ended: it ended by this one
+                sessions.append([open_[pkg], t, pkg])
+            open_[pkg] = t
+        elif pkg in open_:
+            sessions.append([open_.pop(pkg), t, pkg])
+    sessions += [[s, None, pkg] for pkg, s in open_.items()]
+    sessions.sort(key=lambda s: s[0])
+    for i, s in enumerate(sessions):
+        if s[1] is None:
+            later = [x[0] for x in sessions[i + 1:] if x[0] > s[0]]
+            s[1] = min([s[0] + OPEN_SESSION] + later)
+    return [tuple(s) for s in sessions]
+
+
+def session_game(t, sessions):
+    """Package whose play session contains time t (the latest start wins), else None."""
+    hit = None
+    for start, end, pkg in sessions:
+        if start <= t <= end + SESSION_GRACE:
+            hit = pkg
+    return hit
+
+
+def shot_time_from_name(name):
+    m = SHOT_NAME.match(name)
+    if not m:
+        return None
+    try:
+        return int(time.mktime(time.strptime(m[1], "%Y%m%d%H%M%S")))  # Steam names the files in local time
+    except (ValueError, OverflowError):
+        return None
+
+
+def _int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def user_screenshots(user):
+    """Every screenshot file of one Steam account: [{path, thumb, time, width, height, appid}]. screenshots.vdf gives
+    times and sizes; files it doesn't list (Steam writes it at exit) come from the folders, timed by their name."""
+    remote = os.path.join(STEAM, "userdata", user, "760", "remote")
+    shots, seen = [], set()
+
+    def under(rel):
+        p = os.path.normpath(os.path.join(remote, rel)) if isinstance(rel, str) else None
+        return p if p and p.startswith(remote + os.sep) and os.path.isfile(p) else None
+    try:
+        text = open(os.path.join(STEAM, "userdata", user, "760", "screenshots.vdf"), encoding="utf-8",
+                    errors="replace").read()
+    except OSError:
+        text = ""
+    entries = (kv_parse(text).get("screenshots") or {})
+    for game in entries.values() if isinstance(entries, dict) else ():
+        for e in game.values() if isinstance(game, dict) else ():
+            path = under(e.get("filename")) if isinstance(e, dict) else None
+            if not path or path in seen:
+                continue  # deleted (Steam lists it until it rewrites the file)
+            seen.add(path)
+            shots.append({"path": path, "thumb": under(e.get("thumbnail")),
+                          "time": _int(e.get("creation")) or shot_time_from_name(os.path.basename(path)),
+                          "width": _int(e.get("width")), "height": _int(e.get("height")),
+                          "appid": os.path.relpath(path, remote).split(os.sep)[0]})
+    for path in sorted(glob.glob(os.path.join(remote, "*", "screenshots", "*"))):
+        name = os.path.basename(path)
+        if path in seen or not SHOT_NAME.match(name) or not os.path.isfile(path):
+            continue
+        thumb = os.path.join(os.path.dirname(path), "thumbnails", name)
+        shots.append({"path": path, "thumb": thumb if os.path.isfile(thumb) else None,
+                      "time": shot_time_from_name(name) or int(os.path.getmtime(path)), "width": None,
+                      "height": None, "appid": os.path.relpath(path, remote).split(os.sep)[0]})
+    return shots
+
+
+def shortcut_names(user):
+    """{shortcut appid (str): name} of an account's non-Steam shortcuts."""
+    try:
+        data = vdf_decode(open(os.path.join(STEAM, "userdata", user, "config", "shortcuts.vdf"), "rb").read())
+    except (OSError, ValueError, IndexError, struct.error, AgentError):
+        return {}
+    out = {}
+    for e in (data.get("shortcuts") or {}).values():
+        if isinstance(e, dict) and isinstance(e.get("appid"), int):
+            out[str(e["appid"] & 0xFFFFFFFF)] = e.get("AppName") or e.get("appname") or ""
+    return out
+
+
+def cmd_list_screenshots(args):
+    """Steam screenshots on the Frame (every account), newest first: {shots: [{path, thumb, time, width, height, size,
+    account, appid, package, title}], total, games: [{package, title, count}]}. The Frame files every headset
+    screenshot under SteamVR (250820), so those are matched to the FramePort game whose play session (plays.log)
+    contains their time; the rest stay "SteamVR" (package null). args: offset, limit, package (a package, or "" for
+    the shots of no FramePort game); `total` and `games` count before offset/limit."""
+    titles, by_appid = {}, {}
+    for dep_path in glob.glob(os.path.join(ANCHORS, "*/deployment.json")):
+        try:
+            dep = json.load(open(dep_path))
+        except (OSError, ValueError):
+            continue
+        pkg = os.path.basename(os.path.dirname(dep_path))
+        titles[pkg] = dep.get("title") or pkg
+        if dep.get("appid") is not None:
+            by_appid[str(int(dep["appid"]) & 0xFFFFFFFF)] = pkg
+    sessions = play_sessions()
+    shots, names = [], {}
+    for user in steam_users():
+        names.update(shortcut_names(user))
+        for s in user_screenshots(user):
+            pkg = by_appid.get(s["appid"])
+            if pkg is None and s["appid"] == STEAMVR_APPID and s["time"]:
+                pkg = session_game(s["time"], sessions)
+            if pkg:
+                title = titles.get(pkg, pkg)
+            elif s["appid"] == STEAMVR_APPID:
+                title = "SteamVR"
+            else:
+                app = find_app_id(s["appid"]) if s["appid"] not in names else None
+                title = names.get(s["appid"]) or (app or {}).get("name") or f"App {s['appid']}"
+            try:
+                size = os.path.getsize(s["path"])
+            except OSError:
+                continue
+            shots.append({**s, "size": size, "account": user, "package": pkg, "title": title})
+    shots.sort(key=lambda s: (-(s["time"] or 0), s["path"]))
+    games = {}
+    for s in shots:
+        g = games.setdefault(s["package"] or s["title"], {"package": s["package"], "title": s["title"], "count": 0})
+        g["count"] += 1
+    want = args.get("package")
+    if want is not None:
+        shots = [s for s in shots if (s["package"] or "") == want]
+    offset = max(0, int(args.get("offset") or 0))
+    limit = int(args.get("limit") or 0)
+    return {"shots": shots[offset:offset + limit] if limit > 0 else shots[offset:], "total": len(shots),
+            "games": sorted(games.values(), key=lambda g: g["title"].lower())}
+
+
+def screenshot_file(path):
+    """`path` if it is a screenshot image in a Steam account's screenshot folder (userdata/<id>/760/remote/<appid>/
+    screenshots/<name>), else AgentError. Links and '..' are refused: nothing outside those folders can be deleted."""
+    if not isinstance(path, str) or "\0" in path or not path.startswith("/"):
+        raise AgentError(f"not a screenshot: {path!r}")
+    norm = os.path.normpath(path)
+    parts = os.path.relpath(norm, os.path.join(STEAM, "userdata")).split(os.sep)
+    if (norm != path or len(parts) != 6 or not parts[0].isdigit() or parts[1:3] != ["760", "remote"]
+            or not parts[3].isdigit() or parts[4] != "screenshots" or not SHOT_NAME.match(parts[5])):
+        raise AgentError(f"not a screenshot: {path}")
+    if os.path.islink(norm) or not os.path.isfile(norm) or not inside_userdata(os.path.dirname(norm)):
+        raise AgentError(f"not a screenshot file: {path}")
+    return norm
+
+
+def inside_userdata(folder):
+    """The folder, links resolved, is inside Steam's userdata (a linked screenshots folder could point anywhere)."""
+    return os.path.realpath(folder).startswith(os.path.realpath(os.path.join(STEAM, "userdata")) + os.sep)
+
+
+def cmd_delete_screenshots(args):
+    """Delete screenshots (+ their thumbnails); only image files in Steam's screenshot folders (screenshot_file; every
+    path is checked before anything is deleted). screenshots.vdf is left alone: Steam keeps it in memory and rewrites
+    it at exit, so an edit would be lost; Steam drops entries whose file is gone, list_screenshots skips them. Steam's
+    own screenshot list may show the deleted ones until Steam restarts."""
+    paths = [screenshot_file(p) for p in args.get("paths") or []]
+    deleted = []
+    for p in paths:
+        os.unlink(p)
+        deleted.append(p)
+        thumbs = os.path.join(os.path.dirname(p), "thumbnails")
+        if inside_userdata(thumbs):
+            try:
+                os.unlink(os.path.join(thumbs, os.path.basename(p)))
+            except FileNotFoundError:
+                pass
+    return {"deleted": deleted}
+
+
 def cmd_prepare(args):
     """Where to upload, and what the Frame already has (so unchanged data is not re-sent)."""
     pkg = check_pkg(args["package"])
@@ -1633,10 +1864,12 @@ stop() {{
     kill $permfix 2>/dev/null || true
     [[ -n "$child" ]] && kill -TERM -- "-$child" 2>/dev/null || true
     podman kill "lepton-steamlaunch-$SteamAppId" >/dev/null 2>&1 || true
+    {plays_end}
 }}
 trap stop EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+{plays_start}
 setsid {lepton_q} start >"$app_dir/launch.log" 2>&1 &
 child=$!
 {dashboard}
@@ -1662,9 +1895,17 @@ def dashboard_line():
     return DASHBOARD_LINE.format(agent_q=shlex.quote(os.path.abspath(__file__)))
 
 
+def plays_lines(anchor):
+    """launch.sh lines that log play sessions to <anchor>/plays.log (screenshots are matched to games by time: the
+    Frame files every headset screenshot under SteamVR). Never fail the launcher."""
+    q = shlex.quote(os.path.join(anchor, PLAYS_LOG))
+    return (f'echo "start $(date +%s)" >>{q} 2>/dev/null || true',
+            f'echo "end $(date +%s)" >>{q} 2>/dev/null || true')
+
+
 def upgrade_launchers():
-    """Give launchers written by older agents the parent watchdog (in place: a new file, so a running launcher keeps
-    reading the old one). Returns the packages changed."""
+    """Give launchers written by older agents the parent watchdog, the dashboard closer and the play-session log (in
+    place: a new file, so a running launcher keeps reading the old one). Returns the packages changed."""
     changed = []
     for path in glob.glob(os.path.join(ANCHORS, "*/launch.sh")):
         try:
@@ -1676,6 +1917,13 @@ def upgrade_launchers():
             new = new.replace(OLD_WATCHDOG, WATCHDOG, 1)
         if "_dashboard_worker" not in new and 'child=$!\nwait "$child"' in new:
             new = new.replace('child=$!\nwait "$child"', 'child=$!\n' + dashboard_line() + '\nwait "$child"', 1)
+        if PLAYS_LOG not in new:
+            start, end = plays_lines(os.path.dirname(path))
+            if "\nsetsid " in new and "\n    trap - EXIT INT TERM\n" in new:  # Lepton launcher
+                new = new.replace("\nsetsid ", f"\n{start}\nsetsid ", 1)
+                new = new.replace("\n    trap - EXIT INT TERM\n", f"\n    trap - EXIT INT TERM\n    {end}\n", 1)
+            elif "\nexec " in new:  # Proton launcher: exec replaces the shell, so only the start is logged
+                new = new.replace("\nexec ", f"\n{start}\nexec ", 1)
         if new == text:
             continue
         tmp = path + ".tmp"
@@ -1692,7 +1940,8 @@ def write_launcher(anchor, base, pkg, title, appid, lepton, env):
                     if re.fullmatch(r"[A-Z_][A-Z0-9_]*", k))
     text = LAUNCH_SH.format(title=title.replace("\n", " "), pkg=pkg, base_q=shlex.quote(base), appid=appid,
                             lepton_q=shlex.quote(lepton), extra_env=extra, watchdog=WATCHDOG,
-                            dashboard=dashboard_line())
+                            dashboard=dashboard_line(), plays_start=plays_lines(anchor)[0],
+                            plays_end=plays_lines(anchor)[1])
     path = os.path.join(anchor, "launch.sh")
     with open(path + ".tmp", "w") as f:
         f.write(text)
@@ -2175,6 +2424,7 @@ fi
 mkdir -p "$STEAM_COMPAT_DATA_PATH" "$STEAM_COMPAT_SHADER_PATH"
 cd "$base/game"{workdir}
 echo "FramePort: launching {pkg} with {tool}" >"$base/launch.log"
+{plays_start}
 exec {command} >>"$base/launch.log" 2>&1
 """
 
@@ -2242,7 +2492,7 @@ def write_proton_launcher(anchor, base, pkg, title, appid, tool, exe_rel, revive
         tool=tool["name"], extra_env=extra, workdir=("/" + shlex.quote(workdir)) if workdir else "",
         # Proton sets up VR (vrclient, wineopenxr) only when SteamGameId is set: a flat Windows game goes without
         steam_game_id=f"export SteamGameId={appid}\n" if vr else "",
-        xr_layer=XR_LAYER_ENV if xr_layer else "",
+        xr_layer=XR_LAYER_ENV if xr_layer else "", plays_start=plays_lines(anchor)[0],
         command=" ".join(shlex.quote(a) for a in argv))
     path = os.path.join(anchor, "launch.sh")
     with open(path + ".tmp", "w") as f:

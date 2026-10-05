@@ -30,7 +30,9 @@ from .jobs import Job
 
 NAV = [("library", tr("Library"), ft.Icons.GRID_VIEW_ROUNDED),
        ("frame", tr("Steam Frame"), ft.Icons.VIEW_IN_AR_ROUNDED),
-       ("files", tr("Files"), ft.Icons.FOLDER_OPEN_ROUNDED), ("settings", tr("Settings"), ft.Icons.TUNE_ROUNDED)]
+       ("files", tr("Files"), ft.Icons.FOLDER_OPEN_ROUNDED),
+       ("screenshots", tr("Screenshots"), ft.Icons.PHOTO_LIBRARY_OUTLINED),
+       ("settings", tr("Settings"), ft.Icons.TUNE_ROUNDED)]
 POLL_SECONDS = 30
 
 
@@ -67,6 +69,7 @@ class FramePortApp:
         self._pc_cache: tuple[float, dict] | None = None
         self.library_view = None  # created once (views/library.LibraryView), re-mounted on every visit
         self.files_view = None  # likewise (views/files.FilesView): keeps the location/folder between visits
+        self.screenshots_view = None  # likewise (views/screenshots.ScreenshotsView): keeps the game filter
         self.exe_queue: list[str] = []  # games whose executable the user should confirm (after a scan)
         self._failures: list[Job] = []  # failed installs/tests, shown together when the queue is done
         self.jobs = jobs_module.shared()  # one queue per process, shared by every window session
@@ -318,6 +321,12 @@ class FramePortApp:
                 if self.files_view is None:
                     self.files_view = FilesView(self)
                 view = self.files_view.mount(*self.route[1:])
+            elif kind == "screenshots":
+                from .views.screenshots import ScreenshotsView
+
+                if self.screenshots_view is None:
+                    self.screenshots_view = ScreenshotsView(self)
+                view = self.screenshots_view.mount(*self.route[1:])
             elif kind == "settings":
                 view = SettingsView(self).build()
             else:
@@ -344,6 +353,9 @@ class FramePortApp:
         elif self.route[0] == "files" and (self.files_view is None or self.files_view.root is None
                                            or self.frame_state != "connected"):
             self.render()  # connected / disconnected: switch between the browser and "connect first"
+        elif self.route[0] == "screenshots" and (self.screenshots_view is None or self.screenshots_view.root is None
+                                                 or self.frame_state != "connected"):
+            self.render()
         else:
             self._refresh_sidebar()
 
@@ -672,6 +684,8 @@ class FramePortApp:
                             lambda e: (lv.selected.add(pkg), lv.set_select_mode(True))))
         if rift:
             out.append((tr("Change executable…"), ft.Icons.TERMINAL_ROUNDED, lambda e: self.choose_exe(pkg)))
+        if self.frame_state == "connected":
+            out.append((tr("Screenshots"), ft.Icons.PHOTO_LIBRARY_OUTLINED, lambda e: self.go("screenshots", pkg)))
         out.append((tr("Find artwork…"), ft.Icons.IMAGE_SEARCH_ROUNDED, lambda e: self.find_artwork(pkg)))
         out.append((tr("Use your own artwork…"), ft.Icons.UPLOAD_FILE_ROUNDED, lambda e: self.custom_artwork(pkg)))
         if not job and self.frame_state == "connected" and \
