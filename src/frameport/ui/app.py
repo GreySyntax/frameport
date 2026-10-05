@@ -34,6 +34,22 @@ NAV = [("library", tr("Library"), ft.Icons.GRID_VIEW_ROUNDED),
 POLL_SECONDS = 30
 
 
+
+def window_geometry(saved: dict | None, scale: float) -> dict:
+    """Window properties for the start from the saved `ui.window` setting: the size (first start: 16:10 sized for the
+    UI scale), the position when it is plausible (a window left on a monitor that is gone would open off screen; far
+    off values are ignored, the system then places it) and maximized."""
+    saved = saved or {}
+    w, h = saved.get("size") or (round(1280 * scale), round(780 * scale))
+    out = {"width": max(int(w), 1000), "height": max(int(h), 680)}
+    pos = saved.get("pos")
+    if isinstance(pos, (list, tuple)) and len(pos) == 2 and all(isinstance(v, (int, float)) for v in pos) \
+            and -16000 < pos[0] < 16000 and -8 <= pos[1] < 9000:
+        out["left"], out["top"] = int(pos[0]), int(pos[1])
+    if saved.get("maximized"):
+        out["maximized"] = True
+    return out
+
 class FramePortApp:
     def __init__(self, page: ft.Page):
         from .views.activity import ActivityPanel
@@ -67,9 +83,10 @@ class FramePortApp:
         page.window.min_width, page.window.min_height = 1000, 680
         if not page.web:
             # 16:10 sized for the UI scale (the first start used to open too narrow at 125 %: toolbars were cut off);
-            # later starts reopen at the size the window was left at
-            w, h = (library.setting("ui.window") or {}).get("size") or (round(1280 * T.SCALE), round(780 * T.SCALE))
-            page.window.width, page.window.height = max(int(w), 1000), max(int(h), 680)
+            # later starts reopen where the window was left: size, position (GitHub #32: always top left on Windows),
+            # maximized
+            for key, value in window_geometry(library.setting("ui.window"), T.SCALE).items():
+                setattr(page.window, key, value)
             page.window.on_event = self._on_window_event
         page.on_keyboard_event = self._on_key
         if page.web:  # the library's right-click menu; otherwise the browser shows its own
@@ -108,12 +125,25 @@ class FramePortApp:
 
     # ================================================================== shell
     def _on_window_event(self, e) -> None:
-        """Remember the window size (once a resize ends; not while maximized or full screen)."""
-        win = self.page.window
-        if e.type == ft.WindowEventType.RESIZED and not (win.maximized or win.full_screen) and win.width and \
-                win.height:
-            size = [round(win.width), round(win.height)]
-            self.page.run_thread(library.update_setting, "ui.window", lambda v: {**(v or {}), "size": size}, {})
+        """Remember the window's size and position (once a resize/move ends; not while maximized or full screen) and
+        whether it is maximized."""
+        win, change = self.page.window, None
+        if e.type in (ft.WindowEventType.MAXIMIZE, ft.WindowEventType.UNMAXIMIZE):
+            change = {"maximized": e.type == ft.WindowEventType.MAXIMIZE}
+        elif win.maximized or win.full_screen:
+            return
+        elif e.type == ft.WindowEventType.RESIZED and win.width and win.height:
+            change = {"size": [round(win.width), round(win.height)]}
+            if win.left is not None and win.top is not None:  # resizing from the left/top edge moves it too
+                change["pos"] = [round(win.left), round(win.top)]
+        elif e.type in (ft.WindowEventType.MOVED, ft.WindowEventType.CLOSE) and win.left is not None and \
+                win.top is not None:
+            change = {"pos": [round(win.left), round(win.top)]}
+            if e.type == ft.WindowEventType.CLOSE:  # the app is going away: write it now
+                library.update_setting("ui.window", lambda v: {**(v or {}), **change}, {})
+                return
+        if change:
+            self.page.run_thread(library.update_setting, "ui.window", lambda v: {**(v or {}), **change}, {})
 
     def top_bar(self, heading: str, subtitle: str = "", actions: list[ft.Control] | None = None) -> ft.Control:
         heads = [C.title(heading), C.body(subtitle)] if subtitle else [C.title(heading)]
@@ -522,7 +552,14 @@ class FramePortApp:
                 self._add_then_play(pkg, title)  # e.g. the shortcut step failed during the install
                 return
             library.upsert_game(pkg, last_played=time.time())
-            if to == "frame":
+            steam = res.get("steam") or {}
+            if to == "frame" and steam:  # what the Frame's Steam logged about this launch (GitHub #21/#30)
+                applog.log.info("Play %s: Steam %s %s", pkg, steam.get("result"), steam.get("lines"))
+            if to == "frame" and steam.get("result") == "error":  # 9 = "Game configuration unavailable"
+                self.toast(tr("The Frame's Steam couldn't start {title} (Steam error {code}). Please send a problem "
+                              "report so we can see why.").format(title=title, code=steam.get("code")), error=True,
+                           action=tr("Report a problem"), on_action=lambda e: self.report_problem_dialog(pkg))
+            elif to == "frame":
                 self.toast(tr("Starting {title} on the Frame — put the headset on").format(title=title))
             elif res.get("steamvr") is False:
                 msg = tr("Starting {title}, but SteamVR isn't running — it may open as a flat window. "

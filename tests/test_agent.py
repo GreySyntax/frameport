@@ -913,3 +913,44 @@ def test_shortcuts_lost_after_steam_restart(monkeypatch, tmp_path):
     exe, title, start, icon, tag, tags, openvr = a.shortcut_args("com.x.y")
     a.upsert_shortcut(str(cfg / "shortcuts.vdf"), exe, title, start, icon, tag, tags=tags, openvr=openvr)
     assert a.shortcuts_lost(["42"], ["com.x.y"]) == []
+
+
+def test_steam_launch_result_reads_steams_log(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    monkeypatch.setattr(a.time, "sleep", lambda s: None)
+    log = tmp_path / "console_log.txt"
+    old = "[2026-10-04 12:00:00] SteamUI: WARNING: LaunchGameAction: launch error 9 3554078061 LaunchApp AppError_18\n"
+    log.write_text(old)
+    start = log.stat().st_size  # lines from before this launch don't count
+    assert a.steam_launch_result(str(log), start, 3554078061, wait=0)["result"] == "silent"
+    with open(log, "a") as f:  # GitHub #21/#30: Steam's "Game configuration unavailable"
+        f.write("[2026-10-04 12:09:52] SteamUI: WARNING: LaunchGameAction: launch error 9 3554078061 LaunchApp "
+                "AppError_18 \n")
+    got = a.steam_launch_result(str(log), start, 3554078061, wait=0)
+    assert got["result"] == "error" and got["code"] == 9 and got["detail"] == "LaunchApp AppError_18"
+    log.write_text(old + "[2026-10-04 19:12:16] GameAction [AppID 2369265159, ActionID 4] : LaunchApp changed task "
+                         "to CreatingProcess with \"\"\n")
+    assert a.steam_launch_result(str(log), start, 2369265159, wait=0)["result"] == "started"
+
+
+def test_steam_library_report(monkeypatch, tmp_path):
+    a = load_agent(monkeypatch, tmp_path)
+    anchor = tmp_path / "Applications/quest-frame/com.x.y"
+    anchor.mkdir(parents=True)
+    (anchor / "deployment.json").write_text(json.dumps({"package": "com.x.y", "appid": 1, "title": "X", "base": "b"}))
+    cfg = tmp_path / ".local/share/Steam/userdata/42/config"
+    cfg.mkdir(parents=True)
+    exe, title, start, icon, tag, tags, openvr = a.shortcut_args("com.x.y")
+    appid = a.upsert_shortcut(str(cfg / "shortcuts.vdf"), exe, title, start, icon, tag, tags=tags, openvr=openvr)
+    a.upsert_shortcut(str(cfg / "shortcuts.vdf"), '"/usr/bin/other"', "Other", "/", "")
+    logs = tmp_path / ".local/share/Steam/logs"
+    logs.mkdir()
+    (logs / "console_log.txt").write_text(f"noise\n[x] GameAction [AppID {appid}, ActionID 1] : LaunchApp changed "
+                                          "task to Completed\n    path_shortcut: \"/a.desktop\"\n")
+    monkeypatch.setattr(a, "run", lambda cmd, **k: SimpleNamespace(returncode=1, stdout=""))
+    rep, console = a.steam_library_report()
+    acc = rep["accounts"][0]
+    assert acc["shortcuts"] == 2 and acc["exe_dupes"] == 0 and acc["shortcuts_vdf_written"]
+    assert acc["frameport"] == [{"package": "com.x.y", "appid": appid, "title": "X", "start_dir": start,
+                                 "openvr": acc["frameport"][0]["openvr"], "options": acc["frameport"][0]["options"]}]
+    assert f"[AppID {appid}" in console and "noise" not in console and "path_shortcut" not in console

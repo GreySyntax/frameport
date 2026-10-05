@@ -511,3 +511,17 @@ def test_one_build_per_game_at_a_time():
 
     assert pipeline._build_lock("com.x.y") is pipeline._build_lock("com.x.y")
     assert pipeline._build_lock("com.x.y") is not pipeline._build_lock("com.x.z")
+
+
+def test_window_geometry_restores_size_position_and_maximized():
+    from frameport.ui.app import window_geometry
+
+    first = window_geometry(None, 1.25)
+    assert first == {"width": 1600, "height": 975}  # no position: the system places it
+    got = window_geometry({"size": [1400, 900], "pos": [320, 140], "maximized": True}, 1.0)
+    assert got == {"width": 1400, "height": 900, "left": 320, "top": 140, "maximized": True}
+    assert window_geometry({"size": [800, 500]}, 1.0) == {"width": 1000, "height": 680}  # minimum size
+    # a monitor to the left (negative x) is fine; far off or malformed positions are ignored (GitHub #32)
+    assert window_geometry({"pos": [-1800, 50]}, 1.0)["left"] == -1800
+    for bad in ([-20000, 0], [100, -400], [99999, 0], ["a", 1], [1]):
+        assert "left" not in window_geometry({"pos": bad}, 1.0)

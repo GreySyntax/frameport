@@ -35,7 +35,7 @@ import sys
 import time
 import zlib
 
-AGENT_VERSION = 41
+AGENT_VERSION = 42
 HOME = os.path.expanduser("~")
 STEAM = os.path.join(HOME, ".local/share/Steam")
 ANCHORS = os.path.join(HOME, "Applications/quest-frame")
@@ -1203,10 +1203,41 @@ def cmd_launch(args):
     if appid is None:  # Steam would only say "Game configuration unavailable"
         raise AgentError(f"{NOT_IN_LIBRARY}: {dep.get('title') or pkg}")
     gid = steam_gameid(appid)  # the shortcut's own id (it keeps its first one when the title changes)
+    log = os.path.join(STEAM, "logs/console_log.txt")
+    start = os.path.getsize(log) if os.path.exists(log) else 0
     # systemd-run: the launch request must outlive this SSH session
     run(["systemd-run", "--user", "--collect", "--quiet", f"--unit=frameport-launch-{int(time.time())}",
          "steam", "-ifrunning", f"steam://rungameid/{gid}"])
-    return {"package": pkg, "gameid": gid, "title": dep.get("title")}
+    return {"package": pkg, "gameid": gid, "title": dep.get("title"),
+            "steam": steam_launch_result(log, start, appid, wait=args.get("wait", 10))}
+
+
+STEAM_LAUNCH_ERROR = re.compile(r"launch error (\d+) (\d+)(.*)")
+
+
+def steam_launch_result(log, start, appid, wait=10):
+    """What Steam's console log says about the launch of shortcut `appid` (lines written after byte `start`): "started"
+    (Steam created the process), "error" (e.g. "launch error 9 <appid>" = Steam's "Game configuration unavailable",
+    GitHub #21/#30), "silent" (Steam logged nothing about this app: it didn't know the shortcut) or "unknown"."""
+    tag, lines = f"[AppID {appid}", []
+    deadline = time.time() + wait
+    while True:
+        try:
+            with open(log, "rb") as f:
+                f.seek(start)
+                new = f.read(1 << 20).decode("utf-8", "replace").splitlines()
+        except OSError:
+            return {"result": "unknown", "lines": []}
+        lines = [ln for ln in new if tag in ln or "launch error" in ln or "rungameid" in ln][-40:]
+        err = next((m for m in map(STEAM_LAUNCH_ERROR.search, lines) if m and m.group(2) == str(appid)), None)
+        if err:
+            return {"result": "error", "code": int(err.group(1)), "detail": err.group(3).strip(), "lines": lines}
+        if any(tag in ln and ("CreatingProcess" in ln or "WaitingGameWindow" in ln or "Completed" in ln)
+               for ln in lines):
+            return {"result": "started", "lines": lines}
+        if time.time() >= deadline:
+            return {"result": "silent" if not any(tag in ln for ln in lines) else "unknown", "lines": lines}
+        time.sleep(1)
 
 
 LEPTON_LINK = re.compile(r'ln -s "\$\{HOME\}/([^"/]+)" "\$\{TARGET_PATH\}/([^"/]+)"')
@@ -2348,6 +2379,71 @@ def launch_test_pcvr(dep, anchor, log, seconds):
             "kind": "pcvr", "game_process": bool(game_seen)}
 
 
+def steam_library_report():
+    """Why a game installed by FramePort may be missing from Steam or fail with "Game configuration unavailable"
+    (GitHub #21/#30): where Steam really lives, Steam's client version/beta, each account's shortcuts.vdf (when it
+    was written vs when Steam started, FramePort's entries in it) and Steam's log lines about these shortcuts.
+    Accounts are numbered, not named (the PC redacts ids anyway)."""
+    rep = {"steam_dir": STEAM}
+    for link in ("~/.steam/steam", "~/.steam/root"):
+        path = os.path.expanduser(link)
+        rep[link] = os.path.realpath(path) if os.path.lexists(path) else None
+    pkg_dir = os.path.join(STEAM, "package")
+    rep["beta"] = (_tail(os.path.join(pkg_dir, "beta"), 200) or "").strip() or None
+    rep["client_manifests"] = sorted(n for n in os.listdir(pkg_dir) if n.endswith(".manifest"))[:10] \
+        if os.path.isdir(pkg_dir) else []
+    p = run(["pgrep", "-o", "-x", "steam"])
+    pid = p.stdout.split()[0] if p.returncode == 0 and p.stdout.split() else None
+    rep["steam_started"] = os.stat(f"/proc/{pid}").st_mtime if pid and os.path.exists(f"/proc/{pid}") else None
+    if pid:
+        try:
+            rep["steam_cmdline"] = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode()[:500]
+        except OSError:
+            pass
+    ours = {}
+    for dep_path in glob.glob(os.path.join(ANCHORS, "*/deployment.json")):
+        try:
+            dep = json.load(open(dep_path))
+        except (OSError, ValueError):
+            continue
+        ours[f'"{os.path.dirname(dep_path)}/launch.sh"'] = dep.get("package")
+    active = active_steam_user()
+    accounts, appids = [], set()
+    for i, user in enumerate(steam_users()):
+        acc = {"account": i + 1, "most_recent_login": user == active}
+        cfg = os.path.join(STEAM, "userdata", user, "config")
+        vdf = os.path.join(cfg, "shortcuts.vdf")
+        acc["shortcuts_vdf_written"] = os.path.getmtime(vdf) if os.path.exists(vdf) else None
+        acc["localconfig_written"] = os.path.getmtime(os.path.join(cfg, "localconfig.vdf")) \
+            if os.path.exists(os.path.join(cfg, "localconfig.vdf")) else None
+        acc["backups"] = len(glob.glob(vdf + ".backup-*"))
+        try:
+            root = vdf_decode(open(vdf, "rb").read()) if os.path.exists(vdf) else {}
+            entries = [v for v in (root.get("shortcuts") or {}).values() if isinstance(v, dict)]
+            acc["shortcuts"] = len(entries)
+            acc["frameport"] = []
+            for v in entries:
+                if v.get("Exe") in ours:
+                    appids.add(v.get("appid", 0) & 0xFFFFFFFF)
+                    acc["frameport"].append({"package": ours[v["Exe"]], "appid": v.get("appid", 0) & 0xFFFFFFFF,
+                                             "title": v.get("AppName", v.get("appname")),
+                                             "start_dir": v.get("StartDir"), "openvr": v.get("OpenVR"),
+                                             "options": v.get("LaunchOptions")})
+            acc["exe_dupes"] = len(entries) - len({v.get("Exe") for v in entries})
+        except Exception as exc:  # noqa: BLE001
+            acc["error"] = f"shortcuts.vdf unreadable: {exc}"
+        accounts.append(acc)
+    rep["accounts"] = accounts
+    lines = []
+    for name in ("console_log.previous.txt", "console_log.txt"):
+        text = _tail(os.path.join(STEAM, "logs", name), 8 << 20) or ""
+        keep = [ln for ln in text.splitlines() if "launch error" in ln or "rungameid" in ln
+                or ("shortcut" in ln.lower() and "path_shortcut" not in ln) or any(f"[AppID {a}" in ln for a in appids)]
+        if keep:
+            lines += [f"==> {name}"] + keep[-400:]
+    return rep, "\n".join(lines)
+
+
 def _tail(path, max_bytes):
     try:
         size = os.path.getsize(path)
@@ -2390,6 +2486,12 @@ def cmd_collect_diag(args):
             files[name] = text
     host["installed"] = [{k: g.get(k) for k in ("package", "title", "kind", "appid", "version", "agent_version")}
                          for g in cmd_list_installed({})["games"]]
+    try:
+        host["steam_library"], console = steam_library_report()
+        if console:
+            files["steam-console.txt"] = console[-max_bytes:]
+    except Exception as exc:  # noqa: BLE001 (diagnostics must not fail on it)
+        host["steam_library"] = {"error": str(exc)}
     out = {"agent_version": AGENT_VERSION, "host": host, "files": files}
     pkg = args.get("package")
     if not pkg:
